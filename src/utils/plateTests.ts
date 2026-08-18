@@ -1,4 +1,5 @@
 import {
+  extractPlatesFromText,
   formatPlateForDisplay,
   generateRecordDescription,
   isMercosulFormat,
@@ -80,72 +81,108 @@ export function runAllUnitTests(): { passedCount: number; totalCount: number; re
     actual: t5_fixed.join(', ') || 'Nenhum',
   });
 
-  // Test 6: Description WITH characteristic
-  const t6_desc = generateRecordDescription({
+  // Test 6: Spaced token extraction (e.g. "BRA 2E19")
+  const t6_extracted = extractPlatesFromText('BRASIL \n BRA 2E19 \n MERCOSUL');
+  const t6_passed = t6_extracted?.plate === 'BRA2E19';
+  results.push({
+    id: 'test_ocr_spaced_tokens',
+    name: 'Extração de placa com espaços e ruído ("BRASIL BRA 2E19 MERCOSUL")',
+    category: 'ocr_fix',
+    passed: t6_passed,
+    expected: 'BRA2E19',
+    actual: t6_extracted?.plate || 'Não encontrado',
+  });
+
+  // Test 7: Angled / Hyphenated token extraction
+  const t7_extracted = extractPlatesFromText('DETRAN SP-SAO PAULO ABC-1234 FIAT');
+  const t7_passed = t7_extracted?.plate === 'ABC1234';
+  results.push({
+    id: 'test_ocr_noisy_old',
+    name: 'Extração de placa antiga em foto ruidosa ("SP-SAO PAULO ABC-1234")',
+    category: 'ocr_fix',
+    passed: t7_passed,
+    expected: 'ABC1234',
+    actual: t7_extracted?.plate || 'Não encontrado',
+  });
+
+  // Test 8: Mercosul Motorcycle Plate extraction
+  const t8_extracted = extractPlatesFromText('BRASIL ABC 12 D 3');
+  const t8_passed = t8_extracted?.plate === 'ABC12D3';
+  results.push({
+    id: 'test_ocr_moto',
+    name: 'Extração de placa de moto Mercosul ("ABC12D3")',
+    category: 'ocr_fix',
+    passed: t8_passed,
+    expected: 'ABC12D3',
+    actual: t8_extracted?.plate || 'Não encontrado',
+  });
+
+  // Test 9: Description WITH characteristic
+  const t9_desc = generateRecordDescription({
     plate: 'ABC1D23',
     fuel: '6/8',
     characteristic: '🟢 CONSUMIDOR',
     location: 'P1',
   });
-  const t6_expected = 'Placa: ABC1D23 | Combustível: 6/8 | Característica: 🟢 CONSUMIDOR | Local: P1';
+  const t9_expected = 'Placa: ABC1D23 | Combustível: 6/8 | Característica: 🟢 CONSUMIDOR | Local: P1';
   results.push({
     id: 'test_desc_with_char',
     name: 'Descrição com Característica selecionada',
     category: 'description',
-    passed: t6_desc === t6_expected,
-    expected: t6_expected,
-    actual: t6_desc,
+    passed: t9_desc === t9_expected,
+    expected: t9_expected,
+    actual: t9_desc,
   });
 
-  // Test 7: Description WITHOUT characteristic (null / empty)
-  const t7_desc = generateRecordDescription({
+  // Test 10: Description WITHOUT characteristic (null / empty)
+  const t10_desc = generateRecordDescription({
     plate: 'ABC1D23',
     fuel: '6/8',
     characteristic: null,
     location: 'P1',
   });
-  const t7_expected = 'Placa: ABC1D23 | Combustível: 6/8 | Local: P1';
+  const t10_expected = 'Placa: ABC1D23 | Combustível: 6/8 | Local: P1';
   results.push({
     id: 'test_desc_without_char',
     name: 'Descrição sem Característica (deixar em branco)',
     category: 'description',
-    passed: t7_desc === t7_expected,
-    expected: t7_expected,
-    actual: t7_desc,
+    passed: t10_desc === t10_expected,
+    expected: t10_expected,
+    actual: t10_desc,
   });
 
-  // Test 8: Description with REVENDA
-  const t8_desc = generateRecordDescription({
+  // Test 11: Description with REVENDA
+  const t11_desc = generateRecordDescription({
     plate: 'XYZ9876',
     fuel: '4/8',
     characteristic: '🟠 REVENDA',
     location: 'ADM',
   });
-  const t8_expected = 'Placa: XYZ9876 | Combustível: 4/8 | Característica: 🟠 REVENDA | Local: ADM';
+  const t11_expected = 'Placa: XYZ9876 | Combustível: 4/8 | Característica: 🟠 REVENDA | Local: ADM';
   results.push({
     id: 'test_desc_revenda',
     name: 'Descrição com 🟠 REVENDA e Local ADM',
     category: 'description',
-    passed: t8_desc === t8_expected,
-    expected: t8_expected,
-    actual: t8_desc,
+    passed: t11_desc === t11_expected,
+    expected: t11_expected,
+    actual: t11_desc,
   });
 
-  // Test 9: Description with DT
-  const t9_desc = generateRecordDescription({
+  // Test 12: Description with DT
+  const t12_desc = generateRecordDescription({
     plate: 'RIO2A18',
     fuel: '8/8',
     characteristic: '🔵 DT',
     location: 'PDC',
   });
-  const t9_expected = 'Placa: RIO2A18 | Combustível: 8/8 | Característica: 🔵 DT | Local: PDC';
+  const t12_expected = 'Placa: RIO2A18 | Combustível: 8/8 | Característica: 🔵 DT | Local: PDC';
   results.push({
     id: 'test_desc_dt',
     name: 'Descrição com 🔵 DT e Local PDC',
     category: 'description',
-    passed: t9_desc === t9_expected,
-    expected: t9_expected,
-    actual: t9_desc,
+    passed: t12_desc === t12_expected,
+    expected: t12_expected,
+    actual: t12_desc,
   });
 
   const passedCount = results.filter((r) => r.passed).length;
@@ -155,3 +192,4 @@ export function runAllUnitTests(): { passedCount: number; totalCount: number; re
     results,
   };
 }
+

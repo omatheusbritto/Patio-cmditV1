@@ -136,76 +136,103 @@ export const CameraView: React.FC<CameraViewProps> = ({ onPhotoCaptured, onCance
     reader.readAsDataURL(file);
   };
 
-  // Pre-made sample photo generator for testing without real car nearby
-  const handleUseSamplePhoto = (sampleType: 'mercosul' | 'old' | 'revenda') => {
+  // Pre-made sample photo generator for testing without real car nearby (supports angled, off-center, old, and mercosul plates)
+  const handleUseSamplePhoto = (sampleType: 'mercosul' | 'angled' | 'old_offcenter' | 'moto') => {
     const canvas = document.createElement('canvas');
     canvas.width = 1200;
     canvas.height = 800;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Background car bumper / pavement
-    ctx.fillStyle = '#1e293b';
+    // Background car bumper / pavement / surroundings
+    ctx.fillStyle = '#0f172a';
     ctx.fillRect(0, 0, 1200, 800);
 
-    // Car Body Grill / Bumper
+    // Car Body / Bumper
     const grad = ctx.createLinearGradient(0, 100, 0, 700);
-    grad.addColorStop(0, '#0f172a');
+    grad.addColorStop(0, '#1e293b');
     grad.addColorStop(0.5, '#334155');
     grad.addColorStop(1, '#0f172a');
     ctx.fillStyle = grad;
-    ctx.roundRect(100, 150, 1000, 500, [40, 40, 20, 20]);
+    ctx.roundRect(80, 120, 1040, 560, [30, 30, 20, 20]);
     ctx.fill();
 
-    // Car plate background (White with black border)
-    const plateX = 350;
-    const plateY = 320;
-    const plateW = 500;
-    const plateH = 200;
-
-    ctx.fillStyle = '#ffffff';
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 10;
-    ctx.beginPath();
-    ctx.roundRect(plateX, plateY, plateW, plateH, 16);
-    ctx.fill();
-    ctx.stroke();
-
+    let plateX = 350;
+    let plateY = 320;
+    let plateW = 500;
+    let plateH = 190;
+    let rotation = 0;
     let plateText = 'ABC1D23';
     let isMerc = true;
+    let isMoto = false;
 
-    if (sampleType === 'old') {
-      plateText = 'ABC1234';
-      isMerc = false;
-      // Old Brazilian plate: State header
-      ctx.fillStyle = '#64748b';
-      ctx.font = 'bold 24px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('SP - SAO PAULO', plateX + plateW / 2, plateY + 40);
-    } else if (sampleType === 'revenda') {
+    if (sampleType === 'angled') {
       plateText = 'BRA2E19';
       isMerc = true;
+      plateX = 330;
+      plateY = 290;
+      rotation = 11; // 11 degree tilt
+    } else if (sampleType === 'old_offcenter') {
+      plateText = 'ABC1234';
+      isMerc = false;
+      plateX = 540; // shifted to the right/lower position
+      plateY = 440;
+      plateW = 460;
+      plateH = 180;
+      rotation = -5;
+    } else if (sampleType === 'moto') {
+      plateText = 'ABC12D3';
+      isMerc = true;
+      isMoto = true;
+      plateX = 420;
+      plateY = 260;
+      plateW = 360;
+      plateH = 260;
     }
+
+    ctx.save();
+    if (rotation !== 0) {
+      ctx.translate(plateX + plateW / 2, plateY + plateH / 2);
+      ctx.rotate((rotation * Math.PI) / 180);
+      ctx.translate(-(plateX + plateW / 2), -(plateY + plateH / 2));
+    }
+
+    // Car plate background (White with border)
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.roundRect(plateX, plateY, plateW, plateH, 14);
+    ctx.fill();
+    ctx.stroke();
 
     if (isMerc) {
       // Blue top band for Mercosul
       ctx.fillStyle = '#003399';
       ctx.beginPath();
-      ctx.roundRect(plateX + 5, plateY + 5, plateW - 10, 50, [12, 12, 0, 0]);
+      ctx.roundRect(plateX + 4, plateY + 4, plateW - 8, isMoto ? 56 : 48, [10, 10, 0, 0]);
       ctx.fill();
 
       ctx.fillStyle = '#ffffff';
-      ctx.font = '900 24px sans-serif';
+      ctx.font = '900 22px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('BRASIL', plateX + plateW / 2, plateY + 38);
+      ctx.fillText('BRASIL', plateX + plateW / 2, plateY + 34);
+    } else {
+      // Old Brazilian plate: State header
+      ctx.fillStyle = '#64748b';
+      ctx.font = 'bold 22px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('SP - SAO PAULO', plateX + plateW / 2, plateY + 38);
     }
 
-    // Plate Characters (Large black centered)
+    // Plate Characters
     ctx.fillStyle = '#000000';
-    ctx.font = 'bold 84px monospace';
+    ctx.font = isMoto ? 'bold 68px monospace' : 'bold 80px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(plateText, plateX + plateW / 2, plateY + (isMerc ? 130 : 120));
+    ctx.fillText(plateText, plateX + plateW / 2, plateY + (isMerc ? (isMoto ? 150 : 124) : 116));
+
+    ctx.restore();
 
     const sampleDataUrl = canvas.toDataURL('image/jpeg', 0.95);
     if (stream) {
@@ -303,8 +330,8 @@ export const CameraView: React.FC<CameraViewProps> = ({ onPhotoCaptured, onCance
                 <div className="absolute inset-x-2 top-1/2 -translate-y-1/2 h-0.5 bg-emerald-400/60 shadow-[0_0_8px_#34d399]" />
 
                 <div className="absolute -bottom-8 inset-x-0 text-center">
-                  <span className="text-[12px] font-semibold tracking-wide bg-emerald-950/80 text-emerald-200 px-3 py-1 rounded-full border border-emerald-500/40">
-                    Posicione a placa do veículo aqui
+                  <span className="text-[12px] font-semibold tracking-wide bg-emerald-950/90 text-emerald-200 px-3 py-1 rounded-full border border-emerald-500/40 shadow-sm">
+                    Reconhece placa em qualquer ângulo e posição
                   </span>
                 </div>
               </div>
@@ -316,19 +343,31 @@ export const CameraView: React.FC<CameraViewProps> = ({ onPhotoCaptured, onCance
       {/* Bottom Controls */}
       <div className="p-4 bg-gradient-to-t from-black via-black/90 to-transparent flex flex-col gap-3 pb-8">
         {/* Sample vehicle options for instant testing / dev preview */}
-        <div className="flex items-center justify-center gap-2 overflow-x-auto py-1">
-          <span className="text-[11px] text-neutral-400 font-medium">Testar com foto:</span>
+        <div className="flex items-center justify-start sm:justify-center gap-1.5 overflow-x-auto py-1 no-scrollbar text-xs">
+          <span className="text-[11px] text-neutral-400 font-medium whitespace-nowrap">Testar:</span>
           <button
             onClick={() => handleUseSamplePhoto('mercosul')}
-            className="text-[11px] bg-emerald-950/80 border border-emerald-700 text-emerald-300 px-2.5 py-1 rounded-lg active:scale-95 flex items-center gap-1 font-semibold"
+            className="text-[11px] bg-emerald-950/80 border border-emerald-700 text-emerald-300 px-2 py-1 rounded-lg active:scale-95 flex items-center gap-1 font-semibold whitespace-nowrap"
           >
-            <Sparkles className="w-3 h-3" /> Mercosul (ABC1D23)
+            <Sparkles className="w-3 h-3" /> Mercosul
           </button>
           <button
-            onClick={() => handleUseSamplePhoto('old')}
-            className="text-[11px] bg-neutral-800 border border-neutral-700 text-neutral-300 px-2.5 py-1 rounded-lg active:scale-95 flex items-center gap-1 font-semibold"
+            onClick={() => handleUseSamplePhoto('angled')}
+            className="text-[11px] bg-amber-950/80 border border-amber-700 text-amber-300 px-2 py-1 rounded-lg active:scale-95 flex items-center gap-1 font-semibold whitespace-nowrap"
           >
-            Antiga (ABC1234)
+            📐 Inclinada (BRA2E19)
+          </button>
+          <button
+            onClick={() => handleUseSamplePhoto('old_offcenter')}
+            className="text-[11px] bg-neutral-800 border border-neutral-700 text-neutral-300 px-2 py-1 rounded-lg active:scale-95 flex items-center gap-1 font-semibold whitespace-nowrap"
+          >
+            📍 Canto (ABC1234)
+          </button>
+          <button
+            onClick={() => handleUseSamplePhoto('moto')}
+            className="text-[11px] bg-sky-950/80 border border-sky-700 text-sky-300 px-2 py-1 rounded-lg active:scale-95 flex items-center gap-1 font-semibold whitespace-nowrap"
+          >
+            🏍️ Moto (ABC12D3)
           </button>
         </div>
 
