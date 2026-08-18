@@ -1,31 +1,44 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   formatPlateForDisplay,
   isMercosulFormat,
   isValidBrazilianPlate,
   sanitizeRawText,
 } from '../utils/plateNormalizer';
-import { Camera, Check, AlertCircle, Sparkles, RefreshCcw, Edit3, ArrowRight } from 'lucide-react';
+import { Camera, Check, AlertCircle, Sparkles, RefreshCcw, Edit3, ArrowRight, Bot } from 'lucide-react';
 
 interface PlateConfirmationProps {
   photoDataUrl: string;
   initialPlate: string;
+  plateSource?: 'local_ocr' | 'gemini_ai' | 'manual' | null;
+  aiDetails?: string;
   isOcrLoading: boolean;
   ocrProgressMsg: string;
   onConfirmPlate: (plate: string) => void;
   onRetakePhoto: () => void;
+  onReanalyzeWithAi?: () => void;
 }
 
 export const PlateConfirmation: React.FC<PlateConfirmationProps> = ({
   photoDataUrl,
   initialPlate,
+  plateSource,
+  aiDetails,
   isOcrLoading,
   ocrProgressMsg,
   onConfirmPlate,
   onRetakePhoto,
+  onReanalyzeWithAi,
 }) => {
   const [plateInput, setPlateInput] = useState<string>(sanitizeRawText(initialPlate));
   const [isPhotoExpanded, setIsPhotoExpanded] = useState<boolean>(false);
+
+  // Sync state when new initialPlate arrives from background AI / OCR
+  useEffect(() => {
+    if (initialPlate) {
+      setPlateInput(sanitizeRawText(initialPlate));
+    }
+  }, [initialPlate]);
 
   const cleanPlate = sanitizeRawText(plateInput);
   const isValid = isValidBrazilianPlate(cleanPlate);
@@ -34,12 +47,6 @@ export const PlateConfirmation: React.FC<PlateConfirmationProps> = ({
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const sanitized = sanitizeRawText(e.target.value).slice(0, 7);
     setPlateInput(sanitized);
-  };
-
-  const handleQuickChar = (char: string) => {
-    if (plateInput.length < 7) {
-      setPlateInput((prev) => (prev + char).slice(0, 7));
-    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -61,7 +68,11 @@ export const PlateConfirmation: React.FC<PlateConfirmationProps> = ({
             <p className="text-xs text-neutral-500">
               {isOcrLoading
                 ? ocrProgressMsg || 'Lendo placa...'
-                : 'OCR local concluído. Você pode editar se necessário.'}
+                : plateSource === 'gemini_ai'
+                ? 'Placa identificada via IA Gemini'
+                : plateSource === 'local_ocr'
+                ? 'Placa identificada via OCR local'
+                : 'Você pode editar ou consultar a IA se necessário.'}
             </p>
           </div>
           <button
@@ -86,12 +97,45 @@ export const PlateConfirmation: React.FC<PlateConfirmationProps> = ({
           </div>
 
           {isOcrLoading && (
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center text-white gap-2">
-              <div className="w-8 h-8 border-3 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+            <div className="absolute inset-0 bg-black/65 backdrop-blur-sm flex flex-col items-center justify-center text-white gap-2 p-4 text-center">
+              <div className="w-9 h-9 border-3 border-emerald-400 border-t-transparent rounded-full animate-spin" />
               <p className="text-sm font-semibold text-emerald-300 animate-pulse">
                 {ocrProgressMsg || 'Lendo placa...'}
               </p>
             </div>
+          )}
+        </div>
+
+        {/* AI & Local Source Indicator Badge */}
+        <div className="mt-3 flex items-center justify-between gap-2">
+          {plateSource === 'gemini_ai' ? (
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-violet-50 text-violet-800 border border-violet-200">
+              <Sparkles className="w-3.5 h-3.5 text-violet-600" />
+              <span>Identificado por IA Gemini</span>
+            </div>
+          ) : plateSource === 'local_ocr' ? (
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              <span>Identificado via OCR Local</span>
+            </div>
+          ) : (
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-neutral-600 bg-neutral-100">
+              <Edit3 className="w-3 h-3" />
+              <span>Entrada manual</span>
+            </div>
+          )}
+
+          {/* Dedicated Button to trigger AI Gemini analysis anytime */}
+          {onReanalyzeWithAi && (
+            <button
+              type="button"
+              onClick={onReanalyzeWithAi}
+              disabled={isOcrLoading}
+              className="inline-flex items-center gap-1 text-xs font-bold text-violet-700 bg-violet-100 hover:bg-violet-200 px-3 py-1.5 rounded-lg active:scale-95 transition border border-violet-300 disabled:opacity-50"
+            >
+              <Bot className="w-3.5 h-3.5" />
+              <span>Ler com IA</span>
+            </button>
           )}
         </div>
       </div>

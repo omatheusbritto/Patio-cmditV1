@@ -12,7 +12,9 @@ export interface VehicleRecord {
   photoDataUrl: string;
   photoBlob?: Blob;
   plate: string;
+  plateSource?: 'local_ocr' | 'gemini_ai' | 'manual';
   rawOcrText?: string;
+  aiDetails?: string;
   fuel: FuelLevel;
   characteristic?: VehicleCharacteristic | null;
   location: LocationCode;

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FuelLevel, LocationCode, Step, VehicleCharacteristic, VehicleRecord } from './types';
-import { performLocalOcr } from './utils/ocrService';
-import { generateRecordDescription, sanitizeRawText } from './utils/plateNormalizer';
+import { sanitizeRawText } from './utils/plateNormalizer';
+import { smartRecognizePlate, recognizePlateWithGemini } from './utils/geminiPlateService';
 
 import { Header } from './components/Header';
 import { HomeScreen } from './components/HomeScreen';
@@ -21,6 +21,8 @@ export default function App() {
   // Form State
   const [photoDataUrl, setPhotoDataUrl] = useState<string>('');
   const [plate, setPlate] = useState<string>('');
+  const [plateSource, setPlateSource] = useState<'local_ocr' | 'gemini_ai' | 'manual' | null>(null);
+  const [aiDetails, setAiDetails] = useState<string>('');
   const [rawOcrText, setRawOcrText] = useState<string>('');
   const [fuel, setFuel] = useState<FuelLevel | null>(null);
   const [characteristic, setCharacteristic] = useState<VehicleCharacteristic | null>(null);
@@ -57,6 +59,8 @@ export default function App() {
   const handleReset = () => {
     setPhotoDataUrl('');
     setPlate('');
+    setPlateSource(null);
+    setAiDetails('');
     setRawOcrText('');
     setFuel(null);
     setCharacteristic(null);
@@ -78,19 +82,41 @@ export default function App() {
     setOcrProgressMsg('Lendo placa no dispositivo...');
 
     try {
-      const ocrResult = await performLocalOcr(dataUrl, (msg) => {
+      const result = await smartRecognizePlate(dataUrl, (msg) => {
         setOcrProgressMsg(msg);
       });
 
-      if (ocrResult.success && ocrResult.plate) {
-        setPlate(ocrResult.plate);
-        setRawOcrText(ocrResult.rawText);
-      } else if (ocrResult.plate) {
-        setPlate(ocrResult.plate);
-        setRawOcrText(ocrResult.rawText);
+      if (result.plate) {
+        setPlate(result.plate);
+        setPlateSource(result.source === 'none' ? 'manual' : result.source);
+        if (result.details) setAiDetails(result.details);
+        if (result.rawText) setRawOcrText(result.rawText);
+      } else {
+        setPlateSource('manual');
       }
     } catch (err) {
-      console.warn('OCR error:', err);
+      console.warn('Smart recognition error:', err);
+      setPlateSource('manual');
+    } finally {
+      setIsOcrLoading(false);
+    }
+  };
+
+  // Force re-analysis directly with Gemini AI Vision
+  const handleReanalyzeWithAi = async () => {
+    if (!photoDataUrl) return;
+    setIsOcrLoading(true);
+    setOcrProgressMsg('✨ Consultando IA Gemini para localizar a placa...');
+
+    try {
+      const geminiResult = await recognizePlateWithGemini(photoDataUrl);
+      if (geminiResult.plate) {
+        setPlate(geminiResult.plate);
+        setPlateSource('gemini_ai');
+        if (geminiResult.details) setAiDetails(geminiResult.details);
+      }
+    } catch (err) {
+      console.warn('Gemini AI reanalyze error:', err);
     } finally {
       setIsOcrLoading(false);
     }
@@ -186,10 +212,13 @@ export default function App() {
           <PlateConfirmation
             photoDataUrl={photoDataUrl}
             initialPlate={plate}
+            plateSource={plateSource}
+            aiDetails={aiDetails}
             isOcrLoading={isOcrLoading}
             ocrProgressMsg={ocrProgressMsg}
             onConfirmPlate={handleConfirmPlate}
             onRetakePhoto={() => setCurrentStep('camera')}
+            onReanalyzeWithAi={handleReanalyzeWithAi}
           />
         )}
 
