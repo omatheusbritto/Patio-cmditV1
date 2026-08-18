@@ -1,0 +1,6 @@
+{
+  "name": "Redigistro Veicular CMDIT",
+  "description": "Aplicativo móvel para registro de veículos com leitura rápida de placa via OCR local, nível de combustível, características, local e compartilhamento para WhatsApp.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
