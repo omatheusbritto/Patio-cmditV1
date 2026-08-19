@@ -47,14 +47,14 @@ export const Header: React.FC<HeaderProps> = ({
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="font-black tracking-tight text-base leading-none text-white">
-                  CMDIT
+                  Registro Veicular
                 </span>
                 <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-emerald-600 text-emerald-100 border border-emerald-500">
-                  Mobile
+                  CMDIT
                 </span>
               </div>
               <p className="text-[11px] text-emerald-200 font-medium leading-none mt-0.5">
-                Redigistro Veicular
+                por @omatheusbritto
               </p>
             </div>
           </div>

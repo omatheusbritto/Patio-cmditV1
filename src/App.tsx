@@ -22,6 +22,9 @@ export default function App() {
   const [photoDataUrl, setPhotoDataUrl] = useState<string>('');
   const [plate, setPlate] = useState<string>('');
   const [plateSource, setPlateSource] = useState<'local_ocr' | 'gemini_ai' | 'manual' | null>(null);
+  const [croppedPlateUrl, setCroppedPlateUrl] = useState<string | null>(null);
+  const [isCertain, setIsCertain] = useState<boolean>(true);
+  const [analysisNotes, setAnalysisNotes] = useState<string>('');
   const [aiDetails, setAiDetails] = useState<string>('');
   const [rawOcrText, setRawOcrText] = useState<string>('');
   const [fuel, setFuel] = useState<FuelLevel | null>(null);
@@ -60,6 +63,9 @@ export default function App() {
     setPhotoDataUrl('');
     setPlate('');
     setPlateSource(null);
+    setCroppedPlateUrl(null);
+    setIsCertain(true);
+    setAnalysisNotes('');
     setAiDetails('');
     setRawOcrText('');
     setFuel(null);
@@ -77,9 +83,10 @@ export default function App() {
   // When photo is captured from camera or file
   const handlePhotoCaptured = async (dataUrl: string) => {
     setPhotoDataUrl(dataUrl);
+    setCroppedPlateUrl(null);
     setCurrentStep('plate_confirm');
     setIsOcrLoading(true);
-    setOcrProgressMsg('Lendo placa no dispositivo...');
+    setOcrProgressMsg('✨ Analisando placa com IA de alta precisão...');
 
     try {
       const result = await smartRecognizePlate(dataUrl, (msg) => {
@@ -89,14 +96,18 @@ export default function App() {
       if (result.plate) {
         setPlate(result.plate);
         setPlateSource(result.source === 'none' ? 'manual' : result.source);
-        if (result.details) setAiDetails(result.details);
+        if (result.croppedPlateUrl) setCroppedPlateUrl(result.croppedPlateUrl);
+        setIsCertain(result.isCertain ?? true);
+        if (result.analysisNotes) setAnalysisNotes(result.analysisNotes);
         if (result.rawText) setRawOcrText(result.rawText);
       } else {
         setPlateSource('manual');
+        setIsCertain(false);
       }
     } catch (err) {
       console.warn('Smart recognition error:', err);
       setPlateSource('manual');
+      setIsCertain(false);
     } finally {
       setIsOcrLoading(false);
     }
@@ -106,14 +117,16 @@ export default function App() {
   const handleReanalyzeWithAi = async () => {
     if (!photoDataUrl) return;
     setIsOcrLoading(true);
-    setOcrProgressMsg('✨ Consultando IA Gemini para localizar a placa...');
+    setOcrProgressMsg('✨ Reanalisando imagem com IA sem alucinação...');
 
     try {
       const geminiResult = await recognizePlateWithGemini(photoDataUrl);
       if (geminiResult.plate) {
         setPlate(geminiResult.plate);
         setPlateSource('gemini_ai');
-        if (geminiResult.details) setAiDetails(geminiResult.details);
+        if (geminiResult.croppedPlateUrl) setCroppedPlateUrl(geminiResult.croppedPlateUrl);
+        setIsCertain(geminiResult.isCertain ?? true);
+        if (geminiResult.analysisNotes) setAnalysisNotes(geminiResult.analysisNotes);
       }
     } catch (err) {
       console.warn('Gemini AI reanalyze error:', err);
@@ -213,6 +226,9 @@ export default function App() {
             photoDataUrl={photoDataUrl}
             initialPlate={plate}
             plateSource={plateSource}
+            croppedPlateUrl={croppedPlateUrl}
+            isCertain={isCertain}
+            analysisNotes={analysisNotes}
             aiDetails={aiDetails}
             isOcrLoading={isOcrLoading}
             ocrProgressMsg={ocrProgressMsg}
@@ -265,6 +281,11 @@ export default function App() {
           />
         )}
       </main>
+
+      {/* Global Footer */}
+      <footer className="w-full py-2.5 text-center text-[11px] text-neutral-400 font-medium border-t border-neutral-200/60 bg-neutral-100/80">
+        Registro Veicular CMDIT • Desenvolvido por <span className="font-bold text-neutral-700">@omatheusbritto</span>
+      </footer>
 
       {/* Test & Diagnostics Modal */}
       <TestDiagnosticsModal

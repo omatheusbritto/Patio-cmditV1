@@ -370,6 +370,11 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
           <PlusCircle className="w-4 h-4 text-emerald-700" />
           Novo Registro de Veículo
         </button>
+
+        {/* Developer signature */}
+        <div className="pt-3 text-center text-xs text-neutral-400 font-medium">
+          Registro Veicular CMDIT • Desenvolvido por <span className="font-bold text-neutral-700">@omatheusbritto</span>
+        </div>
       </div>
     </div>
   );

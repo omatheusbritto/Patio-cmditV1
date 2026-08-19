@@ -22,14 +22,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onStartRegistration, onO
         </div>
 
         <div>
-          <h1 className="text-3xl font-black text-neutral-900 tracking-tight leading-none">
-            Novo registro
+          <h1 className="text-2xl font-black text-neutral-900 tracking-tight leading-none">
+            Registro Veicular CMDIT
           </h1>
-          <p className="text-sm font-bold text-emerald-700 mt-2 tracking-wide uppercase">
-            Fotografe. Confira. Compartilhe.
+          <p className="text-xs font-bold text-emerald-700 mt-2 tracking-wide uppercase">
+            Fotografe • Confira • Compartilhe
           </p>
           <p className="text-xs text-neutral-500 mt-1 max-w-xs mx-auto">
-            Leitura instantânea de placas sem internet, controle de combustível e envio com legenda para o WhatsApp.
+            Leitura ultrarrápida e precisa de placas, nível de combustível, características e envio direto para WhatsApp.
           </p>
         </div>
       </div>
@@ -90,7 +90,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onStartRegistration, onO
         <div className="flex items-center justify-between px-2 pt-1 text-[11px] text-neutral-500">
           <div className="flex items-center gap-1.5 text-emerald-800 font-semibold">
             <Zap className="w-3.5 h-3.5 text-emerald-600" />
-            100% Local (Sem Nuvem / Sem IA)
+            Visão Computacional & OCR
           </div>
 
           <button
@@ -98,8 +98,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onStartRegistration, onO
             className="text-emerald-700 hover:underline font-bold flex items-center gap-1"
           >
             <ShieldCheck className="w-3.5 h-3.5" />
-            Verificar Testes
+            Testes
           </button>
+        </div>
+
+        {/* Developer signature */}
+        <div className="pt-2 text-center text-xs text-neutral-400 font-medium">
+          Desenvolvido por <span className="font-bold text-neutral-700">@omatheusbritto</span>
         </div>
       </div>
     </div>
