@@ -112,7 +112,7 @@ export const SmartHistory: React.FC<SmartHistoryProps> = ({
     return 'bg-emerald-100 text-emerald-800 border-emerald-300';
   };
 
-  const getOperationBadge = (op: OperationType) => {
+  const getOperationBadge = (op?: OperationType | string) => {
     switch (op) {
       case 'entrada':
         return { label: 'Entrada', color: 'bg-emerald-100 text-emerald-900 border-emerald-300', icon: LogIn };
@@ -122,6 +122,8 @@ export const SmartHistory: React.FC<SmartHistoryProps> = ({
         return { label: 'PDC', color: 'bg-amber-100 text-amber-900 border-amber-300', icon: Package };
       case 'qualidade_51':
         return { label: '51 Qualidade', color: 'bg-indigo-100 text-indigo-900 border-indigo-300', icon: ShieldCheck };
+      default:
+        return { label: 'Registro', color: 'bg-neutral-100 text-neutral-900 border-neutral-300', icon: Car };
     }
   };
 

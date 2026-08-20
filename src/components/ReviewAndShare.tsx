@@ -225,6 +225,12 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
           color: 'bg-indigo-100 text-indigo-900 border-indigo-300',
           icon: ShieldCheck,
         };
+      default:
+        return {
+          label: '🚗 VEÍCULO',
+          color: 'bg-neutral-100 text-neutral-900 border-neutral-300',
+          icon: Car,
+        };
     }
   };
 

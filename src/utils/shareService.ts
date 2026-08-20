@@ -65,7 +65,16 @@ export function getLocationMeaning(loc?: string): string {
 }
 
 /**
- * Generates formatted Brazilian vehicle caption customized by Operation Type
+ * Strips emoji characters from text
+ */
+export function stripEmojis(str: string): string {
+  return str
+    .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F1E6}-\u{1F1FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1F004}\u{1F0CF}\u{1F170}-\u{1F251}\u{2B50}\u{2B55}\u{FE0F}\u{200D}]/gu, '')
+    .trim();
+}
+
+/**
+ * Generates formatted Brazilian vehicle caption customized by Operation Type without emojis
  */
 export function generateWhatsAppMessage(data: FormattedVehicleMessageData): string {
   const time = data.timestamp || new Date();
@@ -73,65 +82,56 @@ export function generateWhatsAppMessage(data: FormattedVehicleMessageData): stri
   const timeFormatted = time.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
   const lines: string[] = [];
+  const cleanChar = data.characteristic ? stripEmojis(data.characteristic) : undefined;
 
   switch (data.operationType) {
     case 'entrada':
-      lines.push(`🟢 *REGISTRO DE ENTRADA - CMDIT*`);
-      lines.push(`📅 *Data/Hora:* ${dateFormatted} às ${timeFormatted}`);
-      lines.push(`🏷️ *Placa:* ${data.plate}`);
-      lines.push(`👤 *Condutor:* ${data.driverName || 'Não informado'}`);
-      lines.push(`📍 *Origem:* ${data.origin || 'Não informado'}`);
-      lines.push(`🛣️ *KM:* ${data.km ? `${data.km} km` : 'Não informado'}`);
-      lines.push(`⛽ *Combustível:* ${data.fuel}`);
-      lines.push(`🔑 *Chave Reserva:* ${data.hasSpareKey ? 'SIM' : 'NÃO'}`);
-      lines.push(`🏷️ *Tipo de Veículo:* ${data.fleetType || 'RAC'}`);
+      lines.push(`*Placa:* ${data.plate}`);
+      lines.push(`*Condutor:* ${data.driverName || 'Não informado'}`);
+      lines.push(`*Origem:* ${data.origin || 'Não informado'}`);
+      lines.push(`*KM:* ${data.km ? `${data.km} km` : 'Não informado'}`);
+      lines.push(`*Combustível:* ${data.fuel}`);
+      lines.push(`*Chave Reserva:* ${data.hasSpareKey ? 'SIM' : 'NÃO'}`);
+      lines.push(`*Tipo de Veículo:* ${data.fleetType || 'RAC'}`);
       break;
 
     case 'saida':
-      lines.push(`🔴 *REGISTRO DE SAÍDA - CMDIT*`);
-      lines.push(`📅 *Data/Hora:* ${dateFormatted} às ${timeFormatted}`);
-      lines.push(`🏷️ *Placa:* ${data.plate}`);
-      lines.push(`👤 *Condutor:* ${data.driverName || 'Não informado'}`);
-      lines.push(`📍 *Destino:* ${data.destination || 'Não informado'}`);
-      lines.push(`🛣️ *KM:* ${data.km ? `${data.km} km` : 'Não informado'}`);
-      lines.push(`⛽ *Combustível:* ${data.fuel}`);
-      lines.push(`🔑 *Chave Reserva:* ${data.hasSpareKey ? 'SIM' : 'NÃO'}`);
-      lines.push(`🏷️ *Tipo de Veículo:* ${data.fleetType || 'RAC'}`);
+      lines.push(`*Placa:* ${data.plate}`);
+      lines.push(`*Condutor:* ${data.driverName || 'Não informado'}`);
+      lines.push(`*Destino:* ${data.destination || 'Não informado'}`);
+      lines.push(`*KM:* ${data.km ? `${data.km} km` : 'Não informado'}`);
+      lines.push(`*Combustível:* ${data.fuel}`);
+      lines.push(`*Chave Reserva:* ${data.hasSpareKey ? 'SIM' : 'NÃO'}`);
+      lines.push(`*Tipo de Veículo:* ${data.fleetType || 'RAC'}`);
       break;
 
     case 'pdc':
-      lines.push(`📦 *REGISTRO PDC (DESEMBARQUE/CARGA) - CMDIT*`);
-      lines.push(`📅 *Data/Hora:* ${dateFormatted} às ${timeFormatted}`);
-      lines.push(`🏷️ *Placa:* ${data.plate}`);
-      lines.push(`⛽ *Combustível:* ${data.fuel}`);
+      lines.push(`*Placa:* ${data.plate}`);
+      lines.push(`*Combustível:* ${data.fuel}`);
       break;
 
     case 'qualidade_51':
-      lines.push(`🔍 *REGISTRO 51 (QUALIDADE) - CMDIT*`);
-      lines.push(`📅 *Data/Hora:* ${dateFormatted} às ${timeFormatted}`);
-      lines.push(`🏷️ *Placa:* ${data.plate}`);
-      lines.push(`📍 *Local:* ${getLocationMeaning(data.location)}`);
-      lines.push(`⛽ *Combustível:* ${data.fuel}`);
-      if (data.characteristic) {
-        lines.push(`🔖 *Característica:* ${data.characteristic}`);
+      lines.push(`*Placa:* ${data.plate}`);
+      lines.push(`*Local:* ${getLocationMeaning(data.location)}`);
+      lines.push(`*Combustível:* ${data.fuel}`);
+      if (cleanChar) {
+        lines.push(`*Característica:* ${cleanChar}`);
       }
       break;
 
     default:
-      lines.push(`🚗 *REGISTRO VEICULAR CMDIT*`);
-      lines.push(`📅 *Data/Hora:* ${dateFormatted} às ${timeFormatted}`);
-      lines.push(`🏷️ *Placa:* ${data.plate}`);
-      lines.push(`⛽ *Combustível:* ${data.fuel}`);
-      if (data.location) lines.push(`📍 *Local:* ${getLocationMeaning(data.location)}`);
-      if (data.characteristic) lines.push(`🔖 *Característica:* ${data.characteristic}`);
+      lines.push(`*Placa:* ${data.plate}`);
+      lines.push(`*Combustível:* ${data.fuel}`);
+      if (data.location) lines.push(`*Local:* ${getLocationMeaning(data.location)}`);
+      if (cleanChar) lines.push(`*Característica:* ${cleanChar}`);
       break;
   }
 
   if (data.notes) {
-    lines.push(`📝 *Observação:* ${data.notes}`);
+    lines.push(`*Observação:* ${data.notes}`);
   }
 
-  lines.push(`\n_Registrado via Registro Veicular CMDIT • @omatheusbritto_`);
+  lines.push(`*Data/Hora:* ${dateFormatted} às ${timeFormatted}`);
 
   return lines.join('\n');
 }
