@@ -11,6 +11,9 @@ import {
   ArrowRight,
   PlusCircle,
   FileSpreadsheet,
+  LogIn,
+  LogOut,
+  Package,
 } from 'lucide-react';
 import { PatioMetrics } from '../types';
 
@@ -48,16 +51,75 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             Registro Veicular CMDIT
           </h1>
           <p className="text-xs font-bold text-emerald-700 mt-1.5 tracking-wide uppercase">
-            Fotografe • Confira • Compartilhe
+            Fotografe • Escolha a Operação • Compartilhe
           </p>
           <p className="text-xs text-neutral-500 mt-1 max-w-xs mx-auto">
-            Leitura ultrarrápida de placas, gestão de vagas do pátio, nível de combustível e histórico 100% offline.
+            Entrada, Saída, PDC e 51 (Qualidade) com leitura ultrarrápida de placas e WhatsApp 100% offline.
           </p>
         </div>
       </div>
 
+      {/* 4 Operations Quick Preview Cards */}
+      <div className="w-full grid grid-cols-2 gap-2 my-2.5">
+        <div className="p-2.5 rounded-2xl bg-emerald-50 border border-emerald-200/80 flex items-center gap-2">
+          <div className="w-8 h-8 rounded-xl bg-emerald-700 text-white flex items-center justify-center shrink-0">
+            <LogIn className="w-4 h-4" />
+          </div>
+          <div className="text-left">
+            <span className="text-[11px] font-black text-emerald-950 block leading-tight">
+              Entrada
+            </span>
+            <span className="text-[9px] text-emerald-700 font-medium leading-none">
+              Origem, Condutor, KM
+            </span>
+          </div>
+        </div>
+
+        <div className="p-2.5 rounded-2xl bg-rose-50 border border-rose-200/80 flex items-center gap-2">
+          <div className="w-8 h-8 rounded-xl bg-rose-700 text-white flex items-center justify-center shrink-0">
+            <LogOut className="w-4 h-4" />
+          </div>
+          <div className="text-left">
+            <span className="text-[11px] font-black text-rose-950 block leading-tight">
+              Saída
+            </span>
+            <span className="text-[9px] text-rose-700 font-medium leading-none">
+              Destino, Condutor, KM
+            </span>
+          </div>
+        </div>
+
+        <div className="p-2.5 rounded-2xl bg-amber-50 border border-amber-200/80 flex items-center gap-2">
+          <div className="w-8 h-8 rounded-xl bg-amber-700 text-white flex items-center justify-center shrink-0">
+            <Package className="w-4 h-4" />
+          </div>
+          <div className="text-left">
+            <span className="text-[11px] font-black text-amber-950 block leading-tight">
+              PDC
+            </span>
+            <span className="text-[9px] text-amber-700 font-medium leading-none">
+              Placa + Combustível
+            </span>
+          </div>
+        </div>
+
+        <div className="p-2.5 rounded-2xl bg-indigo-50 border border-indigo-200/80 flex items-center gap-2">
+          <div className="w-8 h-8 rounded-xl bg-indigo-700 text-white flex items-center justify-center shrink-0">
+            <ShieldCheck className="w-4 h-4" />
+          </div>
+          <div className="text-left">
+            <span className="text-[11px] font-black text-indigo-950 block leading-tight">
+              51 (Qualidade)
+            </span>
+            <span className="text-[9px] text-indigo-700 font-medium leading-none">
+              P1/P2/P3/R1 + Tag
+            </span>
+          </div>
+        </div>
+      </div>
+
       {/* Quick Patio Stats Overview Cards */}
-      <div className="w-full grid grid-cols-2 gap-2 my-3">
+      <div className="w-full grid grid-cols-2 gap-2 mb-3">
         {/* Patio Occupancy Card */}
         <button
           type="button"
@@ -115,56 +177,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </button>
       </div>
 
-      {/* Visual Step Guide */}
-      <div className="w-full bg-white rounded-2xl p-3.5 shadow-sm border border-neutral-200 mb-3 flex flex-col gap-2">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">
-          Etapas do Registro Rápido
-        </span>
-
-        <div className="grid grid-cols-4 gap-1.5 text-center">
-          <div className="flex flex-col items-center p-2 rounded-xl bg-emerald-50 border border-emerald-200">
-            <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs font-bold mb-1">
-              1
-            </div>
-            <span className="text-[10px] font-bold text-emerald-900 leading-tight">Foto Placa</span>
-            <span className="text-[8px] text-emerald-700">Sub-segundo</span>
-          </div>
-
-          <div className="flex flex-col items-center p-2 rounded-xl bg-neutral-50 border border-neutral-200">
-            <div className="w-6 h-6 rounded-full bg-neutral-200 text-neutral-700 flex items-center justify-center text-xs font-bold mb-1">
-              2
-            </div>
-            <span className="text-[10px] font-bold text-neutral-800 leading-tight">Combustível</span>
-            <span className="text-[8px] text-neutral-500">1/8 a 8/8</span>
-          </div>
-
-          <div className="flex flex-col items-center p-2 rounded-xl bg-neutral-50 border border-neutral-200">
-            <div className="w-6 h-6 rounded-full bg-neutral-200 text-neutral-700 flex items-center justify-center text-xs font-bold mb-1">
-              3
-            </div>
-            <span className="text-[10px] font-bold text-neutral-800 leading-tight">Detalhes</span>
-            <span className="text-[8px] text-neutral-500">Tipo/Tag</span>
-          </div>
-
-          <div className="flex flex-col items-center p-2 rounded-xl bg-neutral-50 border border-neutral-200">
-            <div className="w-6 h-6 rounded-full bg-neutral-200 text-neutral-700 flex items-center justify-center text-xs font-bold mb-1">
-              4
-            </div>
-            <span className="text-[10px] font-bold text-neutral-800 leading-tight">Vaga/Local</span>
-            <span className="text-[8px] text-neutral-500">P1 a PDC</span>
-          </div>
-        </div>
-      </div>
-
       {/* Main Action Button */}
       <div className="w-full flex flex-col gap-2.5">
         <button
           type="button"
           onClick={onStartRegistration}
-          className="w-full py-4 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-base flex items-center justify-center gap-3 shadow-xl shadow-emerald-600/30 active:scale-98 transition group"
+          className="w-full py-4 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-base flex items-center justify-center gap-3 shadow-xl shadow-emerald-600/30 active:scale-98 transition group cursor-pointer"
         >
           <Camera className="w-6 h-6 group-hover:rotate-6 transition transform" />
-          <span>Fotografar Veículo</span>
+          <span>Fotografar e Registrar</span>
         </button>
 
         {/* Fast Action Buttons */}

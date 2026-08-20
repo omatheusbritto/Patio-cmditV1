@@ -16,11 +16,14 @@ import {
   ArrowUpRight,
   Clock,
   Sparkles,
+  LogIn,
+  Package,
+  ShieldCheck,
 } from 'lucide-react';
 import { LocationCode, PatioMetrics, VehicleRecord } from '../types';
 import { SECTORS } from '../utils/storageService';
 import { formatPlateForDisplay } from '../utils/plateNormalizer';
-import { generateWhatsAppMessage, openWhatsAppShare } from '../utils/shareService';
+import { generateWhatsAppMessage, getLocationMeaning, openWhatsAppShare } from '../utils/shareService';
 
 interface PatioDashboardProps {
   records: VehicleRecord[];
@@ -49,6 +52,7 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
     const matchesSearch =
       !searchQuery.trim() ||
       v.plate.toUpperCase().includes(searchQuery.trim().toUpperCase()) ||
+      (v.driverName && v.driverName.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (v.notes && v.notes.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesSector && matchesSearch;
   });
@@ -58,6 +62,21 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
     if (fuel === '3/8' || fuel === '4/8' || fuel === '5/8')
       return 'bg-amber-100 text-amber-800 border-amber-300';
     return 'bg-emerald-100 text-emerald-800 border-emerald-300';
+  };
+
+  const getOperationIcon = (op?: string) => {
+    switch (op) {
+      case 'entrada':
+        return <LogIn className="w-3.5 h-3.5 text-emerald-700" />;
+      case 'saida':
+        return <LogOut className="w-3.5 h-3.5 text-rose-700" />;
+      case 'pdc':
+        return <Package className="w-3.5 h-3.5 text-amber-700" />;
+      case 'qualidade_51':
+        return <ShieldCheck className="w-3.5 h-3.5 text-indigo-700" />;
+      default:
+        return <Car className="w-3.5 h-3.5 text-emerald-700" />;
+    }
   };
 
   return (
@@ -177,11 +196,11 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
                       {sec.code}
                     </span>
                     <span
-                      className={`text-[11px] font-bold truncate max-w-[70px] ${
-                        isSelected ? 'text-emerald-200' : 'text-neutral-500'
+                      className={`text-[11px] font-bold truncate max-w-[85px] ${
+                        isSelected ? 'text-emerald-200' : 'text-neutral-600'
                       }`}
                     >
-                      {sec.name.split(' ')[0]}
+                      {sec.name}
                     </span>
                   </div>
 
@@ -245,7 +264,7 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar placa no pátio..."
+              placeholder="Buscar placa ou condutor..."
               className="w-full pl-9 pr-3 py-2 text-xs font-semibold bg-neutral-50 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 uppercase"
             />
             {searchQuery && (
@@ -263,12 +282,12 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
             className="py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 shadow-sm active:scale-95 transition"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Entrada</span>
+            <span>Registrar</span>
           </button>
         </div>
 
         {/* Sector Filter Chips */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-xs">
           <button
             onClick={() => setSelectedSectorFilter('ALL')}
             className={`px-3 py-1 rounded-lg font-bold text-[11px] whitespace-nowrap transition ${
@@ -329,7 +348,7 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
                   : 'Nenhum veículo no pátio no momento.'}
               </p>
               <p className="text-xs text-neutral-500 mt-1">
-                Cadastre uma nova entrada para acompanhar a ocupação.
+                Cadastre um novo veículo para acompanhar a ocupação.
               </p>
             </div>
             <button
@@ -337,7 +356,7 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
               className="mt-2 py-2 px-4 rounded-xl bg-emerald-600 text-white text-xs font-bold flex items-center gap-1.5 shadow"
             >
               <Plus className="w-3.5 h-3.5" />
-              Cadastrar Entrada de Veículo
+              Cadastrar Veículo
             </button>
           </div>
         ) : (
@@ -356,7 +375,7 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
                       <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-900 flex items-center justify-center font-mono font-black text-sm">
-                        {v.location}
+                        {v.location || 'P1'}
                       </div>
 
                       <div>
@@ -378,6 +397,11 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
                             <Clock className="w-3 h-3 text-neutral-400" />
                             {timeFormatted}
                           </span>
+                          {v.driverName && (
+                            <span className="font-medium text-neutral-700 truncate max-w-[120px]">
+                              • {v.driverName}
+                            </span>
+                          )}
                           {v.characteristic && (
                             <span className="text-[10px] font-bold text-neutral-700">
                               • {v.characteristic}
@@ -392,8 +416,15 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
                       <button
                         onClick={() => {
                           const msg = generateWhatsAppMessage({
+                            operationType: v.operationType || 'entrada',
                             plate: v.plate,
                             fuel: v.fuel,
+                            driverName: v.driverName,
+                            origin: v.origin,
+                            destination: v.destination,
+                            km: v.km,
+                            hasSpareKey: v.hasSpareKey,
+                            fleetType: v.fleetType,
                             characteristic: v.characteristic,
                             location: v.location,
                             timestamp: new Date(v.createdAt),

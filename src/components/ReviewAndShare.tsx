@@ -1,12 +1,22 @@
 import React, { useState } from 'react';
-import { FuelLevel, LocationCode, VehicleCharacteristic } from '../types';
 import {
-  generateRecordDescription,
+  FuelLevel,
+  LocationCode,
+  OperationType,
+  VehicleCharacteristic,
+  VehicleFleetType,
+} from '../types';
+import {
   formatPlateForDisplay,
   isMercosulFormat,
   sanitizeRawText,
 } from '../utils/plateNormalizer';
-import { shareToWhatsApp, ShareResult } from '../utils/shareService';
+import {
+  shareToWhatsApp,
+  generateWhatsAppMessage,
+  ShareResult,
+  getLocationMeaning,
+} from '../utils/shareService';
 import {
   Camera,
   CheckCircle2,
@@ -20,27 +30,51 @@ import {
   Download,
   AlertCircle,
   PlusCircle,
+  User,
+  Gauge,
+  Key,
+  Car,
+  LogIn,
+  LogOut,
+  Package,
+  ShieldCheck,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface ReviewAndShareProps {
   photoDataUrl: string;
   plate: string;
+  operationType: OperationType;
   fuel: FuelLevel;
-  characteristic: VehicleCharacteristic | null;
-  location: LocationCode;
+  driverName?: string;
+  origin?: string;
+  destination?: string;
+  km?: string | number;
+  hasSpareKey?: boolean;
+  fleetType?: VehicleFleetType;
+  characteristic?: VehicleCharacteristic | null;
+  location?: LocationCode | null;
+  onRetakePhoto?: () => void;
   onEditPlate: () => void;
-  onRetakePhoto: () => void;
+  onEditOperation: () => void;
+  onEditDetails?: () => void;
   onEditFuel: () => void;
-  onEditCharacteristic: () => void;
-  onEditLocation: () => void;
+  onEditLocation?: () => void;
+  onEditCharacteristic?: () => void;
   onNewRegistration: () => void;
   onSaveToHistory: (record: {
     photoDataUrl: string;
     plate: string;
+    operationType: OperationType;
     fuel: FuelLevel;
-    characteristic: VehicleCharacteristic | null;
-    location: LocationCode;
+    driverName?: string;
+    origin?: string;
+    destination?: string;
+    km?: string | number;
+    hasSpareKey?: boolean;
+    fleetType?: VehicleFleetType;
+    characteristic?: VehicleCharacteristic | null;
+    location?: LocationCode;
     description: string;
   }) => void;
 }
@@ -48,14 +82,23 @@ interface ReviewAndShareProps {
 export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
   photoDataUrl,
   plate,
+  operationType,
   fuel,
+  driverName,
+  origin,
+  destination,
+  km,
+  hasSpareKey,
+  fleetType,
   characteristic,
   location,
-  onEditPlate,
   onRetakePhoto,
+  onEditPlate,
+  onEditOperation,
+  onEditDetails,
   onEditFuel,
-  onEditCharacteristic,
   onEditLocation,
+  onEditCharacteristic,
   onNewRegistration,
   onSaveToHistory,
 }) => {
@@ -67,16 +110,23 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
   const cleanPlate = sanitizeRawText(plate) || 'SEM_PLACA';
   const isMercosul = isMercosulFormat(cleanPlate);
 
-  const description = generateRecordDescription({
+  const messageText = generateWhatsAppMessage({
+    operationType,
     plate: cleanPlate,
     fuel,
+    driverName,
+    origin,
+    destination,
+    km,
+    hasSpareKey,
+    fleetType,
+    location: location || undefined,
     characteristic,
-    location,
   });
 
   // Handle WhatsApp Share with double-click lock & status messages
   const handleShare = async () => {
-    if (isSharing) return; // Prevent double tap
+    if (isSharing) return;
 
     setIsSharing(true);
     setIsStatusError(false);
@@ -86,19 +136,25 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
     onSaveToHistory({
       photoDataUrl,
       plate: cleanPlate,
+      operationType,
       fuel,
+      driverName,
+      origin,
+      destination,
+      km,
+      hasSpareKey,
+      fleetType,
       characteristic,
-      location,
-      description,
+      location: location || (operationType === 'pdc' ? 'PDC' : 'P1'),
+      description: messageText,
     });
 
     try {
-      // Small visual pause for smooth transition
       await new Promise((r) => setTimeout(r, 200));
 
       const result: ShareResult = await shareToWhatsApp({
         photoDataUrl,
-        description,
+        description: messageText,
         plate: cleanPlate,
       });
 
@@ -125,7 +181,7 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
   // Copy text helper
   const handleCopyText = async () => {
     try {
-      await navigator.clipboard.writeText(description);
+      await navigator.clipboard.writeText(messageText);
       setCopiedText(true);
       setTimeout(() => setCopiedText(false), 2500);
     } catch (err) {
@@ -138,242 +194,330 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
     const link = document.createElement('a');
     link.href = photoDataUrl;
     link.download = `registro_${cleanPlate}_${Date.now()}.jpg`;
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
   };
 
+  const getOperationBadge = () => {
+    switch (operationType) {
+      case 'entrada':
+        return {
+          label: '🟢 ENTRADA',
+          color: 'bg-emerald-100 text-emerald-900 border-emerald-300',
+          icon: LogIn,
+        };
+      case 'saida':
+        return {
+          label: '🔴 SAÍDA',
+          color: 'bg-rose-100 text-rose-900 border-rose-300',
+          icon: LogOut,
+        };
+      case 'pdc':
+        return {
+          label: '📦 PDC (DESEMBARQUE)',
+          color: 'bg-amber-100 text-amber-900 border-amber-300',
+          icon: Package,
+        };
+      case 'qualidade_51':
+        return {
+          label: '🔍 51 (QUALIDADE)',
+          color: 'bg-indigo-100 text-indigo-900 border-indigo-300',
+          icon: ShieldCheck,
+        };
+    }
+  };
+
+  const opBadge = getOperationBadge();
+  const OpIcon = opBadge.icon;
+
   return (
-    <div className="flex flex-col gap-4 max-w-md mx-auto w-full pb-12">
-      {/* Title card */}
-      <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-200 flex items-center justify-between">
-        <div>
-          <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
-            Etapa 5 • Revisão Final
-          </span>
-          <h2 className="text-lg font-black text-neutral-900 mt-1 leading-tight">
-            Conferir e Compartilhar
-          </h2>
+    <div className="flex flex-col gap-4 max-w-md mx-auto w-full pb-16">
+      {/* Top Completion Header */}
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-200 text-center flex flex-col items-center gap-1.5">
+        <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mb-1 shadow-sm">
+          <CheckCircle2 className="w-7 h-7" />
         </div>
-
-        <button
-          onClick={onRetakePhoto}
-          className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 active:scale-95 flex items-center gap-1"
-        >
-          <Camera className="w-3.5 h-3.5" />
-          Refazer Foto
-        </button>
+        <h2 className="text-xl font-black text-neutral-900 leading-tight">
+          Registro Concluído
+        </h2>
+        <p className="text-xs text-neutral-500 max-w-xs">
+          Revise os dados abaixo e envie o relatório fotográfico no WhatsApp
+        </p>
       </div>
 
-      {/* Vehicle Photo Card */}
-      <div className="bg-white rounded-2xl p-3 shadow-sm border border-neutral-200 flex flex-col gap-2">
-        <div className="relative rounded-xl overflow-hidden bg-neutral-950 aspect-video flex items-center justify-center">
-          <img
-            src={photoDataUrl}
-            alt="Foto do veículo"
-            className="w-full h-full object-cover"
-          />
-          <button
-            onClick={handleDownloadPhoto}
-            title="Baixar imagem original"
-            className="absolute bottom-2 right-2 p-2 rounded-lg bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm active:scale-90 transition text-xs flex items-center gap-1 font-semibold"
-          >
-            <Download className="w-3.5 h-3.5" />
-            Salvar Foto
-          </button>
-        </div>
-      </div>
-
-      {/* Review Details Table / Grid */}
-      <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-200 flex flex-col gap-3">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-500">
-          Dados do Registro
-        </h3>
-
-        {/* Plate Item */}
-        <div className="flex items-center justify-between p-3 rounded-xl bg-neutral-50 border border-neutral-200">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
-              PL
-            </div>
-            <div>
-              <span className="text-[11px] text-neutral-500 font-medium block leading-none">
-                Placa Identificada
-              </span>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="font-mono text-xl font-black text-neutral-900 tracking-wider">
-                  {formatPlateForDisplay(cleanPlate)}
-                </span>
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-200/60 text-emerald-900">
-                  {isMercosul ? 'Mercosul' : 'Antiga'}
-                </span>
-              </div>
-            </div>
-          </div>
-          <button
-            onClick={onEditPlate}
-            className="p-2 rounded-lg text-emerald-700 hover:bg-emerald-100 active:scale-95"
-            title="Editar Placa"
-          >
-            <Edit2 className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Fuel & Location Row */}
-        <div className="grid grid-cols-2 gap-2">
-          {/* Fuel */}
-          <div className="flex items-center justify-between p-3 rounded-xl bg-neutral-50 border border-neutral-200">
-            <div className="flex items-center gap-2">
-              <Fuel className="w-5 h-5 text-emerald-600" />
-              <div>
-                <span className="text-[10px] text-neutral-500 font-medium block leading-none">
-                  Combustível
-                </span>
-                <span className="font-mono text-base font-black text-neutral-900 mt-0.5 block">
-                  {fuel}
-                </span>
-              </div>
-            </div>
-            <button
-              onClick={onEditFuel}
-              className="p-1.5 text-neutral-500 hover:text-emerald-700"
-            >
-              <Edit2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {/* Location */}
-          <div className="flex items-center justify-between p-3 rounded-xl bg-neutral-50 border border-neutral-200">
-            <div className="flex items-center gap-2">
-              <MapPin className="w-5 h-5 text-emerald-600" />
-              <div>
-                <span className="text-[10px] text-neutral-500 font-medium block leading-none">
-                  Local
-                </span>
-                <span className="font-mono text-base font-black text-neutral-900 mt-0.5 block">
-                  {location}
-                </span>
-              </div>
-            </div>
-            <button
-              onClick={onEditLocation}
-              className="p-1.5 text-neutral-500 hover:text-emerald-700"
-            >
-              <Edit2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Characteristic Item */}
-        <div className="flex items-center justify-between p-3 rounded-xl bg-neutral-50 border border-neutral-200">
-          <div className="flex items-center gap-2.5">
-            <Tag className="w-5 h-5 text-emerald-600" />
-            <div>
-              <span className="text-[10px] text-neutral-500 font-medium block leading-none">
-                Característica
-              </span>
-              <span className="text-sm font-bold text-neutral-900 mt-0.5 block">
-                {characteristic || (
-                  <span className="text-neutral-400 font-normal italic">
-                    Não informada (em branco)
-                  </span>
-                )}
-              </span>
-            </div>
-          </div>
-          <button
-            onClick={onEditCharacteristic}
-            className="p-1.5 text-neutral-500 hover:text-emerald-700"
-          >
-            <Edit2 className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-
-      {/* Generated Text Description Box */}
-      <div className="bg-emerald-950 text-white rounded-2xl p-4 shadow-sm border border-emerald-800 flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-300 flex items-center gap-1">
-            <Sparkles className="w-3.5 h-3.5" /> Legenda / Descrição Gerada
-          </span>
-          <button
-            onClick={handleCopyText}
-            className="text-xs font-semibold px-2.5 py-1 rounded bg-emerald-900 hover:bg-emerald-800 text-emerald-200 flex items-center gap-1 active:scale-95 transition"
-          >
-            {copiedText ? (
-              <>
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Copiado!
-              </>
-            ) : (
-              <>
-                <Copy className="w-3.5 h-3.5" /> Copiar Texto
-              </>
-            )}
-          </button>
-        </div>
-
-        <div className="p-3 bg-black/40 rounded-xl font-mono text-sm leading-relaxed border border-emerald-800/60 break-all select-all text-emerald-100">
-          {description}
-        </div>
-        <span className="text-[10px] text-emerald-400/80">
-          * A foto original é enviada separadamente e o texto acima é inserido como legenda no WhatsApp.
-        </span>
-      </div>
-
-      {/* Status Feedback Message */}
-      {shareStatusMsg && (
-        <div
-          className={`p-3.5 rounded-xl border flex items-center gap-2.5 text-xs font-semibold animate-fade-in ${
-            isStatusError
-              ? 'bg-rose-50 border-rose-300 text-rose-800'
-              : 'bg-emerald-50 border-emerald-300 text-emerald-900'
-          }`}
-        >
-          {isStatusError ? (
-            <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+      {/* Main Review Card */}
+      <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
+        {/* Photo with Overlay Plate */}
+        <div className="relative w-full aspect-video bg-neutral-950 flex items-center justify-center overflow-hidden">
+          {photoDataUrl ? (
+            <img
+              src={photoDataUrl}
+              alt="Veículo"
+              className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
+            />
           ) : (
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            <div className="text-neutral-500 text-xs">Sem foto capturada</div>
           )}
-          <span>{shareStatusMsg}</span>
-        </div>
-      )}
 
-      {/* Main WhatsApp Share Button */}
+          {/* Operation Badge Floating */}
+          <div className="absolute top-3 left-3">
+            <span
+              className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-md border ${opBadge.color}`}
+            >
+              <OpIcon className="w-3.5 h-3.5" />
+              {opBadge.label}
+            </span>
+          </div>
+
+          {/* Floating Plate Display */}
+          <div className="absolute bottom-3 left-3">
+            <div className="bg-white/95 backdrop-blur-sm px-3 py-1.5 rounded-xl border border-neutral-300 shadow-lg flex items-center gap-2">
+              <span className="text-[10px] font-bold text-neutral-500 uppercase">
+                Placa
+              </span>
+              <span className="font-mono text-base font-black text-neutral-900 tracking-wider">
+                {formatPlateForDisplay(cleanPlate)}
+              </span>
+            </div>
+          </div>
+
+          {/* Edit photo button */}
+          <button
+            type="button"
+            onClick={onRetakePhoto}
+            className="absolute top-3 right-3 p-2 rounded-xl bg-black/60 text-white hover:bg-black/80 backdrop-blur-sm transition text-xs flex items-center gap-1.5"
+            title="Refazer foto"
+          >
+            <Camera className="w-3.5 h-3.5" />
+            <span className="text-[11px] font-bold">Refazer</span>
+          </button>
+        </div>
+
+        {/* Dynamic Fields List based on Operation */}
+        <div className="p-4 flex flex-col gap-2.5">
+          {/* Operation Switcher Row */}
+          <div className="flex items-center justify-between p-2.5 rounded-xl bg-neutral-50 border border-neutral-200">
+            <div className="flex items-center gap-2">
+              <OpIcon className="w-4 h-4 text-neutral-700" />
+              <div>
+                <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">
+                  Operação
+                </span>
+                <span className="text-xs font-black text-neutral-900">
+                  {opBadge.label}
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onEditOperation}
+              className="text-xs font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-emerald-50"
+            >
+              <Edit2 className="w-3 h-3" />
+              Alterar
+            </button>
+          </div>
+
+          {/* If ENTRADA or SAIDA */}
+          {(operationType === 'entrada' || operationType === 'saida') && (
+            <div className="flex flex-col gap-2 p-3 rounded-xl bg-neutral-50 border border-neutral-200">
+              <div className="flex items-center justify-between pb-1.5 border-b border-neutral-200/60">
+                <span className="text-[10px] font-bold text-neutral-400 uppercase">
+                  Detalhes do Transporte
+                </span>
+                {onEditDetails && (
+                  <button
+                    type="button"
+                    onClick={onEditDetails}
+                    className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                    Editar
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-[10px] text-neutral-500 block">Condutor:</span>
+                  <span className="font-bold text-neutral-900 font-sans">
+                    {driverName || 'Não informado'}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-[10px] text-neutral-500 block">
+                    {operationType === 'entrada' ? 'Origem:' : 'Destino:'}
+                  </span>
+                  <span className="font-bold text-neutral-900 font-sans">
+                    {(operationType === 'entrada' ? origin : destination) || 'Não informado'}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-[10px] text-neutral-500 block">Quilometragem:</span>
+                  <span className="font-mono font-bold text-neutral-900">
+                    {km ? `${km} km` : 'Não informada'}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-[10px] text-neutral-500 block">Chave Reserva:</span>
+                  <span
+                    className={`font-black ${
+                      hasSpareKey ? 'text-emerald-700' : 'text-neutral-700'
+                    }`}
+                  >
+                    {hasSpareKey ? '✅ SIM' : '❌ NÃO'}
+                  </span>
+                </div>
+
+                <div className="col-span-2 pt-1 border-t border-neutral-200/60 flex items-center justify-between">
+                  <span className="text-[10px] text-neutral-500">Tipo de Veículo:</span>
+                  <span className="font-black px-2 py-0.5 rounded bg-blue-100 text-blue-900 text-[11px]">
+                    {fleetType || 'RAC'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* If 51 (QUALIDADE) */}
+          {operationType === 'qualidade_51' && (
+            <div className="flex flex-col gap-2 p-3 rounded-xl bg-indigo-50/60 border border-indigo-200">
+              <div className="flex items-center justify-between pb-1.5 border-b border-indigo-200/60">
+                <span className="text-[10px] font-bold text-indigo-800 uppercase">
+                  Local & Característica (51 Qualidade)
+                </span>
+                {onEditLocation && (
+                  <button
+                    type="button"
+                    onClick={onEditLocation}
+                    className="text-[11px] font-bold text-indigo-700 hover:text-indigo-900 flex items-center gap-1"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                    Editar
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-[10px] text-neutral-500 block">Localização:</span>
+                  <span className="font-black text-indigo-950 font-mono text-sm">
+                    {getLocationMeaning(location || undefined) || 'P1 (Poste 1)'}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-[10px] text-neutral-500 block">Característica:</span>
+                  <span className="font-bold text-neutral-900">
+                    {characteristic || 'Sem característica'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Combustível Row (Present in all operations) */}
+          <div className="flex items-center justify-between p-2.5 rounded-xl bg-neutral-50 border border-neutral-200">
+            <div className="flex items-center gap-2">
+              <Fuel className="w-4 h-4 text-emerald-700" />
+              <div>
+                <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">
+                  Nível de Combustível
+                </span>
+                <span className="text-sm font-mono font-black text-neutral-900">
+                  {fuel} do Tanque
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onEditFuel}
+              className="text-xs font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-emerald-50"
+            >
+              <Edit2 className="w-3 h-3" />
+              Alterar
+            </button>
+          </div>
+        </div>
+
+        {/* WhatsApp Preview Text Box */}
+        <div className="p-4 pt-0">
+          <div className="bg-emerald-950 text-emerald-100 rounded-xl p-3 text-xs font-mono whitespace-pre-wrap relative border border-emerald-800 shadow-inner">
+            <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-emerald-800 text-[10px] text-emerald-300 uppercase tracking-wider font-bold">
+              <span>Texto Formatado WhatsApp</span>
+              <button
+                type="button"
+                onClick={handleCopyText}
+                className="flex items-center gap-1 hover:text-white transition"
+              >
+                <Copy className="w-3 h-3" />
+                {copiedText ? 'Copiado!' : 'Copiar'}
+              </button>
+            </div>
+            {messageText}
+          </div>
+        </div>
+      </div>
+
+      {/* Share Actions Container */}
       <div className="flex flex-col gap-2.5 pt-1">
+        {/* Main WhatsApp Share Button */}
         <button
           type="button"
           disabled={isSharing}
           onClick={handleShare}
-          className={`w-full py-4 px-6 rounded-2xl font-black text-base flex items-center justify-center gap-3 shadow-xl transition active:scale-98 ${
+          className={`w-full py-4 px-6 rounded-2xl font-black text-base flex items-center justify-center gap-3 transition shadow-xl ${
             isSharing
-              ? 'bg-emerald-700 text-emerald-200 cursor-wait opacity-90'
-              : 'bg-[#25D366] hover:bg-[#20bd5a] text-neutral-950 shadow-[#25D366]/30'
+              ? 'bg-emerald-800 text-white/80 cursor-wait'
+              : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30 active:scale-98 cursor-pointer'
           }`}
         >
-          {isSharing ? (
-            <>
-              <div className="w-5 h-5 border-2 border-neutral-950 border-t-transparent rounded-full animate-spin" />
-              <span>Preparando compartilhamento...</span>
-            </>
-          ) : (
-            <>
-              <Share2 className="w-5 h-5 text-neutral-950" />
-              <span>Compartilhar no WhatsApp</span>
-            </>
-          )}
+          <Share2 className={`w-5 h-5 ${isSharing ? 'animate-spin' : ''}`} />
+          <span>{isSharing ? 'Preparando Envio...' : 'Compartilhar no WhatsApp'}</span>
         </button>
 
-        {/* New Registration Button */}
-        <button
-          type="button"
-          onClick={onNewRegistration}
-          className="w-full py-3.5 px-4 rounded-xl bg-white hover:bg-neutral-100 border border-neutral-300 text-neutral-800 font-bold text-sm flex items-center justify-center gap-2 active:scale-98 transition shadow-sm"
-        >
-          <PlusCircle className="w-4 h-4 text-emerald-700" />
-          Novo Registro de Veículo
-        </button>
+        {/* Status Message Notification */}
+        {shareStatusMsg && (
+          <div
+            className={`p-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 ${
+              isStatusError
+                ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+            }`}
+          >
+            {isStatusError ? (
+              <AlertCircle className="w-4 h-4 shrink-0" />
+            ) : (
+              <Sparkles className="w-4 h-4 shrink-0" />
+            )}
+            <span>{shareStatusMsg}</span>
+          </div>
+        )}
 
-        {/* Developer signature */}
-        <div className="pt-3 text-center text-xs text-neutral-400 font-medium">
-          Registro Veicular CMDIT • Desenvolvido por <span className="font-bold text-neutral-700">@omatheusbritto</span>
+        {/* Secondary Actions */}
+        <div className="grid grid-cols-2 gap-2 pt-1">
+          <button
+            type="button"
+            onClick={handleDownloadPhoto}
+            className="py-3 px-3 rounded-xl border border-neutral-300 bg-white hover:bg-neutral-100 text-neutral-800 font-bold text-xs flex items-center justify-center gap-2 shadow-sm active:scale-98 transition"
+          >
+            <Download className="w-4 h-4 text-emerald-700" />
+            <span>Salvar Foto</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onNewRegistration}
+            className="py-3 px-3 rounded-xl border border-neutral-300 bg-white hover:bg-neutral-100 text-neutral-800 font-bold text-xs flex items-center justify-center gap-2 shadow-sm active:scale-98 transition"
+          >
+            <PlusCircle className="w-4 h-4 text-emerald-700" />
+            <span>Novo Registro</span>
+          </button>
         </div>
       </div>
     </div>

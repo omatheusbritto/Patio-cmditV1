@@ -1,14 +1,30 @@
 export type FuelLevel = '1/8' | '2/8' | '3/8' | '4/8' | '5/8' | '6/8' | '7/8' | '8/8';
 
-export type VehicleCharacteristic = '🟠 REVENDA' | '🟢 CONSUMIDOR' | '🔵 DT';
+export type VehicleCharacteristic = '🟠 REVENDA' | '🟢 CONSUMIDOR' | '🔵 DT' | '⚪ OUTROS';
 
 export type LocationCode = 'P1' | 'P2' | 'P3' | 'R1' | 'ADM' | 'PDC';
+
+export type QualityLocationCode = 'P1' | 'P2' | 'P3' | 'R1';
+
+export type OperationType = 'entrada' | 'saida' | 'pdc' | 'qualidade_51';
+
+export type VehicleFleetType = 'RAC' | 'GF';
 
 export type VehicleStatus = 'parked' | 'released';
 
 export type NavTab = 'register' | 'patio' | 'history' | 'diagnostics';
 
-export type Step = 'home' | 'camera' | 'ocr_processing' | 'plate_confirm' | 'fuel' | 'characteristic' | 'location' | 'review';
+export type Step =
+  | 'home'
+  | 'camera'
+  | 'ocr_processing'
+  | 'plate_confirm'
+  | 'operation_select'
+  | 'operation_details'
+  | 'fuel'
+  | 'characteristic'
+  | 'location'
+  | 'review';
 
 export interface VehicleRecord {
   id: string;
@@ -19,9 +35,21 @@ export interface VehicleRecord {
   plateSource?: 'local_ocr' | 'gemini_ai' | 'manual';
   rawOcrText?: string;
   aiDetails?: string;
+  
+  // Operation specifics
+  operationType: OperationType;
+  driverName?: string;
+  origin?: string;
+  destination?: string;
+  km?: string | number;
+  hasSpareKey?: boolean;
+  fleetType?: VehicleFleetType;
+
+  // General fields
   fuel: FuelLevel;
   characteristic?: VehicleCharacteristic | null;
-  location: LocationCode;
+  location?: LocationCode;
+  
   description?: string;
   status: VehicleStatus;
   releasedAt?: number;
@@ -40,6 +68,10 @@ export interface PatioMetrics {
   totalRecords: number;
   totalParked: number;
   totalReleased: number;
+  totalEntradas: number;
+  totalSaidas: number;
+  totalPdc: number;
+  totalQualidade: number;
   averageFuelNumeric: number; // 1 to 8
   averageFuelPercent: number; // 0 to 100%
   criticalFuelCount: number; // <= 2/8

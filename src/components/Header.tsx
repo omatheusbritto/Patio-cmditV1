@@ -15,8 +15,10 @@ const STEP_CONFIG: Record<Step, { label: string; number: number }> = {
   camera: { label: 'Fotografar', number: 1 },
   ocr_processing: { label: 'Lendo Placa', number: 1 },
   plate_confirm: { label: 'Placa', number: 1 },
-  fuel: { label: 'Combustível', number: 2 },
-  characteristic: { label: 'Característica', number: 3 },
+  operation_select: { label: 'Operação', number: 2 },
+  operation_details: { label: 'Detalhes', number: 3 },
+  fuel: { label: 'Combustível', number: 3 },
+  characteristic: { label: 'Característica', number: 4 },
   location: { label: 'Local', number: 4 },
   review: { label: 'Revisão & Envio', number: 5 },
 };

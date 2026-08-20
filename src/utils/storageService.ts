@@ -4,19 +4,19 @@
  * automatic fallback to localStorage, and fast metric calculations.
  */
 
-import { FuelLevel, LocationCode, PatioMetrics, SectorConfig, VehicleRecord, VehicleStatus } from '../types';
+import { FuelLevel, LocationCode, OperationType, PatioMetrics, SectorConfig, VehicleFleetType, VehicleRecord, VehicleStatus } from '../types';
 
 const DB_NAME = 'cmdit_vehiclereg_db';
 const STORE_NAME = 'vehicles';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export const SECTORS: SectorConfig[] = [
-  { code: 'P1', name: 'Pátio 1 (Entrada)', capacity: 12, description: 'Vagas cobertas principais', color: '#10b981' },
-  { code: 'P2', name: 'Pátio 2 (Central)', capacity: 15, description: 'Área intermediária de triagem', color: '#06b6d4' },
-  { code: 'P3', name: 'Pátio 3 (Fundo)', capacity: 20, description: 'Estacionamento de longa permanência', color: '#8b5cf6' },
-  { code: 'R1', name: 'Rampa 1 (Vistoria)', capacity: 6, description: 'Rampa de manutenção e inspeção', color: '#f59e0b' },
-  { code: 'ADM', name: 'Administração', capacity: 8, description: 'Diretoria e visitantes', color: '#3b82f6' },
-  { code: 'PDC', name: 'Pátio Desembarque / Carga', capacity: 10, description: 'Carga, descarga e guincho', color: '#ec4899' },
+  { code: 'P1', name: 'P1 - Poste 1', capacity: 12, description: 'Área do Poste 1 / Coberta', color: '#10b981' },
+  { code: 'P2', name: 'P2 - Poste 2', capacity: 15, description: 'Área do Poste 2 / Triagem', color: '#06b6d4' },
+  { code: 'P3', name: 'P3 - Poste 3', capacity: 20, description: 'Área do Poste 3 / Longa permanência', color: '#8b5cf6' },
+  { code: 'R1', name: 'R1 - Rua 1', capacity: 8, description: 'Rua 1 / Inspeção e circulação', color: '#f59e0b' },
+  { code: 'PDC', name: 'PDC - Desembarque / Carga', capacity: 10, description: 'Pátio de Carga e Guincho', color: '#ec4899' },
+  { code: 'ADM', name: 'ADM - Administração', capacity: 6, description: 'Diretoria e Operacional', color: '#3b82f6' },
 ];
 
 function fuelToNumber(fuel: FuelLevel): number {
@@ -50,6 +50,7 @@ function openDb(): Promise<IDBDatabase> {
         store.createIndex('plate', 'plate', { unique: false });
         store.createIndex('location', 'location', { unique: false });
         store.createIndex('status', 'status', { unique: false });
+        store.createIndex('operationType', 'operationType', { unique: false });
       }
     };
 
@@ -62,76 +63,76 @@ function openDb(): Promise<IDBDatabase> {
 const INITIAL_SEEDS: VehicleRecord[] = [
   {
     id: 'seed-1',
-    createdAt: Date.now() - 1000 * 60 * 45, // 45 min ago
+    createdAt: Date.now() - 1000 * 60 * 25, // 25 min ago
     photoDataUrl: '',
     plate: 'BRA2E19',
     plateSource: 'gemini_ai',
+    operationType: 'entrada',
+    driverName: 'Carlos Eduardo',
+    origin: 'Filial Centro',
+    km: '45210',
+    hasSpareKey: true,
+    fleetType: 'RAC',
     fuel: '6/8',
-    characteristic: '🟢 CONSUMIDOR',
     location: 'P1',
     status: 'parked',
-    notes: 'Entrada pelo portão principal'
+    notes: 'Entrada registrada sem avarias'
   },
   {
     id: 'seed-2',
-    createdAt: Date.now() - 1000 * 60 * 120, // 2h ago
+    createdAt: Date.now() - 1000 * 60 * 65, // 1h ago
     photoDataUrl: '',
     plate: 'ABC1D23',
     plateSource: 'gemini_ai',
+    operationType: 'qualidade_51',
     fuel: '3/8',
     characteristic: '🟠 REVENDA',
-    location: 'P1',
+    location: 'P2',
     status: 'parked',
-    notes: 'Aguardando vistoria'
+    notes: 'Inspeção 51 (Qualidade) realizada'
   },
   {
     id: 'seed-3',
-    createdAt: Date.now() - 1000 * 60 * 240, // 4h ago
+    createdAt: Date.now() - 1000 * 60 * 140, // 2h ago
     photoDataUrl: '',
     plate: 'RIO2A18',
     plateSource: 'gemini_ai',
+    operationType: 'pdc',
     fuel: '2/8',
-    characteristic: '🔵 DT',
-    location: 'P2',
+    location: 'PDC',
     status: 'parked',
-    notes: 'Nível de combustível baixo'
+    notes: 'Desembarque de carreta'
   },
   {
     id: 'seed-4',
-    createdAt: Date.now() - 1000 * 60 * 360, // 6h ago
+    createdAt: Date.now() - 1000 * 60 * 210, // 3.5h ago
     photoDataUrl: '',
     plate: 'ABC1234',
     plateSource: 'local_ocr',
+    operationType: 'saida',
+    driverName: 'Roberto Silva',
+    destination: 'Aeroporto Santos Dumont',
+    km: '89120',
+    hasSpareKey: false,
+    fleetType: 'GF',
     fuel: '7/8',
-    characteristic: '🟢 CONSUMIDOR',
-    location: 'P3',
-    status: 'parked',
-    notes: 'Estacionado no fundo'
+    location: 'R1',
+    status: 'released',
+    releasedAt: Date.now() - 1000 * 60 * 30,
+    notes: 'Saída liberada para atendimento corporativo'
   },
   {
     id: 'seed-5',
-    createdAt: Date.now() - 1000 * 60 * 500, // 8h ago
+    createdAt: Date.now() - 1000 * 60 * 320, // 5h ago
     photoDataUrl: '',
     plate: 'ABC12D3',
     plateSource: 'gemini_ai',
+    operationType: 'qualidade_51',
     fuel: '8/8',
-    characteristic: '🟠 REVENDA',
-    location: 'PDC',
-    status: 'parked',
-    notes: 'Motocicleta entrega'
-  },
-  {
-    id: 'seed-6',
-    createdAt: Date.now() - 1000 * 60 * 60 * 26, // Yesterday
-    photoDataUrl: '',
-    plate: 'KXZ9012',
-    plateSource: 'manual',
-    fuel: '4/8',
     characteristic: '🟢 CONSUMIDOR',
     location: 'P1',
-    status: 'released',
-    releasedAt: Date.now() - 1000 * 60 * 60 * 2,
-    notes: 'Liberado para o cliente'
+    status: 'parked',
+    notes: 'Liberado na qualidade 51'
   }
 ];
 
@@ -148,11 +149,10 @@ export async function getAllRecords(): Promise<VehicleRecord[]> {
         if (records.length === 0) {
           // Check localStorage legacy or seed
           try {
-            const localLegacy = localStorage.getItem('cmdit_records_history') || sessionStorage.getItem('cmdit_records_history');
+            const localLegacy = localStorage.getItem('cmdit_records_v3') || localStorage.getItem('cmdit_records_v2');
             if (localLegacy) {
               const parsed: VehicleRecord[] = JSON.parse(localLegacy);
               if (parsed.length > 0) {
-                // Migrate to IndexedDB
                 parsed.forEach(r => saveRecord(r));
                 return resolve(parsed);
               }
@@ -181,7 +181,7 @@ export async function getAllRecords(): Promise<VehicleRecord[]> {
 
 function getFallbackLocalStorage(): VehicleRecord[] {
   try {
-    const saved = localStorage.getItem('cmdit_records_v2') || sessionStorage.getItem('cmdit_records_history');
+    const saved = localStorage.getItem('cmdit_records_v3') || localStorage.getItem('cmdit_records_v2');
     if (saved) return JSON.parse(saved);
   } catch {
     // ignore
@@ -190,10 +190,10 @@ function getFallbackLocalStorage(): VehicleRecord[] {
 }
 
 export async function saveRecord(record: VehicleRecord): Promise<void> {
-  // Ensure default status
   const normalized: VehicleRecord = {
     ...record,
     status: record.status || 'parked',
+    operationType: record.operationType || 'entrada',
   };
 
   try {
@@ -209,7 +209,6 @@ export async function saveRecord(record: VehicleRecord): Promise<void> {
     console.warn('IndexedDB write error, using fallback:', err);
   }
 
-  // Also sync in localStorage for redundancy
   try {
     const current = getFallbackLocalStorage();
     const existingIdx = current.findIndex(r => r.id === normalized.id);
@@ -218,8 +217,7 @@ export async function saveRecord(record: VehicleRecord): Promise<void> {
     } else {
       current.unshift(normalized);
     }
-    localStorage.setItem('cmdit_records_v2', JSON.stringify(current));
-    sessionStorage.setItem('cmdit_records_history', JSON.stringify(current));
+    localStorage.setItem('cmdit_records_v3', JSON.stringify(current));
   } catch {
     // storage limit reached, IndexedDB holds it
   }
@@ -259,8 +257,7 @@ export async function deleteRecord(id: string): Promise<void> {
 
   try {
     const current = getFallbackLocalStorage().filter(r => r.id !== id);
-    localStorage.setItem('cmdit_records_v2', JSON.stringify(current));
-    sessionStorage.setItem('cmdit_records_history', JSON.stringify(current));
+    localStorage.setItem('cmdit_records_v3', JSON.stringify(current));
   } catch {
     // ignore
   }
@@ -281,8 +278,8 @@ export async function clearAllRecords(): Promise<void> {
   }
 
   try {
+    localStorage.removeItem('cmdit_records_v3');
     localStorage.removeItem('cmdit_records_v2');
-    sessionStorage.removeItem('cmdit_records_history');
   } catch {
     // ignore
   }
@@ -295,13 +292,25 @@ export function calculatePatioMetrics(records: VehicleRecord[]): PatioMetrics {
   const parkedVehicles = records.filter(r => r.status === 'parked');
   const releasedVehicles = records.filter(r => r.status === 'released');
 
+  let totalEntradas = 0;
+  let totalSaidas = 0;
+  let totalPdc = 0;
+  let totalQualidade = 0;
+
+  records.forEach(r => {
+    if (r.operationType === 'entrada') totalEntradas++;
+    else if (r.operationType === 'saida') totalSaidas++;
+    else if (r.operationType === 'pdc') totalPdc++;
+    else if (r.operationType === 'qualidade_51') totalQualidade++;
+  });
+
   const sectorOccupancy: Record<LocationCode, { count: number; capacity: number; percent: number; isFull: boolean }> = {
     P1: { count: 0, capacity: 12, percent: 0, isFull: false },
     P2: { count: 0, capacity: 15, percent: 0, isFull: false },
     P3: { count: 0, capacity: 20, percent: 0, isFull: false },
-    R1: { count: 0, capacity: 6, percent: 0, isFull: false },
-    ADM: { count: 0, capacity: 8, percent: 0, isFull: false },
+    R1: { count: 0, capacity: 8, percent: 0, isFull: false },
     PDC: { count: 0, capacity: 10, percent: 0, isFull: false },
+    ADM: { count: 0, capacity: 6, percent: 0, isFull: false },
   };
 
   SECTORS.forEach(sec => {
@@ -354,6 +363,10 @@ export function calculatePatioMetrics(records: VehicleRecord[]): PatioMetrics {
     totalRecords: records.length,
     totalParked: parkedVehicles.length,
     totalReleased: releasedVehicles.length,
+    totalEntradas,
+    totalSaidas,
+    totalPdc,
+    totalQualidade,
     averageFuelNumeric,
     averageFuelPercent,
     criticalFuelCount,
@@ -366,23 +379,51 @@ export function calculatePatioMetrics(records: VehicleRecord[]): PatioMetrics {
  * Export records as CSV spreadsheet for Excel / Google Sheets
  */
 export function exportRecordsToCsv(records: VehicleRecord[]): void {
-  const headers = ['Data/Hora', 'Placa', 'Status', 'Setor/Local', 'Nível Combustível', 'Característica', 'Observações'];
-  const rows = records.map(r => [
-    new Date(r.createdAt).toLocaleString('pt-BR'),
-    r.plate,
-    r.status === 'parked' ? 'No Pátio' : 'Liberado',
-    r.location,
-    r.fuel,
-    r.characteristic || 'Sem característica',
-    (r.notes || '').replace(/,/g, ' '),
-  ]);
+  const headers = [
+    'Data/Hora',
+    'Operação',
+    'Placa',
+    'Status',
+    'Condutor',
+    'Origem / Destino',
+    'KM',
+    'Chave Reserva',
+    'Tipo Frota (RAC/GF)',
+    'Setor/Local',
+    'Nível Combustível',
+    'Característica',
+    'Observações'
+  ];
+
+  const rows = records.map(r => {
+    let opLabel = 'Entrada';
+    if (r.operationType === 'saida') opLabel = 'Saída';
+    else if (r.operationType === 'pdc') opLabel = 'PDC';
+    else if (r.operationType === 'qualidade_51') opLabel = '51 (Qualidade)';
+
+    return [
+      new Date(r.createdAt).toLocaleString('pt-BR'),
+      opLabel,
+      r.plate,
+      r.status === 'parked' ? 'No Pátio' : 'Liberado',
+      r.driverName || '-',
+      r.origin || r.destination || '-',
+      r.km ? `${r.km} km` : '-',
+      r.hasSpareKey !== undefined ? (r.hasSpareKey ? 'Sim' : 'Não') : '-',
+      r.fleetType || '-',
+      r.location || '-',
+      r.fuel,
+      r.characteristic || '-',
+      (r.notes || '').replace(/,/g, ' '),
+    ];
+  });
 
   const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(row => row.map(v => `"${v}"`).join(','))].join('\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `registro_patio_cmdit_${new Date().toISOString().split('T')[0]}.csv`;
+  a.download = `registro_veicular_cmdit_${new Date().toISOString().split('T')[0]}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

@@ -3,8 +3,11 @@ import {
   FuelLevel,
   LocationCode,
   NavTab,
+  OperationType,
+  QualityLocationCode,
   Step,
   VehicleCharacteristic,
+  VehicleFleetType,
   VehicleRecord,
   VehicleStatus,
 } from './types';
@@ -23,6 +26,9 @@ import { Header } from './components/Header';
 import { HomeScreen } from './components/HomeScreen';
 import { CameraView } from './components/CameraView';
 import { PlateConfirmation } from './components/PlateConfirmation';
+import { OperationSelector } from './components/OperationSelector';
+import { OperationDetailsForm } from './components/OperationDetailsForm';
+import { QualityLocationSelector } from './components/QualityLocationSelector';
 import { FuelSelector } from './components/FuelSelector';
 import { CharacteristicSelector } from './components/CharacteristicSelector';
 import { LocationSelector } from './components/LocationSelector';
@@ -35,7 +41,7 @@ import { AndroidBottomNav } from './components/AndroidBottomNav';
 import { OfflineStatusBanner } from './components/OfflineStatusBanner';
 
 export default function App() {
-  // Active Navigation Tab (Android 12+ Tabs)
+  // Active Navigation Tab
   const [activeTab, setActiveTab] = useState<NavTab>('register');
 
   // Step inside Registration Flow
@@ -50,6 +56,17 @@ export default function App() {
   const [analysisNotes, setAnalysisNotes] = useState<string>('');
   const [aiDetails, setAiDetails] = useState<string>('');
   const [rawOcrText, setRawOcrText] = useState<string>('');
+
+  // Operation specifics
+  const [operationType, setOperationType] = useState<OperationType>('entrada');
+  const [driverName, setDriverName] = useState<string>('');
+  const [origin, setOrigin] = useState<string>('');
+  const [destination, setDestination] = useState<string>('');
+  const [km, setKm] = useState<string>('');
+  const [hasSpareKey, setHasSpareKey] = useState<boolean>(true);
+  const [fleetType, setFleetType] = useState<VehicleFleetType>('RAC');
+
+  // Fuel, Location & Characteristics
   const [fuel, setFuel] = useState<FuelLevel | null>(null);
   const [characteristic, setCharacteristic] = useState<VehicleCharacteristic | null>(null);
   const [location, setLocation] = useState<LocationCode | null>(null);
@@ -87,6 +104,15 @@ export default function App() {
     setAnalysisNotes('');
     setAiDetails('');
     setRawOcrText('');
+
+    setOperationType('entrada');
+    setDriverName('');
+    setOrigin('');
+    setDestination('');
+    setKm('');
+    setHasSpareKey(true);
+    setFleetType('RAC');
+
     setFuel(null);
     setCharacteristic(null);
     setLocation(null);
@@ -95,7 +121,8 @@ export default function App() {
   };
 
   // Start new registration
-  const handleStartRegistration = () => {
+  const handleStartRegistration = (presetOp?: OperationType) => {
+    if (presetOp) setOperationType(presetOp);
     setActiveTab('register');
     setCurrentStep('camera');
   };
@@ -158,32 +185,71 @@ export default function App() {
   // When user confirms or manually inputs plate
   const handleConfirmPlate = (confirmedPlate: string) => {
     setPlate(sanitizeRawText(confirmedPlate));
+    setCurrentStep('operation_select');
+  };
+
+  // When user selects the Operation
+  const handleSelectOperation = (op: OperationType) => {
+    setOperationType(op);
+    if (op === 'entrada' || op === 'saida') {
+      setCurrentStep('operation_details');
+    } else if (op === 'pdc') {
+      setLocation('PDC');
+      setCurrentStep('fuel');
+    } else if (op === 'qualidade_51') {
+      setCurrentStep('location');
+    }
+  };
+
+  // When user submits operation details (Entrada / Saída)
+  const handleSubmitOperationDetails = (details: {
+    driverName: string;
+    origin?: string;
+    destination?: string;
+    km: string;
+    hasSpareKey: boolean;
+    fleetType: VehicleFleetType;
+  }) => {
+    setDriverName(details.driverName);
+    if (details.origin) setOrigin(details.origin);
+    if (details.destination) setDestination(details.destination);
+    setKm(details.km);
+    setHasSpareKey(details.hasSpareKey);
+    setFleetType(details.fleetType);
     setCurrentStep('fuel');
   };
 
   // When user selects fuel
   const handleSelectFuel = (selectedFuel: FuelLevel) => {
     setFuel(selectedFuel);
-    setCurrentStep('characteristic');
+    if (operationType === 'qualidade_51') {
+      setCurrentStep('characteristic');
+    } else {
+      // For Entrada, Saída, PDC -> direct to review
+      if (operationType === 'entrada') setLocation(location || 'P1');
+      if (operationType === 'saida') setLocation(location || 'R1');
+      if (operationType === 'pdc') setLocation('PDC');
+      setCurrentStep('review');
+    }
   };
 
-  // When user selects characteristic (or leaves blank)
+  // When user selects characteristic (for 51 Qualidade)
   const handleSelectCharacteristic = (char: VehicleCharacteristic | null) => {
     setCharacteristic(char);
   };
 
   const handleNextFromCharacteristic = () => {
-    setCurrentStep('location');
+    setCurrentStep('review');
   };
 
-  // When user selects location
-  const handleSelectLocation = (selectedLoc: LocationCode) => {
+  // When user selects location (for 51 Qualidade)
+  const handleSelectQualityLocation = (selectedLoc: QualityLocationCode) => {
     setLocation(selectedLoc);
   };
 
-  const handleNextFromLocation = () => {
+  const handleNextFromQualityLocation = () => {
     if (location) {
-      setCurrentStep('review');
+      setCurrentStep('fuel');
     }
   };
 
@@ -191,15 +257,24 @@ export default function App() {
   const handleSaveToHistory = async (recordData: {
     photoDataUrl: string;
     plate: string;
+    operationType: OperationType;
     fuel: FuelLevel;
-    characteristic: VehicleCharacteristic | null;
-    location: LocationCode;
+    driverName?: string;
+    origin?: string;
+    destination?: string;
+    km?: string | number;
+    hasSpareKey?: boolean;
+    fleetType?: VehicleFleetType;
+    characteristic?: VehicleCharacteristic | null;
+    location?: LocationCode;
     description: string;
   }) => {
+    const isOut = recordData.operationType === 'saida';
     const newRecord: VehicleRecord = {
       id: `rec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       createdAt: Date.now(),
-      status: 'parked',
+      status: isOut ? 'released' : 'parked',
+      releasedAt: isOut ? Date.now() : undefined,
       ...recordData,
     };
 
@@ -256,7 +331,7 @@ export default function App() {
           <>
             {currentStep === 'home' && (
               <HomeScreen
-                onStartRegistration={handleStartRegistration}
+                onStartRegistration={() => handleStartRegistration()}
                 onOpenPatio={() => setActiveTab('patio')}
                 onOpenHistory={() => setActiveTab('history')}
                 onOpenTests={() => setIsTestsModalOpen(true)}
@@ -288,15 +363,57 @@ export default function App() {
               />
             )}
 
-            {currentStep === 'fuel' && (
-              <FuelSelector
-                selectedFuel={fuel}
-                onSelectFuel={handleSelectFuel}
+            {currentStep === 'operation_select' && (
+              <OperationSelector
+                plate={plate}
+                selectedOperation={operationType}
+                onSelectOperation={handleSelectOperation}
                 onBack={() => setCurrentStep('plate_confirm')}
               />
             )}
 
-            {currentStep === 'characteristic' && (
+            {currentStep === 'operation_details' && (
+              <OperationDetailsForm
+                operationType={operationType as 'entrada' | 'saida'}
+                plate={plate}
+                initialDriverName={driverName}
+                initialOrigin={origin}
+                initialDestination={destination}
+                initialKm={km}
+                initialHasSpareKey={hasSpareKey}
+                initialFleetType={fleetType}
+                onSubmit={handleSubmitOperationDetails}
+                onBack={() => setCurrentStep('operation_select')}
+              />
+            )}
+
+            {currentStep === 'location' && operationType === 'qualidade_51' && (
+              <QualityLocationSelector
+                plate={plate}
+                selectedLocation={location}
+                onSelectLocation={handleSelectQualityLocation}
+                onNext={handleNextFromQualityLocation}
+                onBack={() => setCurrentStep('operation_select')}
+              />
+            )}
+
+            {currentStep === 'fuel' && (
+              <FuelSelector
+                selectedFuel={fuel}
+                onSelectFuel={handleSelectFuel}
+                onBack={() => {
+                  if (operationType === 'entrada' || operationType === 'saida') {
+                    setCurrentStep('operation_details');
+                  } else if (operationType === 'qualidade_51') {
+                    setCurrentStep('location');
+                  } else {
+                    setCurrentStep('operation_select');
+                  }
+                }}
+              />
+            )}
+
+            {currentStep === 'characteristic' && operationType === 'qualidade_51' && (
               <CharacteristicSelector
                 selectedCharacteristic={characteristic}
                 onSelectCharacteristic={handleSelectCharacteristic}
@@ -305,27 +422,27 @@ export default function App() {
               />
             )}
 
-            {currentStep === 'location' && (
-              <LocationSelector
-                selectedLocation={location}
-                onSelectLocation={handleSelectLocation}
-                onNext={handleNextFromLocation}
-                onBack={() => setCurrentStep('characteristic')}
-              />
-            )}
-
-            {currentStep === 'review' && fuel && location && (
+            {currentStep === 'review' && fuel && (
               <ReviewAndShare
                 photoDataUrl={photoDataUrl}
                 plate={plate}
+                operationType={operationType}
                 fuel={fuel}
+                driverName={driverName}
+                origin={origin}
+                destination={destination}
+                km={km}
+                hasSpareKey={hasSpareKey}
+                fleetType={fleetType}
                 characteristic={characteristic}
                 location={location}
                 onEditPlate={() => setCurrentStep('plate_confirm')}
                 onRetakePhoto={() => setCurrentStep('camera')}
+                onEditOperation={() => setCurrentStep('operation_select')}
+                onEditDetails={() => setCurrentStep('operation_details')}
                 onEditFuel={() => setCurrentStep('fuel')}
-                onEditCharacteristic={() => setCurrentStep('characteristic')}
                 onEditLocation={() => setCurrentStep('location')}
+                onEditCharacteristic={() => setCurrentStep('characteristic')}
                 onNewRegistration={handleReset}
                 onSaveToHistory={handleSaveToHistory}
               />
@@ -344,8 +461,8 @@ export default function App() {
               setCurrentStep('camera');
             }}
             onReleaseVehicle={(id) => handleUpdateVehicleStatus(id, 'released')}
-            onStartNewRegistration={handleStartRegistration}
-            onOpenHistoryTab={(sector) => setActiveTab('history')}
+            onStartNewRegistration={() => handleStartRegistration('entrada')}
+            onOpenHistoryTab={() => setActiveTab('history')}
           />
         )}
 

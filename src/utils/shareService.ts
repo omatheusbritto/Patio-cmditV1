@@ -1,3 +1,5 @@
+import { OperationType, VehicleFleetType, VehicleRecord } from '../types';
+
 /**
  * Helper to convert Data URL to a Blob/File for native Web Share API
  */
@@ -26,30 +28,107 @@ export interface ShareResult {
   message: string;
 }
 
-/**
- * Generates formatted Brazilian vehicle caption
- */
-export function generateWhatsAppMessage(data: {
+export interface FormattedVehicleMessageData {
+  operationType: OperationType;
   plate: string;
   fuel: string;
+  driverName?: string;
+  origin?: string;
+  destination?: string;
+  km?: string | number;
+  hasSpareKey?: boolean;
+  fleetType?: VehicleFleetType;
+  location?: string;
   characteristic?: string | null;
-  location: string;
+  notes?: string;
   timestamp?: Date;
-}): string {
+}
+
+export function getLocationMeaning(loc?: string): string {
+  if (!loc) return '';
+  switch (loc) {
+    case 'P1':
+      return 'P1 (Poste 1)';
+    case 'P2':
+      return 'P2 (Poste 2)';
+    case 'P3':
+      return 'P3 (Poste 3)';
+    case 'R1':
+      return 'R1 (Rua 1)';
+    case 'PDC':
+      return 'PDC (Pátio Desembarque / Carga)';
+    case 'ADM':
+      return 'ADM (Administração)';
+    default:
+      return loc;
+  }
+}
+
+/**
+ * Generates formatted Brazilian vehicle caption customized by Operation Type
+ */
+export function generateWhatsAppMessage(data: FormattedVehicleMessageData): string {
   const time = data.timestamp || new Date();
   const dateFormatted = time.toLocaleDateString('pt-BR');
   const timeFormatted = time.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
-  const lines = [
-    `🚗 *REGISTRO VEICULAR CMDIT*`,
-    `📅 *Data/Hora:* ${dateFormatted} às ${timeFormatted}`,
-    `🏷️ *Placa:* ${data.plate}`,
-    `⛽ *Combustível:* ${data.fuel}`,
-    `📍 *Local:* ${data.location}`,
-  ];
+  const lines: string[] = [];
 
-  if (data.characteristic) {
-    lines.push(`🔖 *Característica:* ${data.characteristic}`);
+  switch (data.operationType) {
+    case 'entrada':
+      lines.push(`🟢 *REGISTRO DE ENTRADA - CMDIT*`);
+      lines.push(`📅 *Data/Hora:* ${dateFormatted} às ${timeFormatted}`);
+      lines.push(`🏷️ *Placa:* ${data.plate}`);
+      lines.push(`👤 *Condutor:* ${data.driverName || 'Não informado'}`);
+      lines.push(`📍 *Origem:* ${data.origin || 'Não informado'}`);
+      lines.push(`🛣️ *KM:* ${data.km ? `${data.km} km` : 'Não informado'}`);
+      lines.push(`⛽ *Combustível:* ${data.fuel}`);
+      lines.push(`🔑 *Chave Reserva:* ${data.hasSpareKey ? 'SIM' : 'NÃO'}`);
+      lines.push(`🏷️ *Tipo de Veículo:* ${data.fleetType || 'RAC'}`);
+      break;
+
+    case 'saida':
+      lines.push(`🔴 *REGISTRO DE SAÍDA - CMDIT*`);
+      lines.push(`📅 *Data/Hora:* ${dateFormatted} às ${timeFormatted}`);
+      lines.push(`🏷️ *Placa:* ${data.plate}`);
+      lines.push(`👤 *Condutor:* ${data.driverName || 'Não informado'}`);
+      lines.push(`📍 *Destino:* ${data.destination || 'Não informado'}`);
+      lines.push(`🛣️ *KM:* ${data.km ? `${data.km} km` : 'Não informado'}`);
+      lines.push(`⛽ *Combustível:* ${data.fuel}`);
+      lines.push(`🔑 *Chave Reserva:* ${data.hasSpareKey ? 'SIM' : 'NÃO'}`);
+      lines.push(`🏷️ *Tipo de Veículo:* ${data.fleetType || 'RAC'}`);
+      break;
+
+    case 'pdc':
+      lines.push(`📦 *REGISTRO PDC (DESEMBARQUE/CARGA) - CMDIT*`);
+      lines.push(`📅 *Data/Hora:* ${dateFormatted} às ${timeFormatted}`);
+      lines.push(`🏷️ *Placa:* ${data.plate}`);
+      lines.push(`⛽ *Combustível:* ${data.fuel}`);
+      break;
+
+    case 'qualidade_51':
+      lines.push(`🔍 *REGISTRO 51 (QUALIDADE) - CMDIT*`);
+      lines.push(`📅 *Data/Hora:* ${dateFormatted} às ${timeFormatted}`);
+      lines.push(`🏷️ *Placa:* ${data.plate}`);
+      lines.push(`📍 *Local:* ${getLocationMeaning(data.location)}`);
+      lines.push(`⛽ *Combustível:* ${data.fuel}`);
+      if (data.characteristic) {
+        lines.push(`🔖 *Característica:* ${data.characteristic}`);
+      }
+      break;
+
+    default:
+      lines.push(`🚗 *REGISTRO VEICULAR CMDIT*`);
+      lines.push(`📅 *Data/Hora:* ${dateFormatted} às ${timeFormatted}`);
+      lines.push(`🏷️ *Placa:* ${data.plate}`);
+      lines.push(`⛽ *Combustível:* ${data.fuel}`);
+      if (data.location) lines.push(`📍 *Local:* ${getLocationMeaning(data.location)}`);
+      if (data.characteristic) lines.push(`🔖 *Característica:* ${data.characteristic}`);
+      break;
+  }
+
+  if (data.notes) {
+    lines.push(`📝 *Observação:* ${data.notes}`);
   }
 
   lines.push(`\n_Registrado via Registro Veicular CMDIT • @omatheusbritto_`);
