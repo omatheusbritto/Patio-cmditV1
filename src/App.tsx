@@ -1,7 +1,23 @@
-import React, { useState, useEffect } from 'react';
-import { FuelLevel, LocationCode, Step, VehicleCharacteristic, VehicleRecord } from './types';
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  FuelLevel,
+  LocationCode,
+  NavTab,
+  Step,
+  VehicleCharacteristic,
+  VehicleRecord,
+  VehicleStatus,
+} from './types';
 import { sanitizeRawText } from './utils/plateNormalizer';
 import { smartRecognizePlate, recognizePlateWithGemini } from './utils/geminiPlateService';
+import {
+  getAllRecords,
+  saveRecord,
+  updateRecordStatus,
+  deleteRecord,
+  clearAllRecords,
+  calculatePatioMetrics,
+} from './utils/storageService';
 
 import { Header } from './components/Header';
 import { HomeScreen } from './components/HomeScreen';
@@ -13,9 +29,16 @@ import { LocationSelector } from './components/LocationSelector';
 import { ReviewAndShare } from './components/ReviewAndShare';
 import { TestDiagnosticsModal } from './components/TestDiagnosticsModal';
 import { HistoryModal } from './components/HistoryModal';
+import { PatioDashboard } from './components/PatioDashboard';
+import { SmartHistory } from './components/SmartHistory';
+import { AndroidBottomNav } from './components/AndroidBottomNav';
+import { OfflineStatusBanner } from './components/OfflineStatusBanner';
 
 export default function App() {
-  // Navigation & Step State
+  // Active Navigation Tab (Android 12+ Tabs)
+  const [activeTab, setActiveTab] = useState<NavTab>('register');
+
+  // Step inside Registration Flow
   const [currentStep, setCurrentStep] = useState<Step>('home');
 
   // Form State
@@ -39,24 +62,20 @@ export default function App() {
   const [isTestsModalOpen, setIsTestsModalOpen] = useState<boolean>(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState<boolean>(false);
 
-  // History session persistence in local state
-  const [historyRecords, setHistoryRecords] = useState<VehicleRecord[]>(() => {
-    try {
-      const saved = sessionStorage.getItem('cmdit_records_history');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  // History & Patio Records (IndexedDB + Offline Persistent)
+  const [records, setRecords] = useState<VehicleRecord[]>([]);
 
-  // Sync history to sessionStorage
+  // Load records from IndexedDB on startup
   useEffect(() => {
-    try {
-      sessionStorage.setItem('cmdit_records_history', JSON.stringify(historyRecords));
-    } catch (e) {
-      console.warn('History storage sync error:', e);
-    }
-  }, [historyRecords]);
+    getAllRecords().then((loaded) => {
+      setRecords(loaded);
+    });
+  }, []);
+
+  // Compute real-time Patio Metrics
+  const patioMetrics = useMemo(() => {
+    return calculatePatioMetrics(records);
+  }, [records]);
 
   // Reset entire flow
   const handleReset = () => {
@@ -77,6 +96,7 @@ export default function App() {
 
   // Start new registration
   const handleStartRegistration = () => {
+    setActiveTab('register');
     setCurrentStep('camera');
   };
 
@@ -86,7 +106,7 @@ export default function App() {
     setCroppedPlateUrl(null);
     setCurrentStep('plate_confirm');
     setIsOcrLoading(true);
-    setOcrProgressMsg('✨ Analisando placa com IA de alta precisão...');
+    setOcrProgressMsg('✨ Lendo placa em alta velocidade...');
 
     try {
       const result = await smartRecognizePlate(dataUrl, (msg) => {
@@ -167,8 +187,8 @@ export default function App() {
     }
   };
 
-  // Save completed record to history
-  const handleSaveToHistory = (recordData: {
+  // Save completed record to persistent storage and update patio
+  const handleSaveToHistory = async (recordData: {
     photoDataUrl: string;
     plate: string;
     fuel: FuelLevel;
@@ -179,127 +199,198 @@ export default function App() {
     const newRecord: VehicleRecord = {
       id: `rec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       createdAt: Date.now(),
+      status: 'parked',
       ...recordData,
     };
 
-    setHistoryRecords((prev) => [newRecord, ...prev.slice(0, 19)]); // Keep last 20 in session
+    await saveRecord(newRecord);
+    setRecords((prev) => [newRecord, ...prev.filter((r) => r.id !== newRecord.id)]);
   };
 
-  const handleDeleteHistoryRecord = (id: string) => {
-    setHistoryRecords((prev) => prev.filter((r) => r.id !== id));
+  // Toggle vehicle status (parked / released)
+  const handleUpdateVehicleStatus = async (id: string, status: VehicleStatus) => {
+    await updateRecordStatus(id, status);
+    setRecords((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, status, releasedAt: status === 'released' ? Date.now() : undefined } : r))
+    );
   };
 
-  const handleClearHistory = () => {
-    setHistoryRecords([]);
-    sessionStorage.removeItem('cmdit_records_history');
+  // Delete a single vehicle record
+  const handleDeleteVehicleRecord = async (id: string) => {
+    await deleteRecord(id);
+    setRecords((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  // Clear all local records
+  const handleClearAllRecords = async () => {
+    await clearAllRecords();
+    setRecords([]);
+  };
+
+  // Handle Tab Switch
+  const handleSelectTab = (tab: NavTab) => {
+    setActiveTab(tab);
+    if (tab === 'diagnostics') {
+      setIsTestsModalOpen(true);
+    }
   };
 
   return (
     <div className="min-h-screen bg-neutral-100 text-neutral-900 flex flex-col font-sans antialiased selection:bg-emerald-200">
+      {/* Real-time Offline & Online status banner */}
+      <OfflineStatusBanner />
+
       {/* App Header */}
       <Header
         currentStep={currentStep}
         onReset={handleReset}
         onOpenTests={() => setIsTestsModalOpen(true)}
-        onOpenHistory={() => setIsHistoryModalOpen(true)}
-        historyCount={historyRecords.length}
+        onOpenHistory={() => setActiveTab('history')}
+        historyCount={records.length}
       />
 
       {/* Main Container */}
       <main className="flex-1 w-full max-w-lg mx-auto p-4 flex flex-col justify-start">
-        {currentStep === 'home' && (
-          <HomeScreen
-            onStartRegistration={handleStartRegistration}
-            onOpenTests={() => setIsTestsModalOpen(true)}
+        {/* Tab 1: Registrar & Flow Screens */}
+        {activeTab === 'register' && (
+          <>
+            {currentStep === 'home' && (
+              <HomeScreen
+                onStartRegistration={handleStartRegistration}
+                onOpenPatio={() => setActiveTab('patio')}
+                onOpenHistory={() => setActiveTab('history')}
+                onOpenTests={() => setIsTestsModalOpen(true)}
+                metrics={patioMetrics}
+              />
+            )}
+
+            {currentStep === 'camera' && (
+              <CameraView
+                onPhotoCaptured={handlePhotoCaptured}
+                onCancel={() => setCurrentStep('home')}
+              />
+            )}
+
+            {currentStep === 'plate_confirm' && (
+              <PlateConfirmation
+                photoDataUrl={photoDataUrl}
+                initialPlate={plate}
+                plateSource={plateSource}
+                croppedPlateUrl={croppedPlateUrl}
+                isCertain={isCertain}
+                analysisNotes={analysisNotes}
+                aiDetails={aiDetails}
+                isOcrLoading={isOcrLoading}
+                ocrProgressMsg={ocrProgressMsg}
+                onConfirmPlate={handleConfirmPlate}
+                onRetakePhoto={() => setCurrentStep('camera')}
+                onReanalyzeWithAi={handleReanalyzeWithAi}
+              />
+            )}
+
+            {currentStep === 'fuel' && (
+              <FuelSelector
+                selectedFuel={fuel}
+                onSelectFuel={handleSelectFuel}
+                onBack={() => setCurrentStep('plate_confirm')}
+              />
+            )}
+
+            {currentStep === 'characteristic' && (
+              <CharacteristicSelector
+                selectedCharacteristic={characteristic}
+                onSelectCharacteristic={handleSelectCharacteristic}
+                onNext={handleNextFromCharacteristic}
+                onBack={() => setCurrentStep('fuel')}
+              />
+            )}
+
+            {currentStep === 'location' && (
+              <LocationSelector
+                selectedLocation={location}
+                onSelectLocation={handleSelectLocation}
+                onNext={handleNextFromLocation}
+                onBack={() => setCurrentStep('characteristic')}
+              />
+            )}
+
+            {currentStep === 'review' && fuel && location && (
+              <ReviewAndShare
+                photoDataUrl={photoDataUrl}
+                plate={plate}
+                fuel={fuel}
+                characteristic={characteristic}
+                location={location}
+                onEditPlate={() => setCurrentStep('plate_confirm')}
+                onRetakePhoto={() => setCurrentStep('camera')}
+                onEditFuel={() => setCurrentStep('fuel')}
+                onEditCharacteristic={() => setCurrentStep('characteristic')}
+                onEditLocation={() => setCurrentStep('location')}
+                onNewRegistration={handleReset}
+                onSaveToHistory={handleSaveToHistory}
+              />
+            )}
+          </>
+        )}
+
+        {/* Tab 2: Painel de Ocupação de Vagas & Pátio */}
+        {activeTab === 'patio' && (
+          <PatioDashboard
+            records={records}
+            metrics={patioMetrics}
+            onSelectSectorForNew={(sector) => {
+              setLocation(sector);
+              setActiveTab('register');
+              setCurrentStep('camera');
+            }}
+            onReleaseVehicle={(id) => handleUpdateVehicleStatus(id, 'released')}
+            onStartNewRegistration={handleStartRegistration}
+            onOpenHistoryTab={(sector) => setActiveTab('history')}
           />
         )}
 
-        {currentStep === 'camera' && (
-          <CameraView
-            onPhotoCaptured={handlePhotoCaptured}
-            onCancel={() => setCurrentStep('home')}
-          />
-        )}
-
-        {currentStep === 'plate_confirm' && (
-          <PlateConfirmation
-            photoDataUrl={photoDataUrl}
-            initialPlate={plate}
-            plateSource={plateSource}
-            croppedPlateUrl={croppedPlateUrl}
-            isCertain={isCertain}
-            analysisNotes={analysisNotes}
-            aiDetails={aiDetails}
-            isOcrLoading={isOcrLoading}
-            ocrProgressMsg={ocrProgressMsg}
-            onConfirmPlate={handleConfirmPlate}
-            onRetakePhoto={() => setCurrentStep('camera')}
-            onReanalyzeWithAi={handleReanalyzeWithAi}
-          />
-        )}
-
-        {currentStep === 'fuel' && (
-          <FuelSelector
-            selectedFuel={fuel}
-            onSelectFuel={handleSelectFuel}
-            onBack={() => setCurrentStep('plate_confirm')}
-          />
-        )}
-
-        {currentStep === 'characteristic' && (
-          <CharacteristicSelector
-            selectedCharacteristic={characteristic}
-            onSelectCharacteristic={handleSelectCharacteristic}
-            onNext={handleNextFromCharacteristic}
-            onBack={() => setCurrentStep('fuel')}
-          />
-        )}
-
-        {currentStep === 'location' && (
-          <LocationSelector
-            selectedLocation={location}
-            onSelectLocation={handleSelectLocation}
-            onNext={handleNextFromLocation}
-            onBack={() => setCurrentStep('characteristic')}
-          />
-        )}
-
-        {currentStep === 'review' && fuel && location && (
-          <ReviewAndShare
-            photoDataUrl={photoDataUrl}
-            plate={plate}
-            fuel={fuel}
-            characteristic={characteristic}
-            location={location}
-            onEditPlate={() => setCurrentStep('plate_confirm')}
-            onRetakePhoto={() => setCurrentStep('camera')}
-            onEditFuel={() => setCurrentStep('fuel')}
-            onEditCharacteristic={() => setCurrentStep('characteristic')}
-            onEditLocation={() => setCurrentStep('location')}
-            onNewRegistration={handleReset}
-            onSaveToHistory={handleSaveToHistory}
+        {/* Tab 3: Histórico com Busca Rápida */}
+        {activeTab === 'history' && (
+          <SmartHistory
+            records={records}
+            onUpdateStatus={handleUpdateVehicleStatus}
+            onDeleteRecord={handleDeleteVehicleRecord}
+            onClearHistory={handleClearAllRecords}
           />
         )}
       </main>
 
-      {/* Global Footer */}
-      <footer className="w-full py-2.5 text-center text-[11px] text-neutral-400 font-medium border-t border-neutral-200/60 bg-neutral-100/80">
+      {/* Global Developer Signature Footer (when not obscured by bottom nav) */}
+      <footer className="w-full py-2 pb-20 text-center text-[11px] text-neutral-400 font-medium">
         Registro Veicular CMDIT • Desenvolvido por <span className="font-bold text-neutral-700">@omatheusbritto</span>
       </footer>
+
+      {/* Android 12+ Bottom Navigation Bar */}
+      {currentStep === 'home' && (
+        <AndroidBottomNav
+          activeTab={activeTab}
+          onSelectTab={handleSelectTab}
+          parkedCount={patioMetrics.totalParked}
+          historyCount={records.length}
+        />
+      )}
 
       {/* Test & Diagnostics Modal */}
       <TestDiagnosticsModal
         isOpen={isTestsModalOpen}
-        onClose={() => setIsTestsModalOpen(false)}
+        onClose={() => {
+          setIsTestsModalOpen(false);
+          if (activeTab === 'diagnostics') setActiveTab('register');
+        }}
       />
 
-      {/* History Modal */}
+      {/* Legacy History Modal if triggered from header */}
       <HistoryModal
         isOpen={isHistoryModalOpen}
         onClose={() => setIsHistoryModalOpen(false)}
-        records={historyRecords}
-        onClearHistory={handleClearHistory}
-        onDeleteRecord={handleDeleteHistoryRecord}
+        records={records}
+        onClearHistory={handleClearAllRecords}
+        onDeleteRecord={handleDeleteVehicleRecord}
       />
     </div>
   );

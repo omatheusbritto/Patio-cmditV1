@@ -4,6 +4,10 @@ export type VehicleCharacteristic = '🟠 REVENDA' | '🟢 CONSUMIDOR' | '🔵 D
 
 export type LocationCode = 'P1' | 'P2' | 'P3' | 'R1' | 'ADM' | 'PDC';
 
+export type VehicleStatus = 'parked' | 'released';
+
+export type NavTab = 'register' | 'patio' | 'history' | 'diagnostics';
+
 export type Step = 'home' | 'camera' | 'ocr_processing' | 'plate_confirm' | 'fuel' | 'characteristic' | 'location' | 'review';
 
 export interface VehicleRecord {
@@ -18,7 +22,34 @@ export interface VehicleRecord {
   fuel: FuelLevel;
   characteristic?: VehicleCharacteristic | null;
   location: LocationCode;
+  description?: string;
+  status: VehicleStatus;
+  releasedAt?: number;
+  notes?: string;
+}
+
+export interface SectorConfig {
+  code: LocationCode;
+  name: string;
+  capacity: number;
   description: string;
+  color: string;
+}
+
+export interface PatioMetrics {
+  totalRecords: number;
+  totalParked: number;
+  totalReleased: number;
+  averageFuelNumeric: number; // 1 to 8
+  averageFuelPercent: number; // 0 to 100%
+  criticalFuelCount: number; // <= 2/8
+  sectorOccupancy: Record<LocationCode, {
+    count: number;
+    capacity: number;
+    percent: number;
+    isFull: boolean;
+  }>;
+  characteristicCount: Record<string, number>;
 }
 
 export interface OcrResult {

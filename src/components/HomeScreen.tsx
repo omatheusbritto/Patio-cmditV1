@@ -1,23 +1,45 @@
 import React from 'react';
-import { Camera, CheckCircle2, Fuel, MapPin, Tag, Share2, Sparkles, ShieldCheck, Zap } from 'lucide-react';
+import {
+  Camera,
+  Layers,
+  Search,
+  Fuel,
+  MapPin,
+  Sparkles,
+  ShieldCheck,
+  Zap,
+  ArrowRight,
+  PlusCircle,
+  FileSpreadsheet,
+} from 'lucide-react';
+import { PatioMetrics } from '../types';
 
 interface HomeScreenProps {
   onStartRegistration: () => void;
+  onOpenPatio: () => void;
+  onOpenHistory: () => void;
   onOpenTests: () => void;
+  metrics: PatioMetrics;
 }
 
-export const HomeScreen: React.FC<HomeScreenProps> = ({ onStartRegistration, onOpenTests }) => {
+export const HomeScreen: React.FC<HomeScreenProps> = ({
+  onStartRegistration,
+  onOpenPatio,
+  onOpenHistory,
+  onOpenTests,
+  metrics,
+}) => {
   return (
-    <div className="flex flex-col items-center justify-between min-h-[calc(100vh-80px)] max-w-md mx-auto w-full px-4 py-6">
+    <div className="flex flex-col items-center justify-between min-h-[calc(100vh-130px)] max-w-md mx-auto w-full px-4 py-4 pb-20">
       {/* Top Hero Section */}
-      <div className="flex flex-col items-center text-center w-full gap-4 pt-2">
+      <div className="flex flex-col items-center text-center w-full gap-3 pt-1">
         {/* Brand visual emblem */}
         <div className="relative">
-          <div className="w-24 h-24 rounded-3xl bg-gradient-to-tr from-emerald-700 via-emerald-600 to-emerald-500 flex items-center justify-center shadow-xl shadow-emerald-700/25 border-4 border-white text-white">
-            <Camera className="w-12 h-12 text-white drop-shadow" />
+          <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-emerald-800 via-emerald-600 to-emerald-500 flex items-center justify-center shadow-xl shadow-emerald-700/25 border-4 border-white text-white">
+            <Camera className="w-10 h-10 text-white drop-shadow" />
           </div>
-          <div className="absolute -bottom-2 -right-2 px-2.5 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-500/50 text-[10px] font-black uppercase tracking-wider">
-            OCR Local
+          <div className="absolute -bottom-1 -right-2 px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-500/50 text-[9px] font-black uppercase tracking-wider">
+            Android 12+
           </div>
         </div>
 
@@ -25,85 +47,161 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onStartRegistration, onO
           <h1 className="text-2xl font-black text-neutral-900 tracking-tight leading-none">
             Registro Veicular CMDIT
           </h1>
-          <p className="text-xs font-bold text-emerald-700 mt-2 tracking-wide uppercase">
+          <p className="text-xs font-bold text-emerald-700 mt-1.5 tracking-wide uppercase">
             Fotografe • Confira • Compartilhe
           </p>
           <p className="text-xs text-neutral-500 mt-1 max-w-xs mx-auto">
-            Leitura ultrarrápida e precisa de placas, nível de combustível, características e envio direto para WhatsApp.
+            Leitura ultrarrápida de placas, gestão de vagas do pátio, nível de combustível e histórico 100% offline.
           </p>
         </div>
       </div>
 
-      {/* Visual Step Guide (Indicador das etapas do registro) */}
-      <div className="w-full bg-white rounded-2xl p-4 shadow-sm border border-neutral-200 my-4 flex flex-col gap-2.5">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
-          Fluxo de Registro Rápido
+      {/* Quick Patio Stats Overview Cards */}
+      <div className="w-full grid grid-cols-2 gap-2 my-3">
+        {/* Patio Occupancy Card */}
+        <button
+          type="button"
+          onClick={onOpenPatio}
+          className="bg-white rounded-2xl p-3.5 border border-neutral-200 shadow-sm text-left hover:border-emerald-400 active:scale-95 transition flex flex-col justify-between"
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">
+              Pátio & Vagas
+            </span>
+            <div className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
+              <Layers className="w-3.5 h-3.5" />
+            </div>
+          </div>
+
+          <div>
+            <span className="text-2xl font-black text-neutral-900 font-mono leading-none">
+              {metrics.totalParked}
+            </span>
+            <span className="text-xs text-neutral-500 font-medium ml-1">veículos</span>
+          </div>
+
+          <div className="flex items-center justify-between text-[11px] text-emerald-700 font-bold mt-2 pt-2 border-t border-neutral-100">
+            <span>Ver mapa de vagas</span>
+            <ArrowRight className="w-3 h-3" />
+          </div>
+        </button>
+
+        {/* Fleet Fuel Card */}
+        <button
+          type="button"
+          onClick={onOpenPatio}
+          className="bg-white rounded-2xl p-3.5 border border-neutral-200 shadow-sm text-left hover:border-emerald-400 active:scale-95 transition flex flex-col justify-between"
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">
+              Combustível Frota
+            </span>
+            <div className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
+              <Fuel className="w-3.5 h-3.5" />
+            </div>
+          </div>
+
+          <div>
+            <span className="text-2xl font-black text-neutral-900 font-mono leading-none">
+              {metrics.averageFuelNumeric}
+            </span>
+            <span className="text-xs text-neutral-500 font-medium ml-1">/ 8 médio</span>
+          </div>
+
+          <div className="flex items-center justify-between text-[11px] text-emerald-700 font-bold mt-2 pt-2 border-t border-neutral-100">
+            <span>{metrics.averageFuelPercent}% do tanque</span>
+            <ArrowRight className="w-3 h-3" />
+          </div>
+        </button>
+      </div>
+
+      {/* Visual Step Guide */}
+      <div className="w-full bg-white rounded-2xl p-3.5 shadow-sm border border-neutral-200 mb-3 flex flex-col gap-2">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+          Etapas do Registro Rápido
         </span>
 
         <div className="grid grid-cols-4 gap-1.5 text-center">
           <div className="flex flex-col items-center p-2 rounded-xl bg-emerald-50 border border-emerald-200">
-            <div className="w-7 h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs font-bold mb-1">
+            <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs font-bold mb-1">
               1
             </div>
-            <span className="text-[11px] font-bold text-emerald-900 leading-tight">Foto & Placa</span>
-            <span className="text-[9px] text-emerald-700">OCR on-device</span>
+            <span className="text-[10px] font-bold text-emerald-900 leading-tight">Foto Placa</span>
+            <span className="text-[8px] text-emerald-700">Sub-segundo</span>
           </div>
 
           <div className="flex flex-col items-center p-2 rounded-xl bg-neutral-50 border border-neutral-200">
-            <div className="w-7 h-7 rounded-full bg-neutral-200 text-neutral-700 flex items-center justify-center text-xs font-bold mb-1">
+            <div className="w-6 h-6 rounded-full bg-neutral-200 text-neutral-700 flex items-center justify-center text-xs font-bold mb-1">
               2
             </div>
-            <span className="text-[11px] font-bold text-neutral-800 leading-tight">Combustível</span>
-            <span className="text-[9px] text-neutral-500">1/8 a 8/8</span>
+            <span className="text-[10px] font-bold text-neutral-800 leading-tight">Combustível</span>
+            <span className="text-[8px] text-neutral-500">1/8 a 8/8</span>
           </div>
 
           <div className="flex flex-col items-center p-2 rounded-xl bg-neutral-50 border border-neutral-200">
-            <div className="w-7 h-7 rounded-full bg-neutral-200 text-neutral-700 flex items-center justify-center text-xs font-bold mb-1">
+            <div className="w-6 h-6 rounded-full bg-neutral-200 text-neutral-700 flex items-center justify-center text-xs font-bold mb-1">
               3
             </div>
-            <span className="text-[11px] font-bold text-neutral-800 leading-tight">Característica</span>
-            <span className="text-[9px] text-neutral-500">Opcional</span>
+            <span className="text-[10px] font-bold text-neutral-800 leading-tight">Detalhes</span>
+            <span className="text-[8px] text-neutral-500">Tipo/Tag</span>
           </div>
 
           <div className="flex flex-col items-center p-2 rounded-xl bg-neutral-50 border border-neutral-200">
-            <div className="w-7 h-7 rounded-full bg-neutral-200 text-neutral-700 flex items-center justify-center text-xs font-bold mb-1">
+            <div className="w-6 h-6 rounded-full bg-neutral-200 text-neutral-700 flex items-center justify-center text-xs font-bold mb-1">
               4
             </div>
-            <span className="text-[11px] font-bold text-neutral-800 leading-tight">Local</span>
-            <span className="text-[9px] text-neutral-500">P1 a PDC</span>
+            <span className="text-[10px] font-bold text-neutral-800 leading-tight">Vaga/Local</span>
+            <span className="text-[8px] text-neutral-500">P1 a PDC</span>
           </div>
         </div>
       </div>
 
       {/* Main Action Button */}
-      <div className="w-full flex flex-col gap-3 pb-4">
+      <div className="w-full flex flex-col gap-2.5">
         <button
           type="button"
           onClick={onStartRegistration}
-          className="w-full py-5 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-lg flex items-center justify-center gap-3 shadow-xl shadow-emerald-600/30 active:scale-98 transition group"
+          className="w-full py-4 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-base flex items-center justify-center gap-3 shadow-xl shadow-emerald-600/30 active:scale-98 transition group"
         >
-          <Camera className="w-7 h-7 group-hover:rotate-6 transition transform" />
-          <span>Fotografar veículo</span>
+          <Camera className="w-6 h-6 group-hover:rotate-6 transition transform" />
+          <span>Fotografar Veículo</span>
         </button>
 
-        {/* Diagnostic & Offline reassurance */}
-        <div className="flex items-center justify-between px-2 pt-1 text-[11px] text-neutral-500">
-          <div className="flex items-center gap-1.5 text-emerald-800 font-semibold">
-            <Zap className="w-3.5 h-3.5 text-emerald-600" />
-            Visão Computacional & OCR
-          </div>
+        {/* Fast Action Buttons */}
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={onOpenHistory}
+            className="py-2.5 px-3 rounded-xl bg-white border border-neutral-300 text-neutral-800 hover:bg-neutral-50 font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition"
+          >
+            <Search className="w-3.5 h-3.5 text-emerald-700" />
+            <span>Buscar Placas</span>
+          </button>
 
           <button
+            type="button"
             onClick={onOpenTests}
-            className="text-emerald-700 hover:underline font-bold flex items-center gap-1"
+            className="py-2.5 px-3 rounded-xl bg-white border border-neutral-300 text-neutral-800 hover:bg-neutral-50 font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition"
           >
-            <ShieldCheck className="w-3.5 h-3.5" />
-            Testes
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
+            <span>Testes OCR</span>
           </button>
         </div>
 
-        {/* Developer signature */}
-        <div className="pt-2 text-center text-xs text-neutral-400 font-medium">
+        {/* Offline & Architecture Reassurance */}
+        <div className="flex items-center justify-between px-2 pt-1 text-[11px] text-neutral-500">
+          <div className="flex items-center gap-1.5 text-emerald-800 font-semibold">
+            <Zap className="w-3.5 h-3.5 text-emerald-600" />
+            100% Offline e Persistente
+          </div>
+
+          <span className="text-[10px] text-neutral-400 font-medium">
+            Android 12+ Ready
+          </span>
+        </div>
+
+        {/* Developer Signature */}
+        <div className="pt-1 text-center text-[11px] text-neutral-400 font-medium">
           Desenvolvido por <span className="font-bold text-neutral-700">@omatheusbritto</span>
         </div>
       </div>

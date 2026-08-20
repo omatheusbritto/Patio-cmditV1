@@ -15,7 +15,7 @@ export function dataUrlToFile(dataUrl: string, filename: string): File {
 }
 
 export interface ShareOptions {
-  photoDataUrl: string;
+  photoDataUrl?: string;
   description: string;
   plate: string;
 }
@@ -27,47 +27,45 @@ export interface ShareResult {
 }
 
 /**
- * Execute native WhatsApp share with Image file + Text Caption
+ * Generates formatted Brazilian vehicle caption
  */
-export async function shareToWhatsApp(options: ShareOptions): Promise<ShareResult> {
-  const { photoDataUrl, description, plate } = options;
-  const safeFilename = `registro_${plate || 'veiculo'}_${Date.now()}.jpg`;
+export function generateWhatsAppMessage(data: {
+  plate: string;
+  fuel: string;
+  characteristic?: string | null;
+  location: string;
+  timestamp?: Date;
+}): string {
+  const time = data.timestamp || new Date();
+  const dateFormatted = time.toLocaleDateString('pt-BR');
+  const timeFormatted = time.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
-  try {
-    const file = dataUrlToFile(photoDataUrl, safeFilename);
+  const lines = [
+    `🚗 *REGISTRO VEICULAR CMDIT*`,
+    `📅 *Data/Hora:* ${dateFormatted} às ${timeFormatted}`,
+    `🏷️ *Placa:* ${data.plate}`,
+    `⛽ *Combustível:* ${data.fuel}`,
+    `📍 *Local:* ${data.location}`,
+  ];
 
-    // 1. Try Native Web Share API with files (Supported in modern Android Chrome / WebViews)
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({
-        files: [file],
-        text: description,
-        title: 'Redigistro Veicular CMDIT',
-      });
-
-      return {
-        success: true,
-        method: 'web_share_files',
-        message: 'Compartilhado com sucesso via seletor nativo!',
-      };
-    }
-  } catch (error: any) {
-    if (error.name === 'AbortError') {
-      // User cancelled share dialog
-      return {
-        success: false,
-        method: 'web_share_files',
-        message: 'Compartilhamento cancelado pelo usuário.',
-      };
-    }
-    console.warn('Native file share error, trying WhatsApp URI fallback:', error);
+  if (data.characteristic) {
+    lines.push(`🔖 *Característica:* ${data.characteristic}`);
   }
 
-  // 2. Fallback: Direct WhatsApp Android Protocol URI
-  try {
-    const encodedText = encodeURIComponent(description);
-    const whatsappUri = `whatsapp://send?text=${encodedText}`;
+  lines.push(`\n_Registrado via Registro Veicular CMDIT • @omatheusbritto_`);
 
-    // Try triggering WhatsApp URI
+  return lines.join('\n');
+}
+
+/**
+ * Open WhatsApp with pre-filled message text
+ */
+export function openWhatsAppShare(text: string): void {
+  const encodedText = encodeURIComponent(text);
+  const whatsappUri = `whatsapp://send?text=${encodedText}`;
+  const webUrl = `https://api.whatsapp.com/send?text=${encodedText}`;
+
+  try {
     const link = document.createElement('a');
     link.href = whatsappUri;
     link.target = '_blank';
@@ -75,7 +73,51 @@ export async function shareToWhatsApp(options: ShareOptions): Promise<ShareResul
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  } catch {
+    window.open(webUrl, '_blank');
+  }
+}
 
+/**
+ * Execute native WhatsApp share with Image file + Text Caption
+ */
+export async function shareToWhatsApp(options: ShareOptions): Promise<ShareResult> {
+  const { photoDataUrl, description, plate } = options;
+  const safeFilename = `registro_${plate || 'veiculo'}_${Date.now()}.jpg`;
+
+  if (photoDataUrl) {
+    try {
+      const file = dataUrlToFile(photoDataUrl, safeFilename);
+
+      // 1. Try Native Web Share API with files (Supported in modern Android Chrome / WebViews)
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          text: description,
+          title: 'Registro Veicular CMDIT',
+        });
+
+        return {
+          success: true,
+          method: 'web_share_files',
+          message: 'Compartilhado com sucesso via seletor nativo!',
+        };
+      }
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        return {
+          success: false,
+          method: 'web_share_files',
+          message: 'Compartilhamento cancelado pelo usuário.',
+        };
+      }
+      console.warn('Native file share error, trying WhatsApp URI fallback:', error);
+    }
+  }
+
+  // 2. Fallback: Direct WhatsApp Android Protocol URI
+  try {
+    openWhatsAppShare(description);
     return {
       success: true,
       method: 'whatsapp_intent',
@@ -85,32 +127,19 @@ export async function shareToWhatsApp(options: ShareOptions): Promise<ShareResul
     console.warn('WhatsApp protocol error:', error);
   }
 
-  // 3. Fallback: Standard WhatsApp API link
+  // 3. Clipboard fallback
   try {
-    const encodedText = encodeURIComponent(description);
-    const webUrl = `https://api.whatsapp.com/send?text=${encodedText}`;
-    window.open(webUrl, '_blank');
-
+    await navigator.clipboard.writeText(description);
     return {
       success: true,
-      method: 'whatsapp_link',
-      message: 'Redirecionado para o WhatsApp!',
+      method: 'clipboard_fallback',
+      message: 'Legenda copiada para a área de transferência!',
     };
   } catch {
-    // 4. Clipboard fallback
-    try {
-      await navigator.clipboard.writeText(description);
-      return {
-        success: true,
-        method: 'clipboard_fallback',
-        message: 'Legenda copiada para a área de transferência!',
-      };
-    } catch {
-      return {
-        success: false,
-        method: 'clipboard_fallback',
-        message: 'Compartilhamento não concluído.',
-      };
-    }
+    return {
+      success: false,
+      method: 'clipboard_fallback',
+      message: 'Compartilhamento não concluído.',
+    };
   }
 }
