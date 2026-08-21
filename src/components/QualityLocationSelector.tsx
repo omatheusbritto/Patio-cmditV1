@@ -62,7 +62,7 @@ export const QualityLocationSelector: React.FC<QualityLocationSelectorProps> = (
           <div className="flex items-center gap-1.5 text-indigo-700">
             <ShieldCheck className="w-5 h-5" />
             <span className="text-[10px] font-black uppercase tracking-wider bg-indigo-100 px-2.5 py-0.5 rounded-full border border-indigo-200">
-              51 (Qualidade) • Local
+              51 (Qualidade) • Etapa 3 (Local)
             </span>
           </div>
           <span className="text-xs font-mono font-bold bg-neutral-900 text-white px-2.5 py-1 rounded-lg">
@@ -150,7 +150,7 @@ export const QualityLocationSelector: React.FC<QualityLocationSelectorProps> = (
               : 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
           }`}
         >
-          <span>Avançar (Combustível)</span>
+          <span>Avançar para Revisão</span>
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>

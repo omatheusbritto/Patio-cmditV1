@@ -14,6 +14,7 @@ import {
 } from '../utils/plateNormalizer';
 import {
   shareToWhatsApp,
+  shareSinglePhoto,
   generateWhatsAppMessage,
   ShareResult,
   getLocationMeaning,
@@ -223,12 +224,26 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
 
   // Download image helper
   const handleDownloadPhoto = () => {
-    const link = document.createElement('a');
-    link.href = photoDataUrl;
-    link.download = `registro_${cleanPlate}_${Date.now()}.jpg`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const timestamp = Date.now();
+    const link1 = document.createElement('a');
+    link1.href = photoDataUrl;
+    link1.download = dashboardPhotoUrl
+      ? `1_placa_${cleanPlate}_${timestamp}.jpg`
+      : `registro_${cleanPlate}_${timestamp}.jpg`;
+    document.body.appendChild(link1);
+    link1.click();
+    document.body.removeChild(link1);
+
+    if (dashboardPhotoUrl) {
+      setTimeout(() => {
+        const link2 = document.createElement('a');
+        link2.href = dashboardPhotoUrl;
+        link2.download = `2_painel_${cleanPlate}_${timestamp}.jpg`;
+        document.body.appendChild(link2);
+        link2.click();
+        document.body.removeChild(link2);
+      }, 300);
+    }
   };
 
   const getOperationBadge = () => {
@@ -479,9 +494,16 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
                 </div>
 
                 {driverName && (
-                  <div className="col-span-2 pt-1 border-t border-cyan-200/60">
+                  <div className={destination ? 'col-span-1 pt-1 border-t border-cyan-200/60' : 'col-span-2 pt-1 border-t border-cyan-200/60'}>
                     <span className="text-[10px] text-neutral-500 block">Responsável / Condutor:</span>
                     <span className="font-bold text-neutral-900">{driverName}</span>
+                  </div>
+                )}
+
+                {destination && (
+                  <div className={driverName ? 'col-span-1 pt-1 border-t border-cyan-200/60' : 'col-span-2 pt-1 border-t border-cyan-200/60'}>
+                    <span className="text-[10px] text-neutral-500 block">Destino:</span>
+                    <span className="font-bold text-neutral-900">{destination}</span>
                   </div>
                 )}
               </div>
@@ -677,7 +699,13 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
           }`}
         >
           <Share2 className={`w-5 h-5 ${isSharing ? 'animate-spin' : ''}`} />
-          <span>{isSharing ? 'Preparando Envio...' : 'Compartilhar no WhatsApp'}</span>
+          <span>
+            {isSharing
+              ? 'Preparando Envio...'
+              : dashboardPhotoUrl
+              ? 'Compartilhar no WhatsApp (Placa + Painel)'
+              : 'Compartilhar no WhatsApp'}
+          </span>
         </button>
 
         {/* Status Message Notification */}
@@ -698,6 +726,45 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
           </div>
         )}
 
+        {/* If dual photo, offer individual photo share buttons as well */}
+        {dashboardPhotoUrl && (
+          <div className="flex items-center gap-2 p-2 rounded-xl bg-cyan-50/80 border border-cyan-200">
+            <span className="text-[10px] font-bold text-cyan-900 uppercase shrink-0">
+              Avulsos:
+            </span>
+            <button
+              type="button"
+              onClick={() =>
+                shareSinglePhoto(
+                  photoDataUrl,
+                  cleanPlate,
+                  'placa',
+                  `*Foto 1 (Placa):* ${formatPlateForDisplay(cleanPlate)}`
+                )
+              }
+              className="flex-1 py-1.5 px-2 rounded-lg bg-white border border-cyan-300 hover:bg-cyan-100 text-cyan-950 font-bold text-[11px] flex items-center justify-center gap-1 shadow-2xs active:scale-98 transition"
+            >
+              <Camera className="w-3 h-3 text-cyan-700" />
+              <span>Só Placa</span>
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                shareSinglePhoto(
+                  dashboardPhotoUrl,
+                  cleanPlate,
+                  'painel',
+                  `*Foto 2 (Painel/KM):* ${formatPlateForDisplay(cleanPlate)}`
+                )
+              }
+              className="flex-1 py-1.5 px-2 rounded-lg bg-white border border-cyan-300 hover:bg-cyan-100 text-cyan-950 font-bold text-[11px] flex items-center justify-center gap-1 shadow-2xs active:scale-98 transition"
+            >
+              <Gauge className="w-3 h-3 text-cyan-700" />
+              <span>Só Painel</span>
+            </button>
+          </div>
+        )}
+
         {/* Secondary Actions */}
         <div className="grid grid-cols-2 gap-2 pt-1">
           <button
@@ -706,7 +773,7 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
             className="py-3 px-3 rounded-xl border border-neutral-300 bg-white hover:bg-neutral-100 text-neutral-800 font-bold text-xs flex items-center justify-center gap-2 shadow-sm active:scale-98 transition"
           >
             <Download className="w-4 h-4 text-emerald-700" />
-            <span>Salvar Foto</span>
+            <span>{dashboardPhotoUrl ? 'Salvar as 2 Fotos' : 'Salvar Foto'}</span>
           </button>
 
           <button

@@ -4,6 +4,7 @@ import {
   Fuel,
   Gauge,
   User,
+  MapPin,
   Camera,
   RotateCcw,
   ArrowRight,
@@ -24,6 +25,7 @@ interface FuelingDetailsFormProps {
   initialLiters?: string | number;
   initialFuelType?: string;
   initialDriverName?: string;
+  initialDestination?: string;
   onRetakeDashboardPhoto?: () => void;
   onSubmit: (data: {
     km: string;
@@ -31,6 +33,7 @@ interface FuelingDetailsFormProps {
     liters?: string;
     fuelType?: string;
     driverName?: string;
+    destination?: string;
   }) => void;
   onBack: () => void;
 }
@@ -56,6 +59,7 @@ const FUEL_TYPES = [
 ];
 
 const QUICK_LITERS = ['10', '20', '30', '40', '50', '60'];
+const QUICK_DESTINATIONS = ['Pátio', 'Loja', 'Oficina', 'Lavador', 'Cliente'];
 
 export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
   plate,
@@ -66,6 +70,7 @@ export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
   initialLiters = '',
   initialFuelType = 'Gasolina Comum',
   initialDriverName = '',
+  initialDestination = '',
   onRetakeDashboardPhoto,
   onSubmit,
   onBack,
@@ -75,6 +80,7 @@ export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
   const [liters, setLiters] = useState<string>(String(initialLiters || ''));
   const [fuelType, setFuelType] = useState<string>(initialFuelType || 'Gasolina Comum');
   const [driverName, setDriverName] = useState<string>(initialDriverName || '');
+  const [destination, setDestination] = useState<string>(initialDestination || '');
   const [error, setError] = useState<string | null>(null);
 
   const handleAdjustKm = (amount: number) => {
@@ -96,6 +102,7 @@ export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
       liters: liters.trim(),
       fuelType: fuelType.trim(),
       driverName: driverName.trim(),
+      destination: destination.trim(),
     });
   };
 
@@ -367,10 +374,15 @@ export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
 
         {/* 4. Responsável / Condutor */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-200 flex flex-col gap-2">
-          <label htmlFor="driver-input" className="text-xs font-bold text-neutral-800 flex items-center gap-1.5">
-            <User className="w-4 h-4 text-neutral-600" />
-            <span>Responsável pelo Abastecimento / Condutor</span>
-          </label>
+          <div className="flex items-center justify-between">
+            <label htmlFor="driver-input" className="text-xs font-bold text-neutral-800 flex items-center gap-1.5">
+              <User className="w-4 h-4 text-neutral-600" />
+              <span>Responsável pelo Abastecimento / Condutor</span>
+            </label>
+            <span className="text-[10px] font-semibold text-neutral-400 uppercase bg-neutral-100 px-2 py-0.5 rounded-full">
+              Opcional
+            </span>
+          </div>
           <input
             id="driver-input"
             type="text"
@@ -379,6 +391,45 @@ export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
             onChange={(e) => setDriverName(e.target.value)}
             className="w-full text-sm font-semibold py-2.5 px-3 rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-cyan-500 bg-neutral-50/50"
           />
+        </div>
+
+        {/* 5. Destino (Opcional) */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-200 flex flex-col gap-2.5">
+          <div className="flex items-center justify-between">
+            <label htmlFor="destination-input" className="text-xs font-bold text-neutral-800 flex items-center gap-1.5">
+              <MapPin className="w-4 h-4 text-cyan-600" />
+              <span>Destino do Veículo</span>
+            </label>
+            <span className="text-[10px] font-semibold text-neutral-400 uppercase bg-neutral-100 px-2 py-0.5 rounded-full">
+              Opcional
+            </span>
+          </div>
+          <input
+            id="destination-input"
+            type="text"
+            placeholder="Ex: Pátio Principal, Loja Centro, Oficina, Cliente..."
+            value={destination}
+            onChange={(e) => setDestination(e.target.value)}
+            className="w-full text-sm font-semibold py-2.5 px-3 rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-cyan-500 bg-neutral-50/50"
+          />
+          {/* Quick destinations */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[10px] text-neutral-400 font-semibold">Atalhos:</span>
+            {QUICK_DESTINATIONS.map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setDestination(d)}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition active:scale-95 ${
+                  destination === d
+                    ? 'bg-cyan-600 text-white border-cyan-700'
+                    : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700 border-neutral-200'
+                }`}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Error message */}

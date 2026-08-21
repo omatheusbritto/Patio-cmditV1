@@ -1,4 +1,5 @@
 import { EntrySubtype, OperationType, VehicleFleetType, VehicleRecord } from '../types';
+import { combineTwoPhotos } from './imageOptimizer';
 
 /**
  * Helper to convert Data URL to a Blob/File for native Web Share API
@@ -92,7 +93,8 @@ export function stripEmojis(str: string): string {
 }
 
 /**
- * Generates formatted Brazilian vehicle caption customized by Operation Type without emojis
+ * Generates formatted Brazilian vehicle caption customized by Operation Type.
+ * Only fields that have actual answers/values are included in the message.
  */
 export function generateWhatsAppMessage(data: FormattedVehicleMessageData): string {
   const time = data.timestamp || new Date();
@@ -100,79 +102,92 @@ export function generateWhatsAppMessage(data: FormattedVehicleMessageData): stri
   const timeFormatted = time.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
   const lines: string[] = [];
-  const cleanChar = data.characteristic ? stripEmojis(data.characteristic) : undefined;
+
+  // Helper to check if a value has meaningful content (not empty, null, undefined, or "Não informado")
+  const hasValue = (val: unknown): boolean => {
+    if (val === undefined || val === null) return false;
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      if (!trimmed) return false;
+      const lower = trimmed.toLowerCase();
+      return lower !== 'não informado' && lower !== 'não informada' && lower !== 'sem característica';
+    }
+    if (typeof val === 'number') return !isNaN(val);
+    return true;
+  };
 
   switch (data.operationType) {
     case 'entrada':
-      lines.push(`*Placa:* ${data.plate}`);
-      lines.push(`*Condutor:* ${data.driverName || 'Não informado'}`);
-      lines.push(`*Origem:* ${data.origin || 'Não informado'}`);
-      lines.push(`*KM:* ${data.km ? `${data.km} km` : 'Não informado'}`);
-      lines.push(`*Combustível:* ${data.fuel}`);
-      lines.push(`*Chave Reserva:* ${data.hasSpareKey ? 'SIM' : 'NÃO'}`);
-      if (data.fleetType && data.fleetType.trim()) {
-        lines.push(`*Tipo de Veículo:* ${data.fleetType.trim()}`);
+      if (hasValue(data.plate)) lines.push(`*Placa:* ${data.plate}`);
+      if (hasValue(data.driverName)) lines.push(`*Condutor:* ${String(data.driverName).trim()}`);
+      if (hasValue(data.origin)) lines.push(`*Origem:* ${String(data.origin).trim()}`);
+      if (hasValue(data.km)) lines.push(`*KM:* ${String(data.km).trim()} km`);
+      if (hasValue(data.fuel)) lines.push(`*Combustível:* ${data.fuel}`);
+      if (data.hasSpareKey !== undefined) {
+        lines.push(`*Chave Reserva:* ${data.hasSpareKey ? 'SIM' : 'NÃO'}`);
+      }
+      if (hasValue(data.fleetType)) {
+        lines.push(`*Tipo de Veículo:* ${String(data.fleetType).trim()}`);
       }
       if (data.entrySubtype) {
         const subtypeLabel = getEntrySubtypeLabel(data.entrySubtype);
-        lines.push(`*Local:* ${subtypeLabel}`);
-        if ((data.entrySubtype === 'retorno' || data.entrySubtype === 'recusa') && data.entryReason?.trim()) {
-          lines.push(`*Motivo do ${subtypeLabel}:* ${data.entryReason.trim()}`);
+        if (subtypeLabel) lines.push(`*Local:* ${subtypeLabel}`);
+        if ((data.entrySubtype === 'retorno' || data.entrySubtype === 'recusa') && hasValue(data.entryReason)) {
+          lines.push(`*Motivo do ${subtypeLabel}:* ${String(data.entryReason).trim()}`);
         }
       }
       break;
 
     case 'saida':
-      lines.push(`*Placa:* ${data.plate}`);
-      lines.push(`*Condutor:* ${data.driverName || 'Não informado'}`);
-      lines.push(`*Destino:* ${data.destination || 'Não informado'}`);
-      lines.push(`*KM:* ${data.km ? `${data.km} km` : 'Não informado'}`);
-      lines.push(`*Combustível:* ${data.fuel}`);
-      lines.push(`*Chave Reserva:* ${data.hasSpareKey ? 'SIM' : 'NÃO'}`);
-      if (data.fleetType && data.fleetType.trim()) {
-        lines.push(`*Tipo de Veículo:* ${data.fleetType.trim()}`);
+      if (hasValue(data.plate)) lines.push(`*Placa:* ${data.plate}`);
+      if (hasValue(data.driverName)) lines.push(`*Condutor:* ${String(data.driverName).trim()}`);
+      if (hasValue(data.destination)) lines.push(`*Destino:* ${String(data.destination).trim()}`);
+      if (hasValue(data.km)) lines.push(`*KM:* ${String(data.km).trim()} km`);
+      if (hasValue(data.fuel)) lines.push(`*Combustível:* ${data.fuel}`);
+      if (data.hasSpareKey !== undefined) {
+        lines.push(`*Chave Reserva:* ${data.hasSpareKey ? 'SIM' : 'NÃO'}`);
+      }
+      if (hasValue(data.fleetType)) {
+        lines.push(`*Tipo de Veículo:* ${String(data.fleetType).trim()}`);
       }
       break;
 
     case 'abastecimento':
-      lines.push(`*Placa:* ${data.plate}`);
-      lines.push(`*Odômetro / KM:* ${data.km ? `${data.km} km` : 'Não informado'}`);
-      lines.push(`*Nível do Tanque:* ${data.fuel}`);
-      if (data.liters && String(data.liters).trim()) {
-        lines.push(`*Litros Abastecidos:* ${String(data.liters).trim()} L`);
-      }
-      if (data.fuelType && data.fuelType.trim()) {
-        lines.push(`*Tipo de Combustível:* ${data.fuelType.trim()}`);
-      }
-      if (data.driverName && data.driverName.trim()) {
-        lines.push(`*Responsável:* ${data.driverName.trim()}`);
-      }
+      if (hasValue(data.plate)) lines.push(`*Placa:* ${data.plate}`);
+      if (hasValue(data.km)) lines.push(`*Odômetro / KM:* ${String(data.km).trim()} km`);
+      if (hasValue(data.fuel)) lines.push(`*Nível do Tanque:* ${data.fuel}`);
+      if (hasValue(data.liters)) lines.push(`*Litros Abastecidos:* ${String(data.liters).trim()} L`);
+      if (hasValue(data.fuelType)) lines.push(`*Tipo de Combustível:* ${String(data.fuelType).trim()}`);
+      if (hasValue(data.driverName)) lines.push(`*Responsável:* ${String(data.driverName).trim()}`);
+      if (hasValue(data.destination)) lines.push(`*Destino:* ${String(data.destination).trim()}`);
       break;
 
     case 'pdc':
-      lines.push(`*Placa:* ${data.plate}`);
-      lines.push(`*Combustível:* ${data.fuel}`);
+      if (hasValue(data.plate)) lines.push(`*Placa:* ${data.plate}`);
+      if (hasValue(data.fuel)) lines.push(`*Combustível:* ${data.fuel}`);
+      if (hasValue(data.driverName)) lines.push(`*Condutor:* ${String(data.driverName).trim()}`);
+      if (hasValue(data.km)) lines.push(`*KM:* ${String(data.km).trim()} km`);
       break;
 
     case 'qualidade_51':
-      lines.push(`*Placa:* ${data.plate}`);
-      lines.push(`*Local:* ${getLocationMeaning(data.location)}`);
-      lines.push(`*Combustível:* ${data.fuel}`);
-      if (cleanChar) {
-        lines.push(`*Característica:* ${cleanChar}`);
-      }
+      if (hasValue(data.plate)) lines.push(`*Placa:* ${data.plate}`);
+      if (hasValue(data.location)) lines.push(`*Local:* ${getLocationMeaning(data.location)}`);
+      if (hasValue(data.characteristic)) lines.push(`*Característica:* ${String(data.characteristic).trim()}`);
+      if (hasValue(data.fuel)) lines.push(`*Combustível:* ${data.fuel}`);
       break;
 
     default:
-      lines.push(`*Placa:* ${data.plate}`);
-      lines.push(`*Combustível:* ${data.fuel}`);
-      if (data.location) lines.push(`*Local:* ${getLocationMeaning(data.location)}`);
-      if (cleanChar) lines.push(`*Característica:* ${cleanChar}`);
+      if (hasValue(data.plate)) lines.push(`*Placa:* ${data.plate}`);
+      if (hasValue(data.location)) lines.push(`*Local:* ${getLocationMeaning(data.location)}`);
+      if (hasValue(data.characteristic)) lines.push(`*Característica:* ${String(data.characteristic).trim()}`);
+      if (hasValue(data.fuel)) lines.push(`*Combustível:* ${data.fuel}`);
+      if (hasValue(data.driverName)) lines.push(`*Condutor:* ${String(data.driverName).trim()}`);
+      if (hasValue(data.km)) lines.push(`*KM:* ${String(data.km).trim()} km`);
       break;
   }
 
-  if (data.notes) {
-    lines.push(`*Observação:* ${data.notes}`);
+  if (hasValue(data.notes)) {
+    lines.push(`*Observação:* ${String(data.notes).trim()}`);
   }
 
   lines.push(`*Data/Hora:* ${dateFormatted} às ${timeFormatted}`);
@@ -202,28 +217,70 @@ export function openWhatsAppShare(text: string): void {
 }
 
 /**
- * Execute native WhatsApp share with Image file + Text Caption
+ * Execute native WhatsApp share with Image file(s) + Text Caption.
+ * When both Plate and Dashboard photos are present (e.g. Abastecimento),
+ * it generates a crisp composite image containing BOTH photos side-by-side / stacked
+ * with timestamps and labels, ensuring WhatsApp Mobile receives both photos together with 100% reliability.
  */
 export async function shareToWhatsApp(options: ShareOptions): Promise<ShareResult> {
-  const { photoDataUrl, description, plate } = options;
-  const safeFilename = `registro_${plate || 'veiculo'}_${Date.now()}.jpg`;
+  const { photoDataUrl, dashboardPhotoDataUrl, description, plate } = options;
+  const safePlate = plate ? plate.replace(/[^a-zA-Z0-9]/g, '') : 'veiculo';
+  const timestamp = Date.now();
 
-  if (photoDataUrl) {
+  const files: File[] = [];
+
+  // If we have both photos (Plate and Dashboard), create a combined high-res image
+  if (photoDataUrl && dashboardPhotoDataUrl) {
     try {
-      const file = dataUrlToFile(photoDataUrl, safeFilename);
+      const combinedDataUrl = await combineTwoPhotos({
+        photo1Url: photoDataUrl,
+        photo2Url: dashboardPhotoDataUrl,
+        plate: safePlate,
+        operationTitle: 'COMPROVANTE DE ABASTECIMENTO',
+        tag1: '📸 1. PLACA DO VEÍCULO',
+        tag2: '⛽ 2. PAINEL / ODÔMETRO',
+      });
 
+      const filename = `abastecimento_completo_${safePlate}_${timestamp}.jpg`;
+      files.push(dataUrlToFile(combinedDataUrl, filename));
+    } catch (e) {
+      console.warn('Erro ao gerar imagem combinada das 2 fotos:', e);
+      // Fallback: push individual files
+      files.push(dataUrlToFile(photoDataUrl, `1_placa_${safePlate}_${timestamp}.jpg`));
+      files.push(dataUrlToFile(dashboardPhotoDataUrl, `2_painel_${safePlate}_${timestamp}.jpg`));
+    }
+  } else if (photoDataUrl) {
+    try {
+      const filename1 = `registro_${safePlate}_${timestamp}.jpg`;
+      files.push(dataUrlToFile(photoDataUrl, filename1));
+    } catch (e) {
+      console.warn('Erro ao processar foto da placa para compartilhamento:', e);
+    }
+  } else if (dashboardPhotoDataUrl) {
+    try {
+      const filename2 = `painel_${safePlate}_${timestamp}.jpg`;
+      files.push(dataUrlToFile(dashboardPhotoDataUrl, filename2));
+    } catch (e) {
+      console.warn('Erro ao processar foto do painel para compartilhamento:', e);
+    }
+  }
+
+  if (files.length > 0) {
+    try {
       // 1. Try Native Web Share API with files (Supported in modern Android Chrome / WebViews)
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      if (navigator.canShare && navigator.canShare({ files })) {
         await navigator.share({
-          files: [file],
+          files,
           text: description,
-          title: 'Registro Veicular CMDIT',
+          title: `Registro Veicular ${safePlate}`,
         });
 
         return {
           success: true,
           method: 'web_share_files',
-          message: 'Compartilhado com sucesso via seletor nativo!',
+          message: dashboardPhotoDataUrl
+            ? 'Enviando comprovante com as 2 fotos (Placa e Painel) + legenda para o WhatsApp!'
+            : 'Compartilhado com sucesso via seletor nativo!',
         };
       }
     } catch (error: any) {
@@ -244,7 +301,7 @@ export async function shareToWhatsApp(options: ShareOptions): Promise<ShareResul
     return {
       success: true,
       method: 'whatsapp_intent',
-      message: 'Abrindo WhatsApp normal com a legenda...',
+      message: 'Abrindo WhatsApp com a legenda formatada...',
     };
   } catch (error) {
     console.warn('WhatsApp protocol error:', error);
@@ -265,4 +322,36 @@ export async function shareToWhatsApp(options: ShareOptions): Promise<ShareResul
       message: 'Compartilhamento não concluído.',
     };
   }
+}
+
+/**
+ * Share single photo directly to WhatsApp (useful when user wants to send photo 2 separately)
+ */
+export async function shareSinglePhoto(
+  dataUrl: string,
+  plate: string,
+  label: string,
+  text: string
+): Promise<ShareResult> {
+  const safePlate = plate ? plate.replace(/[^a-zA-Z0-9]/g, '') : 'veiculo';
+  const timestamp = Date.now();
+  const file = dataUrlToFile(dataUrl, `${label}_${safePlate}_${timestamp}.jpg`);
+
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({
+        files: [file],
+        text,
+        title: `Foto ${label} - ${safePlate}`,
+      });
+      return { success: true, method: 'web_share_files', message: `Foto enviada!` };
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        return { success: false, method: 'web_share_files', message: 'Cancelado.' };
+      }
+    }
+  }
+
+  openWhatsAppShare(text);
+  return { success: true, method: 'whatsapp_intent', message: 'Abrindo WhatsApp...' };
 }

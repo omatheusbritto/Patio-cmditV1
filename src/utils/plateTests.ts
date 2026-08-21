@@ -172,13 +172,13 @@ export function runAllUnitTests(): { passedCount: number; totalCount: number; re
   const t12_desc = generateRecordDescription({
     plate: 'RIO2A18',
     fuel: '8/8',
-    characteristic: '🔵 DT',
+    characteristic: '🟣 DT',
     location: 'PDC',
   });
-  const t12_expected = 'Placa: RIO2A18 | Combustível: 8/8 | Característica: 🔵 DT | Local: PDC';
+  const t12_expected = 'Placa: RIO2A18 | Combustível: 8/8 | Característica: 🟣 DT | Local: PDC';
   results.push({
     id: 'test_desc_dt',
-    name: 'Descrição com 🔵 DT e Local PDC',
+    name: 'Descrição com 🟣 DT e Local PDC',
     category: 'description',
     passed: t12_desc === t12_expected,
     expected: t12_expected,

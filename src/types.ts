@@ -1,6 +1,6 @@
 export type FuelLevel = '1/8' | '2/8' | '3/8' | '4/8' | '5/8' | '6/8' | '7/8' | '8/8';
 
-export type VehicleCharacteristic = '🟠 REVENDA' | '🟢 CONSUMIDOR' | '🔵 DT' | '⚪ OUTROS';
+export type VehicleCharacteristic = '🟣 DT' | '🟠 REVENDA' | '🟢 CONSUMIDOR' | '⚪ OUTROS';
 
 export type LocationCode = 'P1' | 'P2' | 'P3' | 'R1' | 'ADM' | 'PDC';
 

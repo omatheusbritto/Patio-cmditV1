@@ -29,7 +29,7 @@ import {
 import { LocationCode, OperationType, VehicleCharacteristic, VehicleRecord, VehicleStatus } from '../types';
 import { exportRecordsToCsv, SECTORS } from '../utils/storageService';
 import { formatPlateForDisplay } from '../utils/plateNormalizer';
-import { generateWhatsAppMessage, getLocationMeaning, openWhatsAppShare } from '../utils/shareService';
+import { generateWhatsAppMessage, getLocationMeaning, openWhatsAppShare, shareToWhatsApp } from '../utils/shareService';
 
 interface SmartHistoryProps {
   records: VehicleRecord[];
@@ -541,7 +541,7 @@ export const SmartHistory: React.FC<SmartHistoryProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={async () => {
                         const msg = generateWhatsAppMessage({
                           operationType: r.operationType,
                           plate: r.plate,
@@ -552,11 +552,18 @@ export const SmartHistory: React.FC<SmartHistoryProps> = ({
                           km: r.km,
                           hasSpareKey: r.hasSpareKey,
                           fleetType: r.fleetType,
+                          liters: r.liters,
+                          fuelType: r.fuelType,
                           location: r.location,
                           characteristic: r.characteristic,
                           timestamp: new Date(r.createdAt),
                         });
-                        openWhatsAppShare(msg);
+                        await shareToWhatsApp({
+                          photoDataUrl: r.photoDataUrl,
+                          dashboardPhotoDataUrl: r.dashboardPhotoUrl,
+                          description: msg,
+                          plate: r.plate,
+                        });
                       }}
                       className="p-1.5 px-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-bold flex items-center gap-1 transition border border-emerald-200"
                     >

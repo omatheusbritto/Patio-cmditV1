@@ -213,7 +213,7 @@ export default function App() {
       setLocation('PDC');
       setCurrentStep('fuel');
     } else if (op === 'qualidade_51') {
-      setCurrentStep('location');
+      setCurrentStep('characteristic');
     }
   };
 
@@ -229,19 +229,21 @@ export default function App() {
     setCurrentStep('fueling_details');
   };
 
-  // Fueling: submit manual data (KM, Fuel level, Liters, Fuel type, Driver)
+  // Fueling: submit manual data (KM, Fuel level, Liters, Fuel type, Driver, Destination)
   const handleSubmitFuelingDetails = (data: {
     km: string;
     fuel: FuelLevel;
     liters?: string;
     fuelType?: string;
     driverName?: string;
+    destination?: string;
   }) => {
     setKm(data.km);
     setFuel(data.fuel);
     if (data.liters !== undefined) setLiters(data.liters);
     if (data.fuelType !== undefined) setFuelType(data.fuelType);
     if (data.driverName !== undefined) setDriverName(data.driverName);
+    if (data.destination !== undefined) setDestination(data.destination);
     setCurrentStep('review');
   };
 
@@ -271,14 +273,14 @@ export default function App() {
   const handleSelectFuel = (selectedFuel: FuelLevel) => {
     setFuel(selectedFuel);
     if (operationType === 'qualidade_51') {
-      setCurrentStep('characteristic');
-    } else {
-      // For Entrada, Saída, PDC -> direct to review
-      if (operationType === 'entrada') setLocation(location || 'P1');
-      if (operationType === 'saida') setLocation(location || 'R1');
-      if (operationType === 'pdc') setLocation('PDC');
-      setCurrentStep('review');
+      setCurrentStep('location');
+      return;
     }
+    // For Entrada, Saída, PDC -> direct to review
+    if (operationType === 'entrada') setLocation(location || 'P1');
+    if (operationType === 'saida') setLocation(location || 'R1');
+    if (operationType === 'pdc') setLocation('PDC');
+    setCurrentStep('review');
   };
 
   // When user selects characteristic (for 51 Qualidade)
@@ -287,7 +289,9 @@ export default function App() {
   };
 
   const handleNextFromCharacteristic = () => {
-    setCurrentStep('review');
+    if (characteristic) {
+      setCurrentStep('fuel');
+    }
   };
 
   // When user selects location (for 51 Qualidade)
@@ -297,7 +301,7 @@ export default function App() {
 
   const handleNextFromQualityLocation = () => {
     if (location) {
-      setCurrentStep('fuel');
+      setCurrentStep('review');
     }
   };
 
@@ -456,18 +460,18 @@ export default function App() {
                 initialLiters={liters}
                 initialFuelType={fuelType}
                 initialDriverName={driverName}
+                initialDestination={destination}
                 onRetakeDashboardPhoto={() => setCurrentStep('dashboard_camera')}
                 onSubmit={handleSubmitFuelingDetails}
                 onBack={() => setCurrentStep('operation_select')}
               />
             )}
 
-            {currentStep === 'location' && operationType === 'qualidade_51' && (
-              <QualityLocationSelector
-                plate={plate}
-                selectedLocation={location}
-                onSelectLocation={handleSelectQualityLocation}
-                onNext={handleNextFromQualityLocation}
+            {currentStep === 'characteristic' && operationType === 'qualidade_51' && (
+              <CharacteristicSelector
+                selectedCharacteristic={characteristic}
+                onSelectCharacteristic={handleSelectCharacteristic}
+                onNext={handleNextFromCharacteristic}
                 onBack={() => setCurrentStep('operation_select')}
               />
             )}
@@ -480,7 +484,7 @@ export default function App() {
                   if (operationType === 'entrada' || operationType === 'saida') {
                     setCurrentStep('operation_details');
                   } else if (operationType === 'qualidade_51') {
-                    setCurrentStep('location');
+                    setCurrentStep('characteristic');
                   } else {
                     setCurrentStep('operation_select');
                   }
@@ -488,11 +492,12 @@ export default function App() {
               />
             )}
 
-            {currentStep === 'characteristic' && operationType === 'qualidade_51' && (
-              <CharacteristicSelector
-                selectedCharacteristic={characteristic}
-                onSelectCharacteristic={handleSelectCharacteristic}
-                onNext={handleNextFromCharacteristic}
+            {currentStep === 'location' && operationType === 'qualidade_51' && (
+              <QualityLocationSelector
+                plate={plate}
+                selectedLocation={location}
+                onSelectLocation={handleSelectQualityLocation}
+                onNext={handleNextFromQualityLocation}
                 onBack={() => setCurrentStep('fuel')}
               />
             )}
