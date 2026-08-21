@@ -19,6 +19,7 @@ import {
   LogIn,
   Package,
   ShieldCheck,
+  Wrench,
 } from 'lucide-react';
 import { LocationCode, PatioMetrics, VehicleRecord } from '../types';
 import { SECTORS } from '../utils/storageService';
@@ -71,7 +72,7 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
       case 'saida':
         return <LogOut className="w-3.5 h-3.5 text-rose-700" />;
       case 'pdc':
-        return <Package className="w-3.5 h-3.5 text-amber-700" />;
+        return <Wrench className="w-3.5 h-3.5 text-amber-700" />;
       case 'qualidade_51':
         return <ShieldCheck className="w-3.5 h-3.5 text-indigo-700" />;
       default:

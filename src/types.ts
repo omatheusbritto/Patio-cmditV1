@@ -6,13 +6,15 @@ export type LocationCode = 'P1' | 'P2' | 'P3' | 'R1' | 'ADM' | 'PDC';
 
 export type QualityLocationCode = 'P1' | 'P2' | 'P3' | 'R1';
 
-export type OperationType = 'entrada' | 'saida' | 'pdc' | 'qualidade_51';
+export type OperationType = 'entrada' | 'saida' | 'abastecimento' | 'pdc' | 'qualidade_51';
 
-export type VehicleFleetType = 'RAC' | 'GF';
+export type EntrySubtype = 'bolsao_40' | 'retorno' | 'recusa';
+
+export type VehicleFleetType = 'RAC' | 'GF' | 'OUTROS' | string;
 
 export type VehicleStatus = 'parked' | 'released';
 
-export type NavTab = 'register' | 'patio' | 'history' | 'diagnostics';
+export type NavTab = 'register' | 'patio' | 'history';
 
 export type Step =
   | 'home'
@@ -21,6 +23,8 @@ export type Step =
   | 'plate_confirm'
   | 'operation_select'
   | 'operation_details'
+  | 'dashboard_camera'
+  | 'fueling_details'
   | 'fuel'
   | 'characteristic'
   | 'location'
@@ -31,6 +35,8 @@ export interface VehicleRecord {
   createdAt: number;
   photoDataUrl: string;
   photoBlob?: Blob;
+  dashboardPhotoUrl?: string;
+  dashboardPhotoBlob?: Blob;
   plate: string;
   plateSource?: 'local_ocr' | 'gemini_ai' | 'manual';
   rawOcrText?: string;
@@ -44,6 +50,12 @@ export interface VehicleRecord {
   km?: string | number;
   hasSpareKey?: boolean;
   fleetType?: VehicleFleetType;
+  entrySubtype?: EntrySubtype;
+  entryReason?: string;
+
+  // Fueling specifics
+  liters?: string | number;
+  fuelType?: string;
 
   // General fields
   fuel: FuelLevel;
@@ -70,6 +82,7 @@ export interface PatioMetrics {
   totalReleased: number;
   totalEntradas: number;
   totalSaidas: number;
+  totalAbastecimento: number;
   totalPdc: number;
   totalQualidade: number;
   averageFuelNumeric: number; // 1 to 8

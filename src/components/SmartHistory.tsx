@@ -15,6 +15,7 @@ import {
   LogIn,
   Package,
   ShieldCheck,
+  Wrench,
   RotateCcw,
   Sparkles,
   FileSpreadsheet,
@@ -66,14 +67,16 @@ export const SmartHistory: React.FC<SmartHistoryProps> = ({
     const startOfWeek = startOfToday - 7 * 24 * 60 * 60 * 1000;
 
     return records.filter((r) => {
-      // 1. Search Query (Plate, Driver, Origin/Dest or notes)
+      // 1. Search Query (Plate, Driver, Origin/Dest, entryReason or notes)
       if (cleanSearch) {
         const plateMatch = r.plate.toUpperCase().includes(cleanSearch);
         const driverMatch = r.driverName?.toUpperCase().includes(cleanSearch);
         const originMatch = r.origin?.toUpperCase().includes(cleanSearch);
         const destMatch = r.destination?.toUpperCase().includes(cleanSearch);
         const notesMatch = r.notes?.toUpperCase().includes(cleanSearch);
-        if (!plateMatch && !driverMatch && !originMatch && !destMatch && !notesMatch) return false;
+        const reasonMatch = r.entryReason?.toUpperCase().includes(cleanSearch);
+        const subtypeMatch = r.entrySubtype?.toUpperCase().includes(cleanSearch);
+        if (!plateMatch && !driverMatch && !originMatch && !destMatch && !notesMatch && !reasonMatch && !subtypeMatch) return false;
       }
 
       // 2. Operation Filter
@@ -118,8 +121,10 @@ export const SmartHistory: React.FC<SmartHistoryProps> = ({
         return { label: 'Entrada', color: 'bg-emerald-100 text-emerald-900 border-emerald-300', icon: LogIn };
       case 'saida':
         return { label: 'Saída', color: 'bg-rose-100 text-rose-900 border-rose-300', icon: LogOut };
+      case 'abastecimento':
+        return { label: 'Abastecimento', color: 'bg-cyan-100 text-cyan-900 border-cyan-300', icon: Fuel };
       case 'pdc':
-        return { label: 'PDC', color: 'bg-amber-100 text-amber-900 border-amber-300', icon: Package };
+        return { label: 'Fila PDC', color: 'bg-amber-100 text-amber-900 border-amber-300', icon: Wrench };
       case 'qualidade_51':
         return { label: '51 Qualidade', color: 'bg-indigo-100 text-indigo-900 border-indigo-300', icon: ShieldCheck };
       default:
@@ -213,6 +218,19 @@ export const SmartHistory: React.FC<SmartHistoryProps> = ({
         >
           <LogOut className="w-3 h-3" />
           Saída
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setOperationFilter('abastecimento')}
+          className={`px-2.5 py-1 rounded-xl text-xs font-bold whitespace-nowrap transition border flex items-center gap-1 ${
+            operationFilter === 'abastecimento'
+              ? 'bg-cyan-700 text-white border-cyan-800'
+              : 'bg-cyan-50 text-cyan-800 border-cyan-200 hover:bg-cyan-100'
+          }`}
+        >
+          <Fuel className="w-3 h-3" />
+          Abastecer
         </button>
 
         <button
@@ -382,9 +400,79 @@ export const SmartHistory: React.FC<SmartHistoryProps> = ({
                     <div>
                       <span className="text-[9px] text-neutral-400 block uppercase font-bold">Chave Reserva / Tipo</span>
                       <span className="font-bold text-neutral-800 text-[11px]">
-                        {r.hasSpareKey ? '🔑 Sim' : '❌ Não'} • <span className="text-blue-700 font-black">{r.fleetType || 'RAC'}</span>
+                        {r.hasSpareKey ? '🔑 Sim' : '❌ Não'}
+                        {r.fleetType ? (
+                          <> • <span className="text-blue-700 font-black">{r.fleetType}</span></>
+                        ) : null}
                       </span>
                     </div>
+
+                    {r.operationType === 'entrada' && r.entrySubtype && (
+                      <div className="col-span-2 pt-1 border-t border-neutral-200/80 flex flex-col gap-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[9px] text-neutral-400 uppercase font-bold">Local:</span>
+                          <span
+                            className={`font-black text-[10px] px-1.5 py-0.5 rounded ${
+                              r.entrySubtype === 'bolsao_40'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : r.entrySubtype === 'retorno'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-rose-100 text-rose-800'
+                            }`}
+                          >
+                            {r.entrySubtype === 'bolsao_40' ? 'Bolsão 40' : r.entrySubtype === 'retorno' ? 'Retorno' : 'Recusa'}
+                          </span>
+                        </div>
+                        {r.entryReason && (
+                          <span className="text-[11px] text-neutral-600 italic">
+                            Motivo: {r.entryReason}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {r.operationType === 'abastecimento' && (
+                  <div className="bg-cyan-50/80 rounded-xl p-2.5 border border-cyan-200 text-xs grid grid-cols-2 gap-1.5">
+                    <div>
+                      <span className="text-[9px] text-cyan-800 block uppercase font-bold">Odômetro / KM</span>
+                      <span className="font-mono font-black text-neutral-900">
+                        {r.km ? `${r.km} km` : 'Não informado'}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-[9px] text-cyan-800 block uppercase font-bold">Nível do Tanque</span>
+                      <span className="font-black text-emerald-700">
+                        {r.fuel}
+                      </span>
+                    </div>
+
+                    {r.liters && (
+                      <div>
+                        <span className="text-[9px] text-cyan-800 block uppercase font-bold">Litros</span>
+                        <span className="font-bold text-neutral-800">
+                          {r.liters} L
+                        </span>
+                      </div>
+                    )}
+
+                    {r.fuelType && (
+                      <div>
+                        <span className="text-[9px] text-cyan-800 block uppercase font-bold">Combustível</span>
+                        <span className="font-bold text-neutral-800">
+                          {r.fuelType}
+                        </span>
+                      </div>
+                    )}
+
+                    {r.driverName && (
+                      <div className="col-span-2 pt-1 border-t border-cyan-200/80">
+                        <span className="text-[9px] text-cyan-800 block uppercase font-bold">Responsável</span>
+                        <span className="font-bold text-neutral-800">{r.driverName}</span>
+                      </div>
+                    )}
                   </div>
                 )}
 

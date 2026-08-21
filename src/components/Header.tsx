@@ -1,11 +1,10 @@
 import React from 'react';
-import { Car, CheckCircle2, RotateCcw, ShieldCheck, History } from 'lucide-react';
+import { Car, CheckCircle2, RotateCcw, History } from 'lucide-react';
 import { Step } from '../types';
 
 interface HeaderProps {
   currentStep: Step;
   onReset: () => void;
-  onOpenTests: () => void;
   onOpenHistory: () => void;
   historyCount: number;
 }
@@ -17,6 +16,8 @@ const STEP_CONFIG: Record<Step, { label: string; number: number }> = {
   plate_confirm: { label: 'Placa', number: 1 },
   operation_select: { label: 'Operação', number: 2 },
   operation_details: { label: 'Detalhes', number: 3 },
+  dashboard_camera: { label: 'Foto Painel', number: 3 },
+  fueling_details: { label: 'Abastecimento', number: 3 },
   fuel: { label: 'Combustível', number: 3 },
   characteristic: { label: 'Característica', number: 4 },
   location: { label: 'Local', number: 4 },
@@ -26,7 +27,6 @@ const STEP_CONFIG: Record<Step, { label: string; number: number }> = {
 export const Header: React.FC<HeaderProps> = ({
   currentStep,
   onReset,
-  onOpenTests,
   onOpenHistory,
   historyCount,
 }) => {
@@ -63,15 +63,6 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Action buttons */}
           <div className="flex items-center gap-1">
-            <button
-              onClick={onOpenTests}
-              title="Testes de Placa & Diagnóstico"
-              className="p-2 rounded-lg bg-emerald-900/60 hover:bg-emerald-700 active:scale-95 text-emerald-200 transition-colors flex items-center gap-1 text-xs"
-            >
-              <ShieldCheck className="w-4 h-4 text-emerald-300" />
-              <span className="hidden sm:inline font-semibold">Testes</span>
-            </button>
-
             <button
               onClick={onOpenHistory}
               title="Histórico de Registros"

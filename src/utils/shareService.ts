@@ -1,4 +1,4 @@
-import { OperationType, VehicleFleetType, VehicleRecord } from '../types';
+import { EntrySubtype, OperationType, VehicleFleetType, VehicleRecord } from '../types';
 
 /**
  * Helper to convert Data URL to a Blob/File for native Web Share API
@@ -18,6 +18,7 @@ export function dataUrlToFile(dataUrl: string, filename: string): File {
 
 export interface ShareOptions {
   photoDataUrl?: string;
+  dashboardPhotoDataUrl?: string;
   description: string;
   plate: string;
 }
@@ -38,6 +39,10 @@ export interface FormattedVehicleMessageData {
   km?: string | number;
   hasSpareKey?: boolean;
   fleetType?: VehicleFleetType;
+  entrySubtype?: EntrySubtype;
+  entryReason?: string;
+  liters?: string | number;
+  fuelType?: string;
   location?: string;
   characteristic?: string | null;
   notes?: string;
@@ -61,6 +66,19 @@ export function getLocationMeaning(loc?: string): string {
       return 'ADM (Administração)';
     default:
       return loc;
+  }
+}
+
+export function getEntrySubtypeLabel(subtype?: EntrySubtype): string {
+  switch (subtype) {
+    case 'bolsao_40':
+      return 'Bolsão 40';
+    case 'retorno':
+      return 'Retorno';
+    case 'recusa':
+      return 'Recusa';
+    default:
+      return '';
   }
 }
 
@@ -92,7 +110,16 @@ export function generateWhatsAppMessage(data: FormattedVehicleMessageData): stri
       lines.push(`*KM:* ${data.km ? `${data.km} km` : 'Não informado'}`);
       lines.push(`*Combustível:* ${data.fuel}`);
       lines.push(`*Chave Reserva:* ${data.hasSpareKey ? 'SIM' : 'NÃO'}`);
-      lines.push(`*Tipo de Veículo:* ${data.fleetType || 'RAC'}`);
+      if (data.fleetType && data.fleetType.trim()) {
+        lines.push(`*Tipo de Veículo:* ${data.fleetType.trim()}`);
+      }
+      if (data.entrySubtype) {
+        const subtypeLabel = getEntrySubtypeLabel(data.entrySubtype);
+        lines.push(`*Local:* ${subtypeLabel}`);
+        if ((data.entrySubtype === 'retorno' || data.entrySubtype === 'recusa') && data.entryReason?.trim()) {
+          lines.push(`*Motivo do ${subtypeLabel}:* ${data.entryReason.trim()}`);
+        }
+      }
       break;
 
     case 'saida':
@@ -102,7 +129,24 @@ export function generateWhatsAppMessage(data: FormattedVehicleMessageData): stri
       lines.push(`*KM:* ${data.km ? `${data.km} km` : 'Não informado'}`);
       lines.push(`*Combustível:* ${data.fuel}`);
       lines.push(`*Chave Reserva:* ${data.hasSpareKey ? 'SIM' : 'NÃO'}`);
-      lines.push(`*Tipo de Veículo:* ${data.fleetType || 'RAC'}`);
+      if (data.fleetType && data.fleetType.trim()) {
+        lines.push(`*Tipo de Veículo:* ${data.fleetType.trim()}`);
+      }
+      break;
+
+    case 'abastecimento':
+      lines.push(`*Placa:* ${data.plate}`);
+      lines.push(`*Odômetro / KM:* ${data.km ? `${data.km} km` : 'Não informado'}`);
+      lines.push(`*Nível do Tanque:* ${data.fuel}`);
+      if (data.liters && String(data.liters).trim()) {
+        lines.push(`*Litros Abastecidos:* ${String(data.liters).trim()} L`);
+      }
+      if (data.fuelType && data.fuelType.trim()) {
+        lines.push(`*Tipo de Combustível:* ${data.fuelType.trim()}`);
+      }
+      if (data.driverName && data.driverName.trim()) {
+        lines.push(`*Responsável:* ${data.driverName.trim()}`);
+      }
       break;
 
     case 'pdc':

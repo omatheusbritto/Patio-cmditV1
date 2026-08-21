@@ -294,12 +294,14 @@ export function calculatePatioMetrics(records: VehicleRecord[]): PatioMetrics {
 
   let totalEntradas = 0;
   let totalSaidas = 0;
+  let totalAbastecimento = 0;
   let totalPdc = 0;
   let totalQualidade = 0;
 
   records.forEach(r => {
     if (r.operationType === 'entrada') totalEntradas++;
     else if (r.operationType === 'saida') totalSaidas++;
+    else if (r.operationType === 'abastecimento') totalAbastecimento++;
     else if (r.operationType === 'pdc') totalPdc++;
     else if (r.operationType === 'qualidade_51') totalQualidade++;
   });
@@ -365,6 +367,7 @@ export function calculatePatioMetrics(records: VehicleRecord[]): PatioMetrics {
     totalReleased: releasedVehicles.length,
     totalEntradas,
     totalSaidas,
+    totalAbastecimento,
     totalPdc,
     totalQualidade,
     averageFuelNumeric,
@@ -384,11 +387,15 @@ export function exportRecordsToCsv(records: VehicleRecord[]): void {
     'Operação',
     'Placa',
     'Status',
-    'Condutor',
+    'Condutor/Responsável',
     'Origem / Destino',
-    'KM',
+    'KM / Odômetro',
+    'Litros Abastecidos',
+    'Tipo Combustível',
     'Chave Reserva',
     'Tipo Frota (RAC/GF)',
+    'Local Entrada',
+    'Motivo Entrada',
     'Setor/Local',
     'Nível Combustível',
     'Característica',
@@ -398,8 +405,14 @@ export function exportRecordsToCsv(records: VehicleRecord[]): void {
   const rows = records.map(r => {
     let opLabel = 'Entrada';
     if (r.operationType === 'saida') opLabel = 'Saída';
+    else if (r.operationType === 'abastecimento') opLabel = 'Abastecimento';
     else if (r.operationType === 'pdc') opLabel = 'PDC';
     else if (r.operationType === 'qualidade_51') opLabel = '51 (Qualidade)';
+
+    let entrySubtypeLabel = '-';
+    if (r.entrySubtype === 'bolsao_40') entrySubtypeLabel = 'Bolsão 40';
+    else if (r.entrySubtype === 'retorno') entrySubtypeLabel = 'Retorno';
+    else if (r.entrySubtype === 'recusa') entrySubtypeLabel = 'Recusa';
 
     return [
       new Date(r.createdAt).toLocaleString('pt-BR'),
@@ -409,8 +422,12 @@ export function exportRecordsToCsv(records: VehicleRecord[]): void {
       r.driverName || '-',
       r.origin || r.destination || '-',
       r.km ? `${r.km} km` : '-',
+      r.liters ? `${r.liters} L` : '-',
+      r.fuelType || '-',
       r.hasSpareKey !== undefined ? (r.hasSpareKey ? 'Sim' : 'Não') : '-',
       r.fleetType || '-',
+      entrySubtypeLabel,
+      (r.entryReason || '-').replace(/,/g, ' '),
       r.location || '-',
       r.fuel,
       r.characteristic || '-',

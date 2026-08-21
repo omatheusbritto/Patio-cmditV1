@@ -31,8 +31,8 @@ export const OfflineStatusBanner: React.FC = () => {
   if (!isOnline) {
     return (
       <div className="bg-amber-600 text-white px-3 py-1.5 text-xs font-bold flex items-center justify-center gap-2 shadow-inner">
-        <Zap className="w-3.5 h-3.5 text-amber-200 animate-pulse" />
-        <span>⚡ Modo Offline 100% Ativo • Salvando tudo no aparelho (Android 12+)</span>
+        <WifiOff className="w-3.5 h-3.5 text-amber-200" />
+        <span>Sem conexão à internet • Dados salvos localmente no aparelho</span>
       </div>
     );
   }

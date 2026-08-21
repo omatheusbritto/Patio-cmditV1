@@ -1,15 +1,12 @@
 import express, { Request, Response } from 'express';
 import path from 'path';
-import { fileURLToPath } from 'url';
-import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 import { spawn } from 'child_process';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const rootDir = process.cwd();
 
 // Priority order for ultra-fast, high-accuracy recognition
 const FAST_VISION_MODELS = [
@@ -26,7 +23,7 @@ function executePythonEngine(photoDataUrl: string, apiKey: string): Promise<any>
   return new Promise((resolve) => {
     try {
       const pythonProcess = spawn('python3', [
-        path.join(__dirname, 'python_engine', 'plate_reader.py'),
+        path.join(rootDir, 'python_engine', 'plate_reader.py'),
       ]);
 
       let stdout = '';
@@ -255,15 +252,16 @@ REGRAS ESTRITAS DE ZERO ALUCINAÇÃO:
 
   // Vite middleware for development vs Static serving for production
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = path.join(rootDir, 'dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
+    app.get('*', (req: Request, res: Response) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

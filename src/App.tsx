@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
+  EntrySubtype,
   FuelLevel,
   LocationCode,
   NavTab,
@@ -32,8 +33,9 @@ import { QualityLocationSelector } from './components/QualityLocationSelector';
 import { FuelSelector } from './components/FuelSelector';
 import { CharacteristicSelector } from './components/CharacteristicSelector';
 import { LocationSelector } from './components/LocationSelector';
+import { DashboardCameraView } from './components/DashboardCameraView';
+import { FuelingDetailsForm } from './components/FuelingDetailsForm';
 import { ReviewAndShare } from './components/ReviewAndShare';
-import { TestDiagnosticsModal } from './components/TestDiagnosticsModal';
 import { HistoryModal } from './components/HistoryModal';
 import { PatioDashboard } from './components/PatioDashboard';
 import { SmartHistory } from './components/SmartHistory';
@@ -64,7 +66,14 @@ export default function App() {
   const [destination, setDestination] = useState<string>('');
   const [km, setKm] = useState<string>('');
   const [hasSpareKey, setHasSpareKey] = useState<boolean>(true);
-  const [fleetType, setFleetType] = useState<VehicleFleetType>('RAC');
+  const [fleetType, setFleetType] = useState<VehicleFleetType | undefined>(undefined);
+  const [entrySubtype, setEntrySubtype] = useState<EntrySubtype | undefined>(undefined);
+  const [entryReason, setEntryReason] = useState<string>('');
+
+  // Fueling specifics
+  const [dashboardPhotoUrl, setDashboardPhotoUrl] = useState<string>('');
+  const [liters, setLiters] = useState<string>('');
+  const [fuelType, setFuelType] = useState<string>('');
 
   // Fuel, Location & Characteristics
   const [fuel, setFuel] = useState<FuelLevel | null>(null);
@@ -76,7 +85,6 @@ export default function App() {
   const [ocrProgressMsg, setOcrProgressMsg] = useState<string>('Lendo placa...');
 
   // Modals state
-  const [isTestsModalOpen, setIsTestsModalOpen] = useState<boolean>(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState<boolean>(false);
 
   // History & Patio Records (IndexedDB + Offline Persistent)
@@ -111,7 +119,13 @@ export default function App() {
     setDestination('');
     setKm('');
     setHasSpareKey(true);
-    setFleetType('RAC');
+    setFleetType(undefined);
+    setEntrySubtype(undefined);
+    setEntryReason('');
+
+    setDashboardPhotoUrl('');
+    setLiters('');
+    setFuelType('');
 
     setFuel(null);
     setCharacteristic(null);
@@ -193,12 +207,42 @@ export default function App() {
     setOperationType(op);
     if (op === 'entrada' || op === 'saida') {
       setCurrentStep('operation_details');
+    } else if (op === 'abastecimento') {
+      setCurrentStep('dashboard_camera');
     } else if (op === 'pdc') {
       setLocation('PDC');
       setCurrentStep('fuel');
     } else if (op === 'qualidade_51') {
       setCurrentStep('location');
     }
+  };
+
+  // Fueling: when dashboard photo is captured
+  const handleDashboardPhotoCaptured = (dataUrl: string) => {
+    setDashboardPhotoUrl(dataUrl);
+    setCurrentStep('fueling_details');
+  };
+
+  // Fueling: skip dashboard photo
+  const handleSkipDashboardPhoto = () => {
+    setDashboardPhotoUrl('');
+    setCurrentStep('fueling_details');
+  };
+
+  // Fueling: submit manual data (KM, Fuel level, Liters, Fuel type, Driver)
+  const handleSubmitFuelingDetails = (data: {
+    km: string;
+    fuel: FuelLevel;
+    liters?: string;
+    fuelType?: string;
+    driverName?: string;
+  }) => {
+    setKm(data.km);
+    setFuel(data.fuel);
+    if (data.liters !== undefined) setLiters(data.liters);
+    if (data.fuelType !== undefined) setFuelType(data.fuelType);
+    if (data.driverName !== undefined) setDriverName(data.driverName);
+    setCurrentStep('review');
   };
 
   // When user submits operation details (Entrada / Saída)
@@ -208,7 +252,9 @@ export default function App() {
     destination?: string;
     km: string;
     hasSpareKey: boolean;
-    fleetType: VehicleFleetType;
+    fleetType?: VehicleFleetType;
+    entrySubtype?: EntrySubtype;
+    entryReason?: string;
   }) => {
     setDriverName(details.driverName);
     if (details.origin) setOrigin(details.origin);
@@ -216,6 +262,8 @@ export default function App() {
     setKm(details.km);
     setHasSpareKey(details.hasSpareKey);
     setFleetType(details.fleetType);
+    setEntrySubtype(details.entrySubtype);
+    setEntryReason(details.entryReason || '');
     setCurrentStep('fuel');
   };
 
@@ -256,6 +304,7 @@ export default function App() {
   // Save completed record to persistent storage and update patio
   const handleSaveToHistory = async (recordData: {
     photoDataUrl: string;
+    dashboardPhotoUrl?: string;
     plate: string;
     operationType: OperationType;
     fuel: FuelLevel;
@@ -263,8 +312,12 @@ export default function App() {
     origin?: string;
     destination?: string;
     km?: string | number;
+    liters?: string;
+    fuelType?: string;
     hasSpareKey?: boolean;
     fleetType?: VehicleFleetType;
+    entrySubtype?: EntrySubtype;
+    entryReason?: string;
     characteristic?: VehicleCharacteristic | null;
     location?: LocationCode;
     description: string;
@@ -305,9 +358,6 @@ export default function App() {
   // Handle Tab Switch
   const handleSelectTab = (tab: NavTab) => {
     setActiveTab(tab);
-    if (tab === 'diagnostics') {
-      setIsTestsModalOpen(true);
-    }
   };
 
   return (
@@ -319,7 +369,6 @@ export default function App() {
       <Header
         currentStep={currentStep}
         onReset={handleReset}
-        onOpenTests={() => setIsTestsModalOpen(true)}
         onOpenHistory={() => setActiveTab('history')}
         historyCount={records.length}
       />
@@ -334,7 +383,6 @@ export default function App() {
                 onStartRegistration={() => handleStartRegistration()}
                 onOpenPatio={() => setActiveTab('patio')}
                 onOpenHistory={() => setActiveTab('history')}
-                onOpenTests={() => setIsTestsModalOpen(true)}
                 metrics={patioMetrics}
               />
             )}
@@ -382,7 +430,34 @@ export default function App() {
                 initialKm={km}
                 initialHasSpareKey={hasSpareKey}
                 initialFleetType={fleetType}
+                initialEntrySubtype={entrySubtype}
+                initialEntryReason={entryReason}
                 onSubmit={handleSubmitOperationDetails}
+                onBack={() => setCurrentStep('operation_select')}
+              />
+            )}
+
+            {currentStep === 'dashboard_camera' && (
+              <DashboardCameraView
+                plate={plate}
+                onPhotoCaptured={handleDashboardPhotoCaptured}
+                onSkip={handleSkipDashboardPhoto}
+                onBack={() => setCurrentStep('operation_select')}
+              />
+            )}
+
+            {currentStep === 'fueling_details' && (
+              <FuelingDetailsForm
+                plate={plate}
+                platePhotoUrl={photoDataUrl}
+                dashboardPhotoUrl={dashboardPhotoUrl}
+                initialKm={km}
+                initialFuel={fuel || '8/8'}
+                initialLiters={liters}
+                initialFuelType={fuelType}
+                initialDriverName={driverName}
+                onRetakeDashboardPhoto={() => setCurrentStep('dashboard_camera')}
+                onSubmit={handleSubmitFuelingDetails}
                 onBack={() => setCurrentStep('operation_select')}
               />
             )}
@@ -425,6 +500,7 @@ export default function App() {
             {currentStep === 'review' && fuel && (
               <ReviewAndShare
                 photoDataUrl={photoDataUrl}
+                dashboardPhotoUrl={dashboardPhotoUrl}
                 plate={plate}
                 operationType={operationType}
                 fuel={fuel}
@@ -432,15 +508,32 @@ export default function App() {
                 origin={origin}
                 destination={destination}
                 km={km}
+                liters={liters}
+                fuelType={fuelType}
                 hasSpareKey={hasSpareKey}
                 fleetType={fleetType}
+                entrySubtype={entrySubtype}
+                entryReason={entryReason}
                 characteristic={characteristic}
                 location={location}
                 onEditPlate={() => setCurrentStep('plate_confirm')}
                 onRetakePhoto={() => setCurrentStep('camera')}
+                onRetakeDashboardPhoto={() => setCurrentStep('dashboard_camera')}
                 onEditOperation={() => setCurrentStep('operation_select')}
-                onEditDetails={() => setCurrentStep('operation_details')}
-                onEditFuel={() => setCurrentStep('fuel')}
+                onEditDetails={() => {
+                  if (operationType === 'abastecimento') {
+                    setCurrentStep('fueling_details');
+                  } else {
+                    setCurrentStep('operation_details');
+                  }
+                }}
+                onEditFuel={() => {
+                  if (operationType === 'abastecimento') {
+                    setCurrentStep('fueling_details');
+                  } else {
+                    setCurrentStep('fuel');
+                  }
+                }}
                 onEditLocation={() => setCurrentStep('location')}
                 onEditCharacteristic={() => setCurrentStep('characteristic')}
                 onNewRegistration={handleReset}
@@ -477,9 +570,18 @@ export default function App() {
         )}
       </main>
 
-      {/* Global Developer Signature Footer (when not obscured by bottom nav) */}
-      <footer className="w-full py-2 pb-20 text-center text-[11px] text-neutral-400 font-medium">
-        Registro Veicular CMDIT • Desenvolvido por <span className="font-bold text-neutral-700">@omatheusbritto</span>
+      {/* Global Developer Signature Footer (bottom right, single instance, WhatsApp link) */}
+      <footer className="w-full max-w-md mx-auto px-4 py-1 pb-24 flex justify-end">
+        <a
+          href="https://wa.me/5511963816345?text=Ol%C3%A1%20Matheus%2C%20estou%20entrando%20em%20contato%20sobre%20o%20Registro%20Veicular%20CMDIT"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-[10px] text-neutral-400 hover:text-emerald-700 active:scale-95 transition-all font-medium py-1 px-1.5 rounded-lg hover:bg-emerald-50/80"
+          title="Falar com Matheus Britto no WhatsApp"
+        >
+          <span>Desenvolvido por</span>
+          <span className="font-bold text-neutral-600 hover:text-emerald-700 hover:underline">@omatheusbritto</span>
+        </a>
       </footer>
 
       {/* Android 12+ Bottom Navigation Bar */}
@@ -491,15 +593,6 @@ export default function App() {
           historyCount={records.length}
         />
       )}
-
-      {/* Test & Diagnostics Modal */}
-      <TestDiagnosticsModal
-        isOpen={isTestsModalOpen}
-        onClose={() => {
-          setIsTestsModalOpen(false);
-          if (activeTab === 'diagnostics') setActiveTab('register');
-        }}
-      />
 
       {/* Legacy History Modal if triggered from header */}
       <HistoryModal
