@@ -21,6 +21,14 @@ import {
   getEntrySubtypeLabel,
 } from '../utils/shareService';
 import {
+  getStoredDriveConfig,
+  getCachedGoogleToken,
+  appendRecordToGoogleSheets,
+  requestGoogleAccessToken,
+  DEFAULT_SPREADSHEET_ID,
+} from '../utils/googleDriveClient';
+import { getCurrentSession } from '../utils/authService';
+import {
   Camera,
   CheckCircle2,
   Copy,
@@ -44,6 +52,7 @@ import {
   Wrench,
   RotateCcw,
   Ban,
+  FileSpreadsheet,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -151,6 +160,8 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
     characteristic,
   });
 
+  const [sheetSyncStatus, setSheetSyncStatus] = useState<string | null>(null);
+
   // Handle WhatsApp Share with double-click lock & status messages
   const handleShare = async () => {
     if (isSharing) return;
@@ -180,6 +191,76 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
       location: location || (operationType === 'pdc' ? 'PDC' : 'P1'),
       description: messageText,
     });
+
+    // Auto-record to Google Sheets if configured (Append-Only mode)
+    const driveConfig = getStoredDriveConfig();
+    const session = getCurrentSession();
+    const isMaster = session?.user.role === 'master' || session?.user.username.toLowerCase() === 'mastercmdit';
+    const operatorName = session ? `${session.user.name} (${session.user.username})` : 'Operador';
+    const targetSpreadsheetId = driveConfig.spreadsheetId || DEFAULT_SPREADSHEET_ID;
+
+    if (targetSpreadsheetId) {
+      let googleToken = getCachedGoogleToken();
+      
+      const recordPayload = {
+        plate: cleanPlate,
+        operationType,
+        fuel,
+        operatorName,
+        driverName,
+        origin,
+        destination,
+        km,
+        hasSpareKey,
+        fleetType,
+        entrySubtype,
+        entryReason,
+        liters,
+        fuelType,
+        characteristic,
+        location: location || undefined,
+      };
+
+      if (googleToken) {
+        setSheetSyncStatus('Gravando dados com segurança...');
+        appendRecordToGoogleSheets(targetSpreadsheetId, recordPayload, googleToken)
+          .then((res) => {
+            setSheetSyncStatus(
+              isMaster
+                ? `✅ Gravado com sucesso na aba ${res.tabName}`
+                : '✅ Dados gravados com sucesso!'
+            );
+          })
+          .catch((err) => {
+            console.warn('Sheets sync warning:', err);
+            setSheetSyncStatus(
+              isMaster
+                ? `⚠️ Erro ao gravar no Sheets: ${err.message || 'Verifique a permissão'}`
+                : '✅ Dados registrados localmente.'
+            );
+          });
+      } else {
+        // Attempt quick token request or notify
+        requestGoogleAccessToken()
+          .then((newToken) => {
+            setSheetSyncStatus('Gravando dados com segurança...');
+            return appendRecordToGoogleSheets(targetSpreadsheetId, recordPayload, newToken);
+          })
+          .then((res) => {
+            setSheetSyncStatus(
+              isMaster
+                ? `✅ Gravado com sucesso na aba ${res.tabName}`
+                : '✅ Dados gravados com sucesso!'
+            );
+          })
+          .catch((authErr) => {
+            console.warn('Could not auto-request token:', authErr);
+            if (isMaster) {
+              setSheetSyncStatus('⚠️ Planilha vinculada. Conecte sua conta Google no início para sincronizar.');
+            }
+          });
+      }
+    }
 
     try {
       await new Promise((r) => setTimeout(r, 200));
@@ -466,44 +547,48 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
 
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
-                  <span className="text-[10px] text-neutral-500 block">Odômetro / KM:</span>
+                  <span className="text-[10px] text-neutral-500 block">Odômetro:</span>
                   <span className="font-mono font-black text-neutral-900 text-sm">
                     {km ? `${km} km` : 'Não informado'}
                   </span>
                 </div>
 
                 <div>
-                  <span className="text-[10px] text-neutral-500 block">Nível do Tanque:</span>
+                  <span className="text-[10px] text-neutral-500 block">Nível do combustível:</span>
                   <span className="font-black text-emerald-700 text-sm">
                     {fuel}
                   </span>
                 </div>
 
-                <div>
-                  <span className="text-[10px] text-neutral-500 block">Litros Abastecidos:</span>
-                  <span className="font-bold text-neutral-900">
-                    {liters ? `${liters} Litros` : 'Não informado'}
-                  </span>
-                </div>
-
-                <div>
-                  <span className="text-[10px] text-neutral-500 block">Tipo de Combustível:</span>
-                  <span className="font-bold text-neutral-900">
-                    {fuelType || 'Gasolina Comum'}
-                  </span>
-                </div>
+                {destination && (
+                  <div>
+                    <span className="text-[10px] text-neutral-500 block">Destino (Opcional):</span>
+                    <span className="font-bold text-neutral-900">{destination}</span>
+                  </div>
+                )}
 
                 {driverName && (
-                  <div className={destination ? 'col-span-1 pt-1 border-t border-cyan-200/60' : 'col-span-2 pt-1 border-t border-cyan-200/60'}>
-                    <span className="text-[10px] text-neutral-500 block">Responsável / Condutor:</span>
+                  <div>
+                    <span className="text-[10px] text-neutral-500 block">Condutor (Opcional):</span>
                     <span className="font-bold text-neutral-900">{driverName}</span>
                   </div>
                 )}
 
-                {destination && (
-                  <div className={driverName ? 'col-span-1 pt-1 border-t border-cyan-200/60' : 'col-span-2 pt-1 border-t border-cyan-200/60'}>
-                    <span className="text-[10px] text-neutral-500 block">Destino:</span>
-                    <span className="font-bold text-neutral-900">{destination}</span>
+                {liters && (
+                  <div>
+                    <span className="text-[10px] text-neutral-500 block">Litros:</span>
+                    <span className="font-bold text-neutral-900">
+                      {liters} L
+                    </span>
+                  </div>
+                )}
+
+                {fuelType && (
+                  <div>
+                    <span className="text-[10px] text-neutral-500 block">Tipo de Combustível:</span>
+                    <span className="font-bold text-neutral-900">
+                      {fuelType}
+                    </span>
                   </div>
                 )}
               </div>
@@ -557,10 +642,18 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
                   <span className="text-[10px] text-neutral-500 block">Chave Reserva:</span>
                   <span
                     className={`font-black ${
-                      hasSpareKey ? 'text-emerald-700' : 'text-neutral-700'
+                      hasSpareKey === true
+                        ? 'text-emerald-700'
+                        : hasSpareKey === false
+                        ? 'text-neutral-700'
+                        : 'text-neutral-400'
                     }`}
                   >
-                    {hasSpareKey ? '✅ SIM' : '❌ NÃO'}
+                    {hasSpareKey === true
+                      ? '✅ SIM'
+                      : hasSpareKey === false
+                      ? '❌ NÃO'
+                      : 'Não informada'}
                   </span>
                 </div>
 
@@ -585,6 +678,8 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
                         className={`font-black px-2 py-0.5 rounded text-[11px] ${
                           entrySubtype === 'bolsao_40'
                             ? 'bg-emerald-100 text-emerald-800'
+                            : entrySubtype === 'remocao_adesivos'
+                            ? 'bg-blue-100 text-blue-800'
                             : entrySubtype === 'retorno'
                             ? 'bg-amber-100 text-amber-800'
                             : 'bg-rose-100 text-rose-800'
@@ -723,6 +818,14 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
               <Sparkles className="w-4 h-4 shrink-0" />
             )}
             <span>{shareStatusMsg}</span>
+          </div>
+        )}
+
+        {/* Google Sheets Sync Indicator */}
+        {sheetSyncStatus && (
+          <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-900 border border-emerald-200 text-xs font-medium flex items-center gap-2">
+            <FileSpreadsheet className="w-4 h-4 text-emerald-700 shrink-0" />
+            <span>{sheetSyncStatus}</span>
           </div>
         )}
 

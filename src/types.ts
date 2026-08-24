@@ -8,7 +8,7 @@ export type QualityLocationCode = 'P1' | 'P2' | 'P3' | 'R1';
 
 export type OperationType = 'entrada' | 'saida' | 'abastecimento' | 'pdc' | 'qualidade_51';
 
-export type EntrySubtype = 'bolsao_40' | 'retorno' | 'recusa';
+export type EntrySubtype = 'bolsao_40' | 'retorno' | 'recusa' | 'remocao_adesivos';
 
 export type VehicleFleetType = 'RAC' | 'GF' | 'OUTROS' | string;
 
@@ -103,4 +103,28 @@ export interface OcrResult {
   rawText: string;
   isMercosul: boolean;
   isValid: boolean;
+}
+
+export type UserRole = 'master' | 'operador' | 'vistoriador' | 'motorista';
+
+export interface UserAccount {
+  id: string;
+  username: string; // Matrícula ou nome de usuário
+  name: string;
+  role: UserRole;
+  password?: string;
+  createdAt: string;
+  lastLogin?: string;
+  isActive: boolean;
+}
+
+export interface AuthSession {
+  user: {
+    id: string;
+    username: string;
+    name: string;
+    role: UserRole;
+  };
+  loginTimestamp: number;
+  expiresAt: number; // 8 horas após login
 }

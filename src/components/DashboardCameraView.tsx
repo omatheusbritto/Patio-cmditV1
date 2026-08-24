@@ -12,6 +12,7 @@ import {
   ArrowLeft,
   SkipForward,
 } from 'lucide-react';
+import { stampDateTimeOnCanvas, stampDateTimeOnDataUrl } from '../utils/imageOptimizer';
 
 interface DashboardCameraViewProps {
   plate: string;
@@ -123,6 +124,8 @@ export const DashboardCameraView: React.FC<DashboardCameraViewProps> = ({
     if (!ctx) return;
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    stampDateTimeOnCanvas(ctx, canvas.width, canvas.height, new Date());
+
     const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
 
     if (stream) {
@@ -137,12 +140,13 @@ export const DashboardCameraView: React.FC<DashboardCameraViewProps> = ({
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       if (typeof reader.result === 'string') {
         if (stream) {
           stream.getTracks().forEach((t) => t.stop());
         }
-        onPhotoCaptured(reader.result);
+        const stampedUrl = await stampDateTimeOnDataUrl(reader.result, new Date());
+        onPhotoCaptured(stampedUrl);
       }
     };
     reader.readAsDataURL(file);
@@ -239,6 +243,9 @@ export const DashboardCameraView: React.FC<DashboardCameraViewProps> = ({
     ctx.fillStyle = '#e2e8f0';
     ctx.font = 'bold 16px sans-serif';
     ctx.fillText(`PLACA: ${plate}`, 600, 470);
+
+    // Embed discrete bottom-right date and time
+    stampDateTimeOnCanvas(ctx, canvas.width, canvas.height, new Date());
 
     const sampleDataUrl = canvas.toDataURL('image/jpeg', 0.95);
     if (stream) {

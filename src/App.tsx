@@ -41,8 +41,25 @@ import { PatioDashboard } from './components/PatioDashboard';
 import { SmartHistory } from './components/SmartHistory';
 import { AndroidBottomNav } from './components/AndroidBottomNav';
 import { OfflineStatusBanner } from './components/OfflineStatusBanner';
+import { LoginModal } from './components/LoginModal';
+import { UserManagementModal } from './components/UserManagementModal';
+import { MyShiftHistoryModal } from './components/MyShiftHistoryModal';
+import {
+  getCurrentSession,
+  logoutUser,
+  formatRemainingSessionTime,
+} from './utils/authService';
+import { AuthSession } from './types';
+import { ShieldCheck, Clock, History, LogOut, AlertTriangle } from 'lucide-react';
 
 export default function App() {
+  // Authentication & Shift Session State (8 hours)
+  const [authSession, setAuthSession] = useState<AuthSession | null>(() => getCurrentSession());
+  const [showUserManagement, setShowUserManagement] = useState(false);
+  const [showMyShiftModal, setShowMyShiftModal] = useState(false);
+  const [sessionTimeText, setSessionTimeText] = useState<string>('');
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+
   // Active Navigation Tab
   const [activeTab, setActiveTab] = useState<NavTab>('register');
 
@@ -65,7 +82,7 @@ export default function App() {
   const [origin, setOrigin] = useState<string>('');
   const [destination, setDestination] = useState<string>('');
   const [km, setKm] = useState<string>('');
-  const [hasSpareKey, setHasSpareKey] = useState<boolean>(true);
+  const [hasSpareKey, setHasSpareKey] = useState<boolean | undefined>(undefined);
   const [fleetType, setFleetType] = useState<VehicleFleetType | undefined>(undefined);
   const [entrySubtype, setEntrySubtype] = useState<EntrySubtype | undefined>(undefined);
   const [entryReason, setEntryReason] = useState<string>('');
@@ -97,6 +114,28 @@ export default function App() {
     });
   }, []);
 
+  // Session expiry check & remaining time calculation (8-hour shift)
+  useEffect(() => {
+    const checkSession = () => {
+      const session = getCurrentSession();
+      setAuthSession(session);
+      if (session) {
+        setSessionTimeText(formatRemainingSessionTime(session.expiresAt));
+      }
+    };
+
+    checkSession();
+    const interval = setInterval(checkSession, 30000); // Checks every 30 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleLogout = () => {
+    logoutUser();
+    setAuthSession(null);
+    setShowUserManagement(false);
+    setShowMyShiftModal(false);
+  };
+
   // Compute real-time Patio Metrics
   const patioMetrics = useMemo(() => {
     return calculatePatioMetrics(records);
@@ -118,7 +157,7 @@ export default function App() {
     setOrigin('');
     setDestination('');
     setKm('');
-    setHasSpareKey(true);
+    setHasSpareKey(undefined);
     setFleetType(undefined);
     setEntrySubtype(undefined);
     setEntryReason('');
@@ -198,7 +237,24 @@ export default function App() {
 
   // When user confirms or manually inputs plate
   const handleConfirmPlate = (confirmedPlate: string) => {
-    setPlate(sanitizeRawText(confirmedPlate));
+    const clean = sanitizeRawText(confirmedPlate);
+    setPlate(clean);
+
+    // Validação de Duplicidade em Tempo Real (últimos 3 minutos)
+    const recentDuplicate = records.find((item) => {
+      const isSamePlate = item.plate.toUpperCase() === clean.toUpperCase();
+      const timeDiffMs = Date.now() - item.createdAt;
+      return isSamePlate && timeDiffMs < 3 * 60 * 1000;
+    });
+
+    if (recentDuplicate) {
+      setDuplicateWarning(
+        `⚠️ Atenção: A placa ${clean} já foi registrada há menos de 3 minutos como ${recentDuplicate.operationType?.toUpperCase()}.`
+      );
+    } else {
+      setDuplicateWarning(null);
+    }
+
     setCurrentStep('operation_select');
   };
 
@@ -253,7 +309,7 @@ export default function App() {
     origin?: string;
     destination?: string;
     km: string;
-    hasSpareKey: boolean;
+    hasSpareKey?: boolean;
     fleetType?: VehicleFleetType;
     entrySubtype?: EntrySubtype;
     entryReason?: string;
@@ -366,8 +422,90 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-neutral-100 text-neutral-900 flex flex-col font-sans antialiased selection:bg-emerald-200">
+      {/* Se não autenticado, bloqueia toda a tela com o modal de Login */}
+      {!authSession && (
+        <LoginModal
+          onLoginSuccess={(session) => {
+            setAuthSession(session);
+            setSessionTimeText(formatRemainingSessionTime(session.expiresAt));
+          }}
+        />
+      )}
+
+      {/* Barra Superior Corporativa com Usuário Logado, Contador de Sessão (9h) e Painel Master */}
+      {authSession && (
+        <div className="bg-neutral-900 text-white px-3 py-1.5 text-xs flex items-center justify-between border-b border-neutral-800 shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              <div className="w-5 h-5 rounded-full bg-emerald-600 flex items-center justify-center text-[10px] font-black text-white">
+                {authSession.user.name.charAt(0).toUpperCase()}
+              </div>
+              <span className="font-bold text-neutral-200 truncate max-w-[130px] sm:max-w-[200px]">
+                {authSession.user.name}
+              </span>
+            </div>
+            <span className="text-[10px] bg-neutral-800/90 text-neutral-300 px-2 py-0.5 rounded-md flex items-center gap-1 font-medium border border-neutral-700/50" title="Tempo restante da sessão de 9 horas">
+              <Clock className="w-3 h-3 text-emerald-400" />
+              <span>{sessionTimeText || '9h restante'}</span>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setShowMyShiftModal(true)}
+              className="px-2 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-lg text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"
+              title="Meus Registros do Turno"
+            >
+              <History className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden sm:inline">Meus Registros</span>
+            </button>
+
+            {authSession.user.role === 'master' && (
+              <button
+                type="button"
+                onClick={() => setShowUserManagement(true)}
+                className="px-2 py-1 bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg text-[11px] font-black flex items-center gap-1 transition cursor-pointer"
+                title="Gerenciar Usuários (Apenas Master)"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Painel Master</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="p-1 rounded-lg bg-neutral-800 hover:bg-rose-950/60 hover:text-rose-400 text-neutral-400 transition cursor-pointer"
+              title="Sair (Logout)"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Real-time Offline & Online status banner */}
       <OfflineStatusBanner />
+
+      {/* Duplicate Warning Toast */}
+      {duplicateWarning && (
+        <div className="max-w-lg mx-auto w-full px-4 pt-2">
+          <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs font-bold text-amber-900 flex items-center justify-between gap-2 shadow-xs">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>{duplicateWarning}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDuplicateWarning(null)}
+              className="text-amber-800 hover:text-amber-950 font-black text-xs px-1.5 py-0.5 rounded cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* App Header */}
       <Header
@@ -607,6 +745,19 @@ export default function App() {
         onClearHistory={handleClearAllRecords}
         onDeleteRecord={handleDeleteVehicleRecord}
       />
+
+      {/* Painel do Master (Criar usuários, recuperar senhas, excluir operadores) */}
+      {showUserManagement && (
+        <UserManagementModal onClose={() => setShowUserManagement(false)} />
+      )}
+
+      {/* Meus Registros do Turno */}
+      {showMyShiftModal && (
+        <MyShiftHistoryModal
+          onClose={() => setShowMyShiftModal(false)}
+          allRecords={records}
+        />
+      )}
     </div>
   );
 }

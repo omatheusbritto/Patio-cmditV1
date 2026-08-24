@@ -68,7 +68,7 @@ export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
   initialKm = '',
   initialFuel = '8/8',
   initialLiters = '',
-  initialFuelType = 'Gasolina Comum',
+  initialFuelType = '',
   initialDriverName = '',
   initialDestination = '',
   onRetakeDashboardPhoto,
@@ -78,7 +78,7 @@ export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
   const [km, setKm] = useState<string>(String(initialKm || ''));
   const [fuel, setFuel] = useState<FuelLevel>(initialFuel || '8/8');
   const [liters, setLiters] = useState<string>(String(initialLiters || ''));
-  const [fuelType, setFuelType] = useState<string>(initialFuelType || 'Gasolina Comum');
+  const [fuelType, setFuelType] = useState<string>(initialFuelType || '');
   const [driverName, setDriverName] = useState<string>(initialDriverName || '');
   const [destination, setDestination] = useState<string>(initialDestination || '');
   const [error, setError] = useState<string | null>(null);
@@ -89,20 +89,32 @@ export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
     setKm(nextVal.toLocaleString('pt-BR'));
   };
 
+  const handleToggleFuelType = (t: string) => {
+    if (fuelType === t) {
+      setFuelType('');
+    } else {
+      setFuelType(t);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!km.trim()) {
+      setError('Por favor, informe o Odômetro do veículo (Obrigatório).');
+      return;
+    }
     if (!fuel) {
-      setError('Por favor, selecione o nível de combustível.');
+      setError('Por favor, selecione o Nível do combustível (Obrigatório).');
       return;
     }
     setError(null);
     onSubmit({
       km: km.trim(),
       fuel,
+      destination: destination.trim(),
+      driverName: driverName.trim(),
       liters: liters.trim(),
       fuelType: fuelType.trim(),
-      driverName: driverName.trim(),
-      destination: destination.trim(),
     });
   };
 
@@ -185,15 +197,15 @@ export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
-        {/* 1. Odômetro / KM Input */}
+        {/* 1. Odômetro / KM Input (Obrigatório) */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-200 flex flex-col gap-2.5">
           <div className="flex items-center justify-between">
             <label htmlFor="km-input" className="text-xs font-bold text-neutral-800 flex items-center gap-1.5">
               <Gauge className="w-4 h-4 text-cyan-600" />
-              <span>Odômetro / KM do Veículo</span>
+              <span>Odômetro / KM</span>
             </label>
-            <span className="text-[10px] font-semibold text-cyan-800 bg-cyan-50 px-2 py-0.5 rounded-full border border-cyan-200">
-              Manual ou Foto
+            <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200 uppercase">
+              Obrigatório
             </span>
           </div>
 
@@ -246,16 +258,21 @@ export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
           </div>
         </div>
 
-        {/* 2. Nível de Combustível (1/8 a 8/8) */}
+        {/* 2. Nível de Combustível (Obrigatório) */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-200 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <label className="text-xs font-bold text-neutral-800 flex items-center gap-1.5">
               <Fuel className="w-4 h-4 text-emerald-600" />
-              <span>Nível do Tanque (Pós-Abastecimento)</span>
+              <span>Nível do Combustível</span>
             </label>
-            <span className="text-xs font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
-              {fuel === '8/8' ? '8/8 • Tanque Cheio' : fuel}
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200 uppercase">
+                Obrigatório
+              </span>
+              <span className="text-xs font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+                {fuel === '8/8' ? '8/8 • Cheio' : fuel}
+              </span>
+            </div>
           </div>
 
           {/* Quick 8/8 full tank button */}
@@ -301,12 +318,72 @@ export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
           </div>
         </div>
 
-        {/* 3. Quantidade Abastecida (Litros) & Tipo de Combustível */}
+        {/* 3. Destino (Opcional) */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-200 flex flex-col gap-2.5">
+          <div className="flex items-center justify-between">
+            <label htmlFor="destination-input" className="text-xs font-bold text-neutral-800 flex items-center gap-1.5">
+              <MapPin className="w-4 h-4 text-cyan-600" />
+              <span>Destino</span>
+            </label>
+            <span className="text-[10px] font-bold text-neutral-500 uppercase bg-neutral-100 px-2 py-0.5 rounded-full border border-neutral-200">
+              Opcional
+            </span>
+          </div>
+          <input
+            id="destination-input"
+            type="text"
+            placeholder="Ex: Pátio, Loja, Oficina, Lavador, Cliente..."
+            value={destination}
+            onChange={(e) => setDestination(e.target.value)}
+            className="w-full text-sm font-semibold py-2.5 px-3 rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-cyan-500 bg-neutral-50/50"
+          />
+          {/* Quick destinations */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[10px] text-neutral-400 font-semibold">Atalhos:</span>
+            {QUICK_DESTINATIONS.map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setDestination(d)}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition active:scale-95 ${
+                  destination === d
+                    ? 'bg-cyan-600 text-white border-cyan-700'
+                    : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700 border-neutral-200'
+                }`}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 4. Condutor (Opcional) */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-200 flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <label htmlFor="driver-input" className="text-xs font-bold text-neutral-800 flex items-center gap-1.5">
+              <User className="w-4 h-4 text-neutral-600" />
+              <span>Condutor</span>
+            </label>
+            <span className="text-[10px] font-bold text-neutral-500 uppercase bg-neutral-100 px-2 py-0.5 rounded-full border border-neutral-200">
+              Opcional
+            </span>
+          </div>
+          <input
+            id="driver-input"
+            type="text"
+            placeholder="Ex: Nome do condutor / motorista (opcional)"
+            value={driverName}
+            onChange={(e) => setDriverName(e.target.value)}
+            className="w-full text-sm font-semibold py-2.5 px-3 rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-cyan-500 bg-neutral-50/50"
+          />
+        </div>
+
+        {/* 5. Quantidade Abastecida (Litros) & Tipo de Combustível (Opcional) */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-200 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <label htmlFor="liters-input" className="text-xs font-bold text-neutral-800 flex items-center gap-1.5">
               <Droplets className="w-4 h-4 text-cyan-600" />
-              <span>Quantidade / Litros Abastecidos</span>
+              <span>Litros Abastecidos & Tipo</span>
             </label>
             <span className="text-[10px] font-semibold text-neutral-400 uppercase bg-neutral-100 px-2 py-0.5 rounded-full">
               Opcional
@@ -349,15 +426,26 @@ export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
 
           {/* Tipo de Combustível */}
           <div className="pt-2 border-t border-neutral-100 flex flex-col gap-1.5">
-            <label className="text-[11px] font-bold text-neutral-700">
-              Tipo de Combustível:
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-neutral-700">
+                Tipo de Combustível:
+              </label>
+              {fuelType && (
+                <button
+                  type="button"
+                  onClick={() => setFuelType('')}
+                  className="text-[10px] text-neutral-400 hover:text-neutral-600 underline"
+                >
+                  Limpar
+                </button>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-1.5">
               {FUEL_TYPES.map((t) => (
                 <button
                   key={t}
                   type="button"
-                  onClick={() => setFuelType(t)}
+                  onClick={() => handleToggleFuelType(t)}
                   className={`py-1.5 px-2 rounded-lg text-[10px] font-bold text-left border transition active:scale-95 flex items-center justify-between ${
                     fuelType === t
                       ? 'bg-cyan-50 border-cyan-500 text-cyan-900 ring-1 ring-cyan-400'
@@ -369,66 +457,6 @@ export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
                 </button>
               ))}
             </div>
-          </div>
-        </div>
-
-        {/* 4. Responsável / Condutor */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-200 flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <label htmlFor="driver-input" className="text-xs font-bold text-neutral-800 flex items-center gap-1.5">
-              <User className="w-4 h-4 text-neutral-600" />
-              <span>Responsável pelo Abastecimento / Condutor</span>
-            </label>
-            <span className="text-[10px] font-semibold text-neutral-400 uppercase bg-neutral-100 px-2 py-0.5 rounded-full">
-              Opcional
-            </span>
-          </div>
-          <input
-            id="driver-input"
-            type="text"
-            placeholder="Nome do motorista / operador"
-            value={driverName}
-            onChange={(e) => setDriverName(e.target.value)}
-            className="w-full text-sm font-semibold py-2.5 px-3 rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-cyan-500 bg-neutral-50/50"
-          />
-        </div>
-
-        {/* 5. Destino (Opcional) */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-200 flex flex-col gap-2.5">
-          <div className="flex items-center justify-between">
-            <label htmlFor="destination-input" className="text-xs font-bold text-neutral-800 flex items-center gap-1.5">
-              <MapPin className="w-4 h-4 text-cyan-600" />
-              <span>Destino do Veículo</span>
-            </label>
-            <span className="text-[10px] font-semibold text-neutral-400 uppercase bg-neutral-100 px-2 py-0.5 rounded-full">
-              Opcional
-            </span>
-          </div>
-          <input
-            id="destination-input"
-            type="text"
-            placeholder="Ex: Pátio Principal, Loja Centro, Oficina, Cliente..."
-            value={destination}
-            onChange={(e) => setDestination(e.target.value)}
-            className="w-full text-sm font-semibold py-2.5 px-3 rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-cyan-500 bg-neutral-50/50"
-          />
-          {/* Quick destinations */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[10px] text-neutral-400 font-semibold">Atalhos:</span>
-            {QUICK_DESTINATIONS.map((d) => (
-              <button
-                key={d}
-                type="button"
-                onClick={() => setDestination(d)}
-                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition active:scale-95 ${
-                  destination === d
-                    ? 'bg-cyan-600 text-white border-cyan-700'
-                    : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700 border-neutral-200'
-                }`}
-              >
-                {d}
-              </button>
-            ))}
           </div>
         </div>
 

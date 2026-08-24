@@ -149,26 +149,21 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
         </div>
       </div>
 
-      {/* Sector Capacity Grid */}
+      {/* Sector Vehicles Grid */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between px-1">
           <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-600 flex items-center gap-1.5">
             <MapPin className="w-3.5 h-3.5 text-emerald-700" />
-            Vagas por Setor
+            Veículos por Setor
           </h3>
           <span className="text-[11px] font-bold text-neutral-600">
-            {metrics.totalParked} ocupadas • {71 - metrics.totalParked} livres
+            {metrics.totalParked} veículos no pátio
           </span>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {SECTORS.map((sec) => {
-            const occ = metrics.sectorOccupancy[sec.code] || {
-              count: 0,
-              capacity: sec.capacity,
-              percent: 0,
-              isFull: false,
-            };
+            const count = metrics.sectorOccupancy[sec.code]?.count || 0;
             const isSelected = selectedSectorFilter === sec.code;
 
             return (
@@ -188,7 +183,7 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-1.5">
                     <span
-                      className={`font-black text-sm px-2 py-0.5 rounded-lg ${
+                      className={`font-black text-xs px-2 py-0.5 rounded-lg ${
                         isSelected
                           ? 'bg-emerald-700 text-white'
                           : 'bg-emerald-100 text-emerald-900'
@@ -197,58 +192,27 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
                       {sec.code}
                     </span>
                     <span
-                      className={`text-[11px] font-bold truncate max-w-[85px] ${
+                      className={`text-[11px] font-bold truncate max-w-[90px] ${
                         isSelected ? 'text-emerald-200' : 'text-neutral-600'
                       }`}
                     >
                       {sec.name}
                     </span>
                   </div>
-
-                  {occ.isFull && (
-                    <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-rose-600 text-white">
-                      Lotado
-                    </span>
-                  )}
                 </div>
 
-                {/* Numbers */}
-                <div className="flex items-baseline justify-between mt-1">
-                  <span className="text-xl font-black font-mono leading-none">
-                    {occ.count}
-                    <span
-                      className={`text-xs font-normal ${
-                        isSelected ? 'text-emerald-300' : 'text-neutral-500'
-                      }`}
-                    >
-                      /{sec.capacity}
-                    </span>
+                {/* Vehicle Count */}
+                <div className="flex items-baseline justify-between mt-1.5">
+                  <span className="text-2xl font-black font-mono leading-none">
+                    {count}
                   </span>
                   <span
-                    className={`text-[10px] font-bold ${
-                      isSelected ? 'text-emerald-300' : 'text-neutral-600'
+                    className={`text-[11px] font-semibold ${
+                      isSelected ? 'text-emerald-200' : 'text-neutral-500'
                     }`}
                   >
-                    {occ.percent}%
+                    {count === 1 ? 'veículo' : 'veículos'}
                   </span>
-                </div>
-
-                {/* Progress bar */}
-                <div
-                  className={`w-full h-1.5 rounded-full overflow-hidden mt-2 ${
-                    isSelected ? 'bg-emerald-950' : 'bg-neutral-100'
-                  }`}
-                >
-                  <div
-                    className={`h-full rounded-full transition-all duration-300 ${
-                      occ.percent >= 90
-                        ? 'bg-rose-500'
-                        : occ.percent >= 70
-                        ? 'bg-amber-400'
-                        : 'bg-emerald-500'
-                    }`}
-                    style={{ width: `${Math.max(4, occ.percent)}%` }}
-                  />
                 </div>
               </button>
             );

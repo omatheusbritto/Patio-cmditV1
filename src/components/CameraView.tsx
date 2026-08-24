@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Camera, Image as ImageIcon, RefreshCw, Zap, ZapOff, Sparkles, AlertCircle } from 'lucide-react';
+import { stampDateTimeOnCanvas, stampDateTimeOnDataUrl } from '../utils/imageOptimizer';
 
 interface CameraViewProps {
   onPhotoCaptured: (dataUrl: string) => void;
@@ -109,6 +110,8 @@ export const CameraView: React.FC<CameraViewProps> = ({ onPhotoCaptured, onCance
     if (!ctx) return;
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    stampDateTimeOnCanvas(ctx, canvas.width, canvas.height, new Date());
+
     const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
 
     // Stop camera
@@ -125,12 +128,13 @@ export const CameraView: React.FC<CameraViewProps> = ({ onPhotoCaptured, onCance
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       if (typeof reader.result === 'string') {
         if (stream) {
           stream.getTracks().forEach((t) => t.stop());
         }
-        onPhotoCaptured(reader.result);
+        const stampedUrl = await stampDateTimeOnDataUrl(reader.result, new Date());
+        onPhotoCaptured(stampedUrl);
       }
     };
     reader.readAsDataURL(file);
@@ -233,6 +237,9 @@ export const CameraView: React.FC<CameraViewProps> = ({ onPhotoCaptured, onCance
     ctx.fillText(plateText, plateX + plateW / 2, plateY + (isMerc ? (isMoto ? 150 : 124) : 116));
 
     ctx.restore();
+
+    // Embed discrete bottom-right date and time
+    stampDateTimeOnCanvas(ctx, canvas.width, canvas.height, new Date());
 
     const sampleDataUrl = canvas.toDataURL('image/jpeg', 0.95);
     if (stream) {

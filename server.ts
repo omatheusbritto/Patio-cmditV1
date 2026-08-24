@@ -3,6 +3,11 @@ import path from 'path';
 import { GoogleGenAI, Type } from '@google/genai';
 import { spawn } from 'child_process';
 import dotenv from 'dotenv';
+import {
+  createStandardFleetSpreadsheet,
+  appendVehicleRecordToSheet,
+  initializeAllSpreadsheetTabs,
+} from './server/googleSheetsService';
 
 dotenv.config();
 
@@ -78,6 +83,118 @@ async function startServer() {
       latencyTarget: '<500ms',
       serverTime: new Date().toISOString(),
     });
+  });
+
+  // API Route: Criar Planilha no Google Drive com 5 abas organizadas
+  app.post('/api/sheets/create', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const authHeader = req.headers.authorization;
+      const accessToken = authHeader?.startsWith('Bearer ')
+        ? authHeader.substring(7)
+        : req.body.accessToken;
+
+      if (!accessToken) {
+        res.status(401).json({
+          success: false,
+          error: 'Token de acesso Google não fornecido.',
+        });
+        return;
+      }
+
+      const result = await createStandardFleetSpreadsheet(accessToken);
+      res.json({
+        success: true,
+        spreadsheetId: result.spreadsheetId,
+        spreadsheetUrl: result.spreadsheetUrl,
+      });
+    } catch (err: any) {
+      console.error('Sheets Create Error:', err);
+      res.status(500).json({
+        success: false,
+        error: err.message || 'Falha ao criar planilha no Google Drive.',
+      });
+    }
+  });
+
+  // API Route: Gravar Registro de Veículo na Planilha (Modo Append-Only)
+  app.post('/api/sheets/append', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const authHeader = req.headers.authorization;
+      const accessToken = authHeader?.startsWith('Bearer ')
+        ? authHeader.substring(7)
+        : req.body.accessToken;
+
+      const { spreadsheetId, record } = req.body;
+
+      if (!accessToken) {
+        res.status(401).json({
+          success: false,
+          error: 'Token de acesso Google não fornecido.',
+        });
+        return;
+      }
+
+      if (!spreadsheetId || !record) {
+        res.status(400).json({
+          success: false,
+          error: 'spreadsheetId ou dados do registro ausentes.',
+        });
+        return;
+      }
+
+      const result = await appendVehicleRecordToSheet(spreadsheetId, record, accessToken);
+      res.json({
+        success: true,
+        tabName: result.tabName,
+        updatedRange: result.updatedRange,
+      });
+    } catch (err: any) {
+      console.error('Sheets Append Error:', err);
+      res.status(500).json({
+        success: false,
+        error: err.message || 'Falha ao registrar dados na planilha.',
+      });
+    }
+  });
+
+  // API Route: Inicializar ou Criar Todas as 4 Abas Oficiais na Planilha
+  app.post('/api/sheets/init-tabs', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const authHeader = req.headers.authorization;
+      const accessToken = authHeader?.startsWith('Bearer ')
+        ? authHeader.substring(7)
+        : req.body.accessToken;
+
+      const { spreadsheetId } = req.body;
+
+      if (!accessToken) {
+        res.status(401).json({
+          success: false,
+          error: 'Token de acesso Google não fornecido.',
+        });
+        return;
+      }
+
+      if (!spreadsheetId) {
+        res.status(400).json({
+          success: false,
+          error: 'spreadsheetId ausente.',
+        });
+        return;
+      }
+
+      const result = await initializeAllSpreadsheetTabs(spreadsheetId, accessToken);
+      res.json({
+        success: true,
+        tabs: result.tabs,
+      });
+    } catch (err: any) {
+      console.error('Sheets Init Tabs Error:', err);
+      res.status(500).json({
+        success: false,
+        error: err.message || 'Falha ao estruturar abas na planilha.',
+      });
+    }
   });
 
   // API Route: Dedicated Python Engine Endpoint

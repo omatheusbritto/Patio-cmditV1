@@ -35,31 +35,13 @@ interface OperationDetailsFormProps {
     origin?: string;
     destination?: string;
     km: string;
-    hasSpareKey: boolean;
+    hasSpareKey?: boolean;
     fleetType?: VehicleFleetType;
     entrySubtype?: EntrySubtype;
     entryReason?: string;
   }) => void;
   onBack: () => void;
 }
-
-const QUICK_ORIGINS = [
-  'Matriz',
-  'Filial Centro',
-  'Cliente',
-  'Aeroporto',
-  'Oficina / Revisão',
-  'Pátio Apoio',
-];
-
-const QUICK_DESTINATIONS = [
-  'Aeroporto',
-  'Cliente (Entrega)',
-  'Oficina / Manutenção',
-  'Filial Centro',
-  'Higienização / Lavagem',
-  'Locação Ativa',
-];
 
 const QUICK_REASONS_RETORNO = [
   'Avaria / Batida',
@@ -85,7 +67,7 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
   initialOrigin = '',
   initialDestination = '',
   initialKm = '',
-  initialHasSpareKey = true,
+  initialHasSpareKey,
   initialFleetType,
   initialEntrySubtype,
   initialEntryReason = '',
@@ -93,19 +75,21 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
   onSubmit,
   onBack,
 }) => {
+  const isEntrada = operationType === 'entrada';
+
   const [driverName, setDriverName] = useState<string>(initialDriverName);
   const [origin, setOrigin] = useState<string>(initialOrigin);
   const [destination, setDestination] = useState<string>(initialDestination);
   const [km, setKm] = useState<string>(initialKm ? String(initialKm) : '');
-  const [hasSpareKey, setHasSpareKey] = useState<boolean>(initialHasSpareKey);
+  const [hasSpareKey, setHasSpareKey] = useState<boolean | undefined>(
+    isEntrada ? initialHasSpareKey : (initialHasSpareKey ?? true)
+  );
   const [fleetType, setFleetType] = useState<VehicleFleetType | undefined>(initialFleetType);
   const [customFleetType, setCustomFleetType] = useState<string>(
     initialFleetType && !['RAC', 'GF'].includes(initialFleetType) ? initialFleetType : ''
   );
   const [entrySubtype, setEntrySubtype] = useState<EntrySubtype | undefined>(initialEntrySubtype);
   const [entryReason, setEntryReason] = useState<string>(initialEntryReason);
-
-  const isEntrada = operationType === 'entrada';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,6 +108,14 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
       entrySubtype: isEntrada ? entrySubtype : undefined,
       entryReason: isEntrada && (entrySubtype === 'retorno' || entrySubtype === 'recusa') ? entryReason.trim() : undefined,
     });
+  };
+
+  const handleToggleSpareKey = (val: boolean) => {
+    if (isEntrada && hasSpareKey === val) {
+      setHasSpareKey(undefined);
+    } else {
+      setHasSpareKey(val);
+    }
   };
 
   const handleToggleFleetType = (type: 'RAC' | 'GF' | 'OUTROS') => {
@@ -185,8 +177,8 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
         />
       </div>
 
-      {/* Origem or Destino Input */}
-      <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-200 flex flex-col gap-2.5">
+      {/* Origem or Destino Input (sem sugestões) */}
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-200 flex flex-col gap-2">
         <label className="text-xs font-bold text-neutral-800 flex items-center gap-1.5">
           <MapPin className="w-4 h-4 text-emerald-700" />
           {isEntrada ? 'Origem do Veículo' : 'Destino do Veículo'}
@@ -195,46 +187,31 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
           type="text"
           value={isEntrada ? origin : destination}
           onChange={(e) => (isEntrada ? setOrigin(e.target.value) : setDestination(e.target.value))}
-          placeholder={isEntrada ? 'Ex: Filial Centro / Matriz / Cliente' : 'Ex: Aeroporto / Manutenção / Cliente'}
+          placeholder={isEntrada ? 'Digite a origem do veículo' : 'Digite o destino do veículo'}
           className="w-full px-3.5 py-3 rounded-xl border border-neutral-300 bg-neutral-50 focus:bg-white focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 text-neutral-900 text-sm font-medium transition outline-none"
         />
-
-        {/* Quick Suggestion Chips */}
-        <div className="flex flex-wrap gap-1.5 pt-1">
-          {(isEntrada ? QUICK_ORIGINS : QUICK_DESTINATIONS).map((chip) => {
-            const currentVal = isEntrada ? origin : destination;
-            const isSelected = currentVal === chip;
-            return (
-              <button
-                key={chip}
-                type="button"
-                onClick={() => (isEntrada ? setOrigin(chip) : setDestination(chip))}
-                className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition active:scale-95 ${
-                  isSelected
-                    ? 'bg-emerald-700 text-white border-emerald-800 font-bold'
-                    : 'bg-neutral-100 text-neutral-700 border-neutral-200 hover:bg-neutral-200'
-                }`}
-              >
-                {chip}
-              </button>
-            );
-          })}
-        </div>
       </div>
 
-      {/* KM (Odômetro) Input */}
+      {/* KM (Odômetro) Input - Opcional na Entrada */}
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-neutral-200 flex flex-col gap-2">
-        <label className="text-xs font-bold text-neutral-800 flex items-center gap-1.5">
-          <Gauge className="w-4 h-4 text-emerald-700" />
-          Quilometragem (KM Atual)
-        </label>
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-bold text-neutral-800 flex items-center gap-1.5">
+            <Gauge className="w-4 h-4 text-emerald-700" />
+            <span>Quilometragem (KM Atual)</span>
+          </label>
+          {isEntrada && (
+            <span className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wider bg-neutral-100 px-2 py-0.5 rounded-full border border-neutral-200">
+              Opcional
+            </span>
+          )}
+        </div>
         <div className="relative">
           <input
             type="number"
             inputMode="numeric"
             value={km}
             onChange={(e) => setKm(e.target.value)}
-            placeholder="Ex: 45200"
+            placeholder={isEntrada ? 'Ex: 45200 (opcional)' : 'Ex: 45200'}
             className="w-full px-3.5 py-3 rounded-xl border border-neutral-300 bg-neutral-50 focus:bg-white focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 text-neutral-900 text-base font-mono font-bold transition outline-none pr-12"
           />
           <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-neutral-400 font-mono">
@@ -256,7 +233,7 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
             </span>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             {/* Bolsão 40 */}
             <button
               type="button"
@@ -273,6 +250,29 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
               </div>
               <span className={`text-[9px] font-normal leading-tight ${entrySubtype === 'bolsao_40' ? 'text-emerald-100' : 'text-neutral-400'}`}>
                 Triagem padrão
+              </span>
+            </button>
+
+            {/* Remoção de Adesivos */}
+            <button
+              type="button"
+              onClick={() => handleToggleEntrySubtype('remocao_adesivos')}
+              className={`p-2.5 rounded-xl text-xs font-bold transition active:scale-95 flex flex-col items-center justify-center gap-1 border text-center ${
+                entrySubtype === 'remocao_adesivos'
+                  ? 'bg-blue-700 text-white border-blue-800 shadow-sm'
+                  : 'bg-neutral-50 text-neutral-700 border-neutral-200 hover:bg-neutral-100'
+              }`}
+            >
+              <div className="flex items-center gap-1">
+                {entrySubtype === 'remocao_adesivos' ? (
+                  <Check className="w-3.5 h-3.5" />
+                ) : (
+                  <Sparkles className="w-3 h-3 text-blue-600" />
+                )}
+                <span>Remoção de Adesivos</span>
+              </div>
+              <span className={`text-[9px] font-normal leading-tight ${entrySubtype === 'remocao_adesivos' ? 'text-blue-100' : 'text-neutral-400'}`}>
+                Descaracterização
               </span>
             </button>
 
@@ -374,36 +374,55 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
       {/* Chave Reserva & Tipo de Veículo */}
       <div className="flex flex-col gap-3">
         {/* Chave Reserva Toggle */}
-        <div className="bg-white rounded-2xl p-3.5 shadow-sm border border-neutral-200 flex items-center justify-between">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-neutral-800">
-            <Key className="w-4 h-4 text-amber-600" />
-            <span>Chave Reserva no Veículo?</span>
+        <div className="bg-white rounded-2xl p-3.5 shadow-sm border border-neutral-200 flex flex-col gap-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-neutral-800">
+              <Key className="w-4 h-4 text-amber-600" />
+              <span>Chave Reserva no Veículo?</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {isEntrada && (
+                <span className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wider bg-neutral-100 px-2 py-0.5 rounded-full border border-neutral-200">
+                  Opcional
+                </span>
+              )}
+              {isEntrada && hasSpareKey !== undefined && (
+                <button
+                  type="button"
+                  onClick={() => setHasSpareKey(undefined)}
+                  className="text-[10px] text-neutral-400 hover:text-neutral-600 underline"
+                >
+                  Limpar
+                </button>
+              )}
+            </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
-              onClick={() => setHasSpareKey(true)}
-              className={`px-3 py-2 rounded-xl text-xs font-bold transition active:scale-95 flex items-center justify-center gap-1 border ${
-                hasSpareKey
+              onClick={() => handleToggleSpareKey(true)}
+              className={`py-2 rounded-xl text-xs font-bold transition active:scale-95 flex items-center justify-center gap-1 border ${
+                hasSpareKey === true
                   ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm'
                   : 'bg-neutral-100 text-neutral-600 border-neutral-200 hover:bg-neutral-200'
               }`}
             >
-              {hasSpareKey && <Check className="w-3.5 h-3.5" />}
+              {hasSpareKey === true && <Check className="w-3.5 h-3.5" />}
               <span>SIM</span>
             </button>
 
             <button
               type="button"
-              onClick={() => setHasSpareKey(false)}
-              className={`px-3 py-2 rounded-xl text-xs font-bold transition active:scale-95 flex items-center justify-center gap-1 border ${
-                !hasSpareKey
+              onClick={() => handleToggleSpareKey(false)}
+              className={`py-2 rounded-xl text-xs font-bold transition active:scale-95 flex items-center justify-center gap-1 border ${
+                hasSpareKey === false
                   ? 'bg-neutral-800 text-white border-neutral-900 shadow-sm'
                   : 'bg-neutral-100 text-neutral-600 border-neutral-200 hover:bg-neutral-200'
               }`}
             >
-              {!hasSpareKey && <Check className="w-3.5 h-3.5" />}
+              {hasSpareKey === false && <Check className="w-3.5 h-3.5" />}
               <span>NÃO</span>
             </button>
           </div>

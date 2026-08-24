@@ -78,6 +78,8 @@ export function getEntrySubtypeLabel(subtype?: EntrySubtype): string {
       return 'Retorno';
     case 'recusa':
       return 'Recusa';
+    case 'remocao_adesivos':
+      return 'Remoção de Adesivos';
     default:
       return '';
   }
@@ -97,10 +99,6 @@ export function stripEmojis(str: string): string {
  * Only fields that have actual answers/values are included in the message.
  */
 export function generateWhatsAppMessage(data: FormattedVehicleMessageData): string {
-  const time = data.timestamp || new Date();
-  const dateFormatted = time.toLocaleDateString('pt-BR');
-  const timeFormatted = time.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-
   const lines: string[] = [];
 
   // Helper to check if a value has meaningful content (not empty, null, undefined, or "Não informado")
@@ -154,12 +152,12 @@ export function generateWhatsAppMessage(data: FormattedVehicleMessageData): stri
 
     case 'abastecimento':
       if (hasValue(data.plate)) lines.push(`*Placa:* ${data.plate}`);
-      if (hasValue(data.km)) lines.push(`*Odômetro / KM:* ${String(data.km).trim()} km`);
-      if (hasValue(data.fuel)) lines.push(`*Nível do Tanque:* ${data.fuel}`);
-      if (hasValue(data.liters)) lines.push(`*Litros Abastecidos:* ${String(data.liters).trim()} L`);
-      if (hasValue(data.fuelType)) lines.push(`*Tipo de Combustível:* ${String(data.fuelType).trim()}`);
-      if (hasValue(data.driverName)) lines.push(`*Responsável:* ${String(data.driverName).trim()}`);
+      if (hasValue(data.km)) lines.push(`*Odômetro:* ${String(data.km).trim()} km`);
+      if (hasValue(data.fuel)) lines.push(`*Nível do combustível:* ${data.fuel}`);
       if (hasValue(data.destination)) lines.push(`*Destino:* ${String(data.destination).trim()}`);
+      if (hasValue(data.driverName)) lines.push(`*Condutor:* ${String(data.driverName).trim()}`);
+      if (hasValue(data.liters)) lines.push(`*Litros:* ${String(data.liters).trim()} L`);
+      if (hasValue(data.fuelType)) lines.push(`*Tipo de Combustível:* ${String(data.fuelType).trim()}`);
       break;
 
     case 'pdc':
@@ -189,8 +187,6 @@ export function generateWhatsAppMessage(data: FormattedVehicleMessageData): stri
   if (hasValue(data.notes)) {
     lines.push(`*Observação:* ${String(data.notes).trim()}`);
   }
-
-  lines.push(`*Data/Hora:* ${dateFormatted} às ${timeFormatted}`);
 
   return lines.join('\n');
 }

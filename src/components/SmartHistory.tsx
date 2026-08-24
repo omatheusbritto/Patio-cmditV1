@@ -29,7 +29,7 @@ import {
 import { LocationCode, OperationType, VehicleCharacteristic, VehicleRecord, VehicleStatus } from '../types';
 import { exportRecordsToCsv, SECTORS } from '../utils/storageService';
 import { formatPlateForDisplay } from '../utils/plateNormalizer';
-import { generateWhatsAppMessage, getLocationMeaning, openWhatsAppShare, shareToWhatsApp } from '../utils/shareService';
+import { generateWhatsAppMessage, getEntrySubtypeLabel, getLocationMeaning, openWhatsAppShare, shareToWhatsApp } from '../utils/shareService';
 
 interface SmartHistoryProps {
   records: VehicleRecord[];
@@ -415,12 +415,14 @@ export const SmartHistory: React.FC<SmartHistoryProps> = ({
                             className={`font-black text-[10px] px-1.5 py-0.5 rounded ${
                               r.entrySubtype === 'bolsao_40'
                                 ? 'bg-emerald-100 text-emerald-800'
+                                : r.entrySubtype === 'remocao_adesivos'
+                                ? 'bg-blue-100 text-blue-800'
                                 : r.entrySubtype === 'retorno'
                                 ? 'bg-amber-100 text-amber-800'
                                 : 'bg-rose-100 text-rose-800'
                             }`}
                           >
-                            {r.entrySubtype === 'bolsao_40' ? 'Bolsão 40' : r.entrySubtype === 'retorno' ? 'Retorno' : 'Recusa'}
+                            {getEntrySubtypeLabel(r.entrySubtype)}
                           </span>
                         </div>
                         {r.entryReason && (
@@ -436,18 +438,36 @@ export const SmartHistory: React.FC<SmartHistoryProps> = ({
                 {r.operationType === 'abastecimento' && (
                   <div className="bg-cyan-50/80 rounded-xl p-2.5 border border-cyan-200 text-xs grid grid-cols-2 gap-1.5">
                     <div>
-                      <span className="text-[9px] text-cyan-800 block uppercase font-bold">Odômetro / KM</span>
+                      <span className="text-[9px] text-cyan-800 block uppercase font-bold">Odômetro</span>
                       <span className="font-mono font-black text-neutral-900">
                         {r.km ? `${r.km} km` : 'Não informado'}
                       </span>
                     </div>
 
                     <div>
-                      <span className="text-[9px] text-cyan-800 block uppercase font-bold">Nível do Tanque</span>
+                      <span className="text-[9px] text-cyan-800 block uppercase font-bold">Nível do Combustível</span>
                       <span className="font-black text-emerald-700">
                         {r.fuel}
                       </span>
                     </div>
+
+                    {r.destination && (
+                      <div>
+                        <span className="text-[9px] text-cyan-800 block uppercase font-bold">Destino</span>
+                        <span className="font-bold text-neutral-800 truncate block">
+                          {r.destination}
+                        </span>
+                      </div>
+                    )}
+
+                    {r.driverName && (
+                      <div>
+                        <span className="text-[9px] text-cyan-800 block uppercase font-bold">Condutor</span>
+                        <span className="font-bold text-neutral-800 truncate block">
+                          {r.driverName}
+                        </span>
+                      </div>
+                    )}
 
                     {r.liters && (
                       <div>
@@ -464,13 +484,6 @@ export const SmartHistory: React.FC<SmartHistoryProps> = ({
                         <span className="font-bold text-neutral-800">
                           {r.fuelType}
                         </span>
-                      </div>
-                    )}
-
-                    {r.driverName && (
-                      <div className="col-span-2 pt-1 border-t border-cyan-200/80">
-                        <span className="text-[9px] text-cyan-800 block uppercase font-bold">Responsável</span>
-                        <span className="font-bold text-neutral-800">{r.driverName}</span>
                       </div>
                     )}
                   </div>
@@ -552,6 +565,8 @@ export const SmartHistory: React.FC<SmartHistoryProps> = ({
                           km: r.km,
                           hasSpareKey: r.hasSpareKey,
                           fleetType: r.fleetType,
+                          entrySubtype: r.entrySubtype,
+                          entryReason: r.entryReason,
                           liters: r.liters,
                           fuelType: r.fuelType,
                           location: r.location,

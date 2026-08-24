@@ -12,6 +12,98 @@ export interface OptimizedImageResult {
   optimizedHeight: number;
 }
 
+/**
+ * Adds a small, high-legibility date and time watermark in the bottom-right corner of an image canvas.
+ * Designed to be clean, sharp, and unobtrusive so it doesn't obstruct license plates,
+ * dashboards, or vehicle details, allowing WhatsApp messages to omit the date/time text.
+ */
+export function stampDateTimeOnCanvas(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  date: Date = new Date()
+): void {
+  const dateFormatted = date.toLocaleDateString('pt-BR');
+  const timeFormatted = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const text = `${dateFormatted} ${timeFormatted}`;
+
+  ctx.save();
+
+  // Dynamic scale proportional to canvas resolution (clean, small, readable)
+  const fontSize = Math.max(12, Math.min(20, Math.round(width * 0.016)));
+  ctx.font = `600 ${fontSize}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Segoe UI", Roboto, sans-serif`;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+
+  const metrics = ctx.measureText(text);
+  const textWidth = metrics.width;
+  const paddingX = Math.round(fontSize * 0.65);
+  const paddingY = Math.round(fontSize * 0.45);
+  const boxWidth = textWidth + paddingX * 2;
+  const boxHeight = fontSize + paddingY * 2;
+
+  const margin = Math.round(Math.max(10, width * 0.015));
+  const boxX = width - boxWidth - margin;
+  const boxY = height - boxHeight - margin;
+
+  // Translucent dark pill badge
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+  ctx.lineWidth = 1;
+
+  ctx.beginPath();
+  if (typeof (ctx as any).roundRect === 'function') {
+    (ctx as any).roundRect(boxX, boxY, boxWidth, boxHeight, 6);
+  } else {
+    ctx.rect(boxX, boxY, boxWidth, boxHeight);
+  }
+  ctx.fill();
+  ctx.stroke();
+
+  // White crisp text
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+  ctx.shadowBlur = 3;
+  ctx.fillText(text, boxX + paddingX, boxY + boxHeight / 2);
+
+  ctx.restore();
+}
+
+/**
+ * Ensures an image Data URL has the bottom-right date/time watermark embedded.
+ */
+export async function stampDateTimeOnDataUrl(
+  dataUrl: string,
+  date: Date = new Date(),
+  quality: number = 0.92
+): Promise<string> {
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const w = img.naturalWidth || img.width || 1280;
+        const h = img.naturalHeight || img.height || 720;
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return resolve(dataUrl);
+
+        ctx.drawImage(img, 0, 0, w, h);
+        stampDateTimeOnCanvas(ctx, w, h, date);
+
+        const result = canvas.toDataURL('image/jpeg', quality);
+        resolve(result);
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    } catch {
+      resolve(dataUrl);
+    }
+  });
+}
+
 export async function optimizeImageForOcr(
   sourceDataUrl: string,
   maxDimension: number = 1024,
@@ -60,6 +152,10 @@ export async function optimizeImageForOcr(
 
         // Draw and compress to optimized JPEG
         ctx.drawImage(img, 0, 0, targetW, targetH);
+
+        // Embed discrete bottom-right date and time
+        stampDateTimeOnCanvas(ctx, targetW, targetH, new Date());
+
         const optimizedDataUrl = canvas.toDataURL('image/jpeg', quality);
 
         resolve({
@@ -247,6 +343,9 @@ export async function combineTwoPhotos(options: {
 
           // Render Photo 2 (Painel/KM) on Right
           renderSidePhoto(img2, rect2, tag2, '#06b6d4');
+
+          // Embed discrete bottom-right date and time
+          stampDateTimeOnCanvas(ctx, targetCanvasWidth, targetCanvasHeight, new Date());
 
           const compositeDataUrl = canvas.toDataURL('image/jpeg', 0.92);
           resolve(compositeDataUrl);
