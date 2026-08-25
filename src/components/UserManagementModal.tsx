@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import {
   getAllUsers,
+  fetchServerUsers,
   createNewUser,
   resetUserPassword,
   toggleUserStatus,
@@ -24,7 +25,8 @@ interface UserManagementModalProps {
 }
 
 export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClose }) => {
-  const [users, setUsers] = useState<UserAccount[]>([]);
+  const [users, setUsers] = useState<UserAccount[]>(() => getAllUsers());
+  const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');
 
@@ -34,71 +36,87 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState<UserRole>('operador');
   const [formMsg, setFormMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Reset Password State
   const [resettingUserId, setResettingUserId] = useState<string | null>(null);
   const [resetNewPassword, setResetNewPassword] = useState('');
 
-  const loadUsers = () => {
-    setUsers(getAllUsers());
+  const loadUsers = async () => {
+    setIsLoading(true);
+    try {
+      const serverUsers = await fetchServerUsers();
+      setUsers(serverUsers);
+    } catch {
+      setUsers(getAllUsers());
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
     loadUsers();
   }, []);
 
-  const handleCreateUser = (e: React.FormEvent) => {
+  const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormMsg(null);
+    setIsSubmitting(true);
 
-    const res = createNewUser(newUsername, newName, newPassword, newRole);
-    if (res.success) {
-      setFormMsg({ text: 'Operador cadastrado com sucesso!', type: 'success' });
-      setNewUsername('');
-      setNewName('');
-      setNewPassword('');
-      loadUsers();
-      setTimeout(() => {
-        setActiveTab('list');
-        setFormMsg(null);
-      }, 1000);
-    } else {
-      setFormMsg({ text: res.error || 'Erro ao cadastrar.', type: 'error' });
+    try {
+      const res = await createNewUser(newUsername, newName, newPassword, newRole);
+      setIsSubmitting(false);
+      if (res.success) {
+        setFormMsg({ text: 'Operador cadastrado com sucesso!', type: 'success' });
+        setNewUsername('');
+        setNewName('');
+        setNewPassword('');
+        await loadUsers();
+        setTimeout(() => {
+          setActiveTab('list');
+          setFormMsg(null);
+        }, 1000);
+      } else {
+        setFormMsg({ text: res.error || 'Erro ao cadastrar.', type: 'error' });
+      }
+    } catch (err: any) {
+      setIsSubmitting(false);
+      setFormMsg({ text: 'Erro ao conectar ao servidor.', type: 'error' });
     }
   };
 
-  const handleResetPassword = (userId: string) => {
+  const handleResetPassword = async (userId: string) => {
     if (!resetNewPassword.trim()) {
       alert('Informe a nova senha.');
       return;
     }
-    const res = resetUserPassword(userId, resetNewPassword);
+    const res = await resetUserPassword(userId, resetNewPassword);
     if (res.success) {
       alert('Senha redefinida com sucesso!');
       setResettingUserId(null);
       setResetNewPassword('');
-      loadUsers();
+      await loadUsers();
     } else {
       alert(res.error || 'Falha ao redefinir senha.');
     }
   };
 
-  const handleToggleStatus = (userId: string) => {
-    const res = toggleUserStatus(userId);
+  const handleToggleStatus = async (userId: string) => {
+    const res = await toggleUserStatus(userId);
     if (res.success) {
-      loadUsers();
+      await loadUsers();
     }
   };
 
-  const handleDeleteUser = (user: UserAccount) => {
+  const handleDeleteUser = async (user: UserAccount) => {
     if (user.role === 'master' || user.username.toLowerCase() === 'mastercmdit') {
       alert('Não é permitido excluir o usuário Master principal.');
       return;
     }
     if (confirm(`Tem certeza que deseja excluir o operador "${user.name}" (${user.username})?`)) {
-      const res = deleteUser(user.id);
+      const res = await deleteUser(user.id);
       if (res.success) {
-        loadUsers();
+        await loadUsers();
       } else {
         alert(res.error || 'Erro ao excluir.');
       }

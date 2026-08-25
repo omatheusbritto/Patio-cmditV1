@@ -10,6 +10,7 @@ import {
 import firebaseConfig from '../../firebase-applet-config.json';
 
 export interface GoogleDriveConfig {
+  webhookUrl: string | null;
   spreadsheetId: string | null;
   spreadsheetUrl: string | null;
   userEmail: string | null;
@@ -42,6 +43,9 @@ export const initAuth = (
   onAuthSuccess?: (user: User, token: string) => void,
   onAuthFailure?: () => void
 ) => {
+  // Sync global server drive configuration on startup
+  fetchServerDriveConfig();
+
   return onAuthStateChanged(auth, async (user: User | null) => {
     if (user) {
       if (cachedAccessToken) {
@@ -115,19 +119,26 @@ export const DEFAULT_SPREADSHEET_ID = '1c9pfD6quOeMQLdTZEmR-QcQu-cZzvi68SyT6jZJW
 export const DEFAULT_SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1c9pfD6quOeMQLdTZEmR-QcQu-cZzvi68SyT6jZJWgnI/edit';
 
 /**
- * Get stored Google Drive config
+ * Get stored Google Drive config (local cache)
  */
 export function getStoredDriveConfig(): GoogleDriveConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.CONFIG);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed.spreadsheetId) return parsed;
+      return {
+        webhookUrl: parsed.webhookUrl || parsed.sheetsWebhookUrl || null,
+        spreadsheetId: parsed.spreadsheetId || DEFAULT_SPREADSHEET_ID,
+        spreadsheetUrl: parsed.spreadsheetUrl || DEFAULT_SPREADSHEET_URL,
+        userEmail: parsed.userEmail || null,
+        autoSync: parsed.autoSync !== false,
+      };
     }
   } catch (err) {
     console.warn('Error reading drive config:', err);
   }
   return {
+    webhookUrl: null,
     spreadsheetId: DEFAULT_SPREADSHEET_ID,
     spreadsheetUrl: DEFAULT_SPREADSHEET_URL,
     userEmail: null,
@@ -136,22 +147,85 @@ export function getStoredDriveConfig(): GoogleDriveConfig {
 }
 
 /**
- * Save Google Drive config
+ * Fetch centralized Sheets configuration from Server (Shared across all phones)
  */
-export function saveDriveConfig(config: Partial<GoogleDriveConfig>) {
+export async function fetchServerDriveConfig(): Promise<GoogleDriveConfig> {
   try {
-    const current = getStoredDriveConfig();
-    const updated = { ...current, ...config };
-    localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(updated));
-    return updated;
+    const res = await fetch('/api/settings/sheets');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.settings) {
+        const current = getStoredDriveConfig();
+        const updated: GoogleDriveConfig = {
+          ...current,
+          webhookUrl: data.settings.sheetsWebhookUrl || current.webhookUrl || null,
+          spreadsheetId: data.settings.spreadsheetId || current.spreadsheetId || DEFAULT_SPREADSHEET_ID,
+          spreadsheetUrl: data.settings.spreadsheetUrl || current.spreadsheetUrl || DEFAULT_SPREADSHEET_URL,
+          autoSync: data.settings.autoSync !== undefined ? data.settings.autoSync : current.autoSync,
+        };
+        localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(updated));
+        return updated;
+      }
+    }
   } catch (err) {
-    console.warn('Error saving drive config:', err);
-    return getStoredDriveConfig();
+    console.warn('Failed to fetch server drive settings:', err);
   }
+  return getStoredDriveConfig();
 }
 
 /**
- * Request Google OAuth token via Firebase Popup
+ * Save Google Drive config locally and sync with Central Server
+ */
+export function saveDriveConfig(config: Partial<GoogleDriveConfig>): GoogleDriveConfig {
+  const current = getStoredDriveConfig();
+  const updated: GoogleDriveConfig = { ...current, ...config };
+  
+  try {
+    localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(updated));
+  } catch (err) {
+    console.warn('Error saving drive config locally:', err);
+  }
+
+  // Push to server for global synchronization
+  fetch('/api/settings/sheets', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sheetsWebhookUrl: updated.webhookUrl,
+      spreadsheetId: updated.spreadsheetId,
+      spreadsheetUrl: updated.spreadsheetUrl,
+      autoSync: updated.autoSync,
+    }),
+  }).catch((err) => console.warn('Could not sync settings to server:', err));
+
+  return updated;
+}
+
+/**
+ * Test Google Apps Script Webhook
+ */
+export async function testWebhookUrl(
+  webhookUrl: string,
+  operationType: string = 'entrada'
+): Promise<{ success: boolean; message: string; tabName?: string }> {
+  const res = await fetch('/api/sheets/test-webhook', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ webhookUrl, operationType }),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || 'Falha ao testar comunicação com a planilha.');
+  }
+  return {
+    success: true,
+    message: data.message || 'Webhook conectado com sucesso!',
+    tabName: data.tabName,
+  };
+}
+
+/**
+ * Request Google OAuth token via Firebase Popup (Apenas Master se desejar)
  */
 export async function requestGoogleAccessToken(): Promise<string> {
   const existing = getCachedGoogleToken();
@@ -198,7 +272,7 @@ export async function logoutGoogleAuth(): Promise<void> {
 }
 
 /**
- * Create new 5-tab fleet spreadsheet in user's Drive
+ * Create new 5-tab fleet spreadsheet in user's Drive (Master only)
  */
 export async function createDriveSpreadsheet(accessToken: string): Promise<{
   spreadsheetId: string;
@@ -229,22 +303,35 @@ export async function createDriveSpreadsheet(accessToken: string): Promise<{
 }
 
 /**
- * Send vehicle record to Google Sheets
+ * Send vehicle record to Google Sheets (UNIVERSAL: No user login needed on operator phones!)
  */
 export async function appendRecordToGoogleSheets(
-  spreadsheetId: string,
-  record: any,
-  accessToken: string
-): Promise<{ success: boolean; tabName: string }> {
-  const resp = await fetch('/api/sheets/append', {
+  spreadsheetIdOrRecord: string | any,
+  recordPayload?: any,
+  accessToken?: string
+): Promise<{ success: boolean; tabName: string; method?: string; message?: string }> {
+  let record = recordPayload;
+  let spreadsheetId: string | undefined = undefined;
+
+  if (typeof spreadsheetIdOrRecord === 'string') {
+    spreadsheetId = spreadsheetIdOrRecord;
+  } else if (spreadsheetIdOrRecord && typeof spreadsheetIdOrRecord === 'object') {
+    record = spreadsheetIdOrRecord;
+  }
+
+  const driveConfig = getStoredDriveConfig();
+  const activeSpreadsheetId = spreadsheetId || driveConfig.spreadsheetId;
+
+  const resp = await fetch('/api/sheets/append-record', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     },
     body: JSON.stringify({
-      spreadsheetId,
       record,
+      spreadsheetId: activeSpreadsheetId,
+      webhookUrl: driveConfig.webhookUrl,
     }),
   });
 
@@ -255,9 +342,269 @@ export async function appendRecordToGoogleSheets(
 
   return {
     success: true,
-    tabName: data.tabName,
+    tabName: data.tabName || 'Planilha',
+    method: data.method,
+    message: data.message,
   };
 }
+
+/**
+ * Template de Script do Google Apps Script para copiar e colar na planilha
+ * Estrutura oficial com 11 colunas fiéis:
+ * DATA | HORA | CONDUTOR | PLACA | ORIGEM | DESTINO | KM (ODÔMETRO) | NÍVEL DO COMBUSTÍVEL | LITROS ABASTECIDOS | TIPO DE COMBUSTÍVEL | OBSERVAÇÕES
+ */
+export const GOOGLE_APPS_SCRIPT_TEMPLATE = `// ============================================================================
+// SCRIPT DE GRAVAÇÃO AUTOMÁTICA EM 11 COLUNAS FIÉIS - CMDIT CONTROLE DE PÁTIO
+// ============================================================================
+// 1. Abra sua Planilha Google > Menu superior "Extensões" > "Apps Script"
+// 2. Apague tudo o que estiver lá, cole este código completo e salve (Ctrl+S)
+// 3. Clique em "Implantar" > "Nova implantação"
+// 4. Tipo: "Aplicativo da Web"
+// 5. Executar como: "Eu" | Quem pode acessar: "Qualquer pessoa"
+// 6. Clique em "Implantar", copie a URL gerada e cole no Painel Master do app
+// ============================================================================
+
+var STANDARD_HEADERS = [
+  "DATA",
+  "HORA",
+  "CONDUTOR",
+  "PLACA",
+  "ORIGEM",
+  "DESTINO",
+  "KM (ODÔMETRO)",
+  "NÍVEL DO COMBUSTÍVEL",
+  "LITROS ABASTECIDOS",
+  "TIPO DE COMBUSTÍVEL",
+  "OBSERVAÇÕES"
+];
+
+function doPost(e) {
+  try {
+    var data = JSON.parse(e.postData.contents);
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var op = String(data.operationType || data.operationCategory || '').toLowerCase().trim();
+    
+    // Identificar a aba correta
+    var tabName = "📥 Entrada";
+    var tabCategory = "entrada";
+    
+    if (op === "saida" || op === "saída" || op.indexOf("said") !== -1) {
+      tabName = "📤 Saída";
+      tabCategory = "saida";
+    } else if (op === "abastecimento" || op === "combustivel" || op === "combustível" || op.indexOf("abastec") !== -1 || op.indexOf("combust") !== -1) {
+      tabName = "⛽ Combustível";
+      tabCategory = "abastecimento";
+    } else if (op === "qualidade_51" || op === "qualidade51" || op === "qualidade" || op.indexOf("51") !== -1 || op.indexOf("qualidade") !== -1) {
+      tabName = "🔍 Qualidade 51";
+      tabCategory = "qualidade";
+    } else if (op === "pdc" || op.indexOf("pdc") !== -1 || op.indexOf("fila") !== -1) {
+      tabName = "📋 Fila PDC";
+      tabCategory = "pdc";
+    }
+
+    // Busca inteligente da aba
+    var sheet = null;
+    var allSheets = ss.getSheets();
+    for (var i = 0; i < allSheets.length; i++) {
+      var sName = allSheets[i].getName().toLowerCase();
+      if (tabCategory === "saida" && (sName.indexOf("saida") !== -1 || sName.indexOf("saída") !== -1)) {
+        sheet = allSheets[i];
+        tabName = allSheets[i].getName();
+        break;
+      } else if (tabCategory === "abastecimento" && (sName.indexOf("abastec") !== -1 || sName.indexOf("combust") !== -1 || sName.indexOf("posto") !== -1)) {
+        sheet = allSheets[i];
+        tabName = allSheets[i].getName();
+        break;
+      } else if (tabCategory === "qualidade" && (sName.indexOf("51") !== -1 || sName.indexOf("qualidade") !== -1)) {
+        sheet = allSheets[i];
+        tabName = allSheets[i].getName();
+        break;
+      } else if (tabCategory === "pdc" && (sName.indexOf("pdc") !== -1 || sName.indexOf("fila") !== -1)) {
+        sheet = allSheets[i];
+        tabName = allSheets[i].getName();
+        break;
+      } else if (tabCategory === "entrada" && (sName.indexOf("entrada") !== -1 || sName.indexOf("chegada") !== -1)) {
+        sheet = allSheets[i];
+        tabName = allSheets[i].getName();
+        break;
+      }
+    }
+    
+    // Se a aba não existir, cria a aba com os 11 cabeçalhos oficiais
+    if (!sheet) {
+      if (allSheets.length === 1 && allSheets[0].getLastRow() === 0 && allSheets[0].getName().match(/^(Planilha1|Sheet1|Página1)$/i)) {
+        sheet = allSheets[0];
+        sheet.setName(tabName);
+      } else {
+        sheet = ss.insertSheet(tabName);
+      }
+      sheet.appendRow(STANDARD_HEADERS);
+      var headerRange = sheet.getRange(1, 1, 1, STANDARD_HEADERS.length);
+      headerRange.setFontWeight("bold");
+      headerRange.setBackground("#0f172a");
+      headerRange.setFontColor("#ffffff");
+    }
+    
+    // Data e Hora de São Paulo
+    var now = new Date();
+    var dateStr = Utilities.formatDate(now, "America/Sao_Paulo", "dd/MM/yyyy");
+    var timeStr = Utilities.formatDate(now, "America/Sao_Paulo", "HH:mm:ss");
+    
+    // Extração fiel dos 11 dados
+    var condutor = data.driverName || data.condutor || data.operatorName || "-";
+    var placa = (data.plate || data.placa || "").toUpperCase().trim();
+    var origem = data.origin || data.origem || (tabCategory === "entrada" ? "Pátio Principal" : "-");
+    var destino = data.destination || data.destino || (tabCategory === "pdc" ? "Fila PDC (Lavagem/Oficina)" : "-");
+    var km = data.km ? (String(data.km).replace(/\\s*km/i, '') + " km") : (data.odometro || "-");
+    var nivelCombustivel = data.fuel || data.nivelCombustivel || data.combustivel || "-";
+    var litrosAbastecidos = data.liters ? (String(data.liters).replace(/\\s*l/i, '') + " L") : (data.litros || "-");
+    var tipoCombustivel = data.fuelType || data.tipoCombustivel || (tabCategory === "abastecimento" ? "DIESEL S10" : "-");
+    
+    var extras = [];
+    if (data.hasSpareKey !== undefined && data.hasSpareKey !== null) {
+      extras.push("Chave Reserva: " + (data.hasSpareKey ? "SIM" : "NÃO"));
+    }
+    if (data.fleetType) extras.push("Frota: " + data.fleetType);
+    if (data.entrySubtype) extras.push("Subtipo: " + data.entrySubtype);
+    if (data.entryReason) extras.push("Motivo: " + data.entryReason);
+    if (data.characteristic) extras.push("Característica: " + data.characteristic);
+    if (data.location) extras.push("Local/Poste: " + data.location);
+    if (data.operatorName && data.operatorName !== condutor) extras.push("Operador: " + data.operatorName);
+    
+    var observacoes = data.notes || data.description || data.observacoes || "";
+    if (extras.length > 0) {
+      var extraStr = "[" + extras.join(" | ") + "]";
+      observacoes = observacoes ? (extraStr + " " + observacoes) : extraStr;
+    }
+    if (!observacoes) observacoes = "-";
+    
+    var standardRow = [
+      dateStr,             // 1. DATA
+      timeStr,             // 2. HORA
+      condutor,            // 3. CONDUTOR
+      placa,               // 4. PLACA
+      origem,              // 5. ORIGEM
+      destino,             // 6. DESTINO
+      km,                  // 7. KM (ODÔMETRO)
+      nivelCombustivel,    // 8. NÍVEL DO COMBUSTÍVEL
+      litrosAbastecidos,   // 9. LITROS ABASTECIDOS
+      tipoCombustivel,     // 10. TIPO DE COMBUSTÍVEL
+      observacoes          // 11. OBSERVAÇÕES
+    ];
+    
+    // Inspeção de cabeçalhos existentes na linha 1
+    var lastCol = Math.max(sheet.getLastColumn(), 1);
+    var existingHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0] || [];
+    var hasHeaders = false;
+    for (var h = 0; h < existingHeaders.length; h++) {
+      if (String(existingHeaders[h] || '').trim() !== '') {
+        hasHeaders = true;
+        break;
+      }
+    }
+    
+    if (!hasHeaders) {
+      sheet.appendRow(STANDARD_HEADERS);
+      var hr = sheet.getRange(1, 1, 1, STANDARD_HEADERS.length);
+      hr.setFontWeight("bold");
+      hr.setBackground("#0f172a");
+      hr.setFontColor("#ffffff");
+      sheet.appendRow(standardRow);
+    } else {
+      var mappedRow = [];
+      for (var c = 0; c < existingHeaders.length; c++) {
+        var hdr = String(existingHeaders[c] || '').toLowerCase().trim();
+        if (hdr.indexOf("data") !== -1 || hdr === "dt") mappedRow.push(dateStr);
+        else if (hdr.indexOf("hora") !== -1 || hdr === "hr") mappedRow.push(timeStr);
+        else if (hdr.indexOf("condut") !== -1 || hdr.indexOf("motor") !== -1 || hdr.indexOf("operad") !== -1) mappedRow.push(condutor);
+        else if (hdr.indexOf("plac") !== -1) mappedRow.push(placa);
+        else if (hdr.indexOf("orig") !== -1) mappedRow.push(origem);
+        else if (hdr.indexOf("dest") !== -1) mappedRow.push(destino);
+        else if (hdr.indexOf("km") !== -1 || hdr.indexOf("odôm") !== -1 || hdr.indexOf("odomet") !== -1) mappedRow.push(km);
+        else if (hdr.indexOf("nível") !== -1 || hdr.indexOf("nivel") !== -1 || (hdr.indexOf("combust") !== -1 && hdr.indexOf("tipo") === -1 && hdr.indexOf("litr") === -1)) mappedRow.push(nivelCombustivel);
+        else if (hdr.indexOf("litr") !== -1 || hdr.indexOf("abastec") !== -1) mappedRow.push(litrosAbastecidos);
+        else if (hdr.indexOf("tipo") !== -1 && hdr.indexOf("combust") !== -1) mappedRow.push(tipoCombustivel);
+        else if (hdr.indexOf("obs") !== -1 || hdr.indexOf("nota") !== -1 || hdr.indexOf("detalh") !== -1) mappedRow.push(observacoes);
+        else if (c < standardRow.length) mappedRow.push(standardRow[c]);
+        else mappedRow.push("");
+      }
+      sheet.appendRow(mappedRow);
+    }
+    
+    return ContentService.createTextOutput(JSON.stringify({
+      success: true,
+      tabName: tabName,
+      tabCategory: tabCategory,
+      plate: placa,
+      message: "Registro gravado fielmente nas 11 colunas da planilha."
+    })).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({
+      success: false,
+      error: err.toString()
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function doGet(e) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var allSheets = ss.getSheets();
+    var result = {
+      success: true,
+      spreadsheetTitle: ss.getName(),
+      updatedAt: Utilities.formatDate(new Date(), "America/Sao_Paulo", "dd/MM/yyyy HH:mm:ss"),
+      tabs: {}
+    };
+    
+    for (var i = 0; i < allSheets.length; i++) {
+      var sheet = allSheets[i];
+      var name = sheet.getName();
+      var data = sheet.getDataRange().getValues();
+      var headers = data.length > 0 ? data[0] : [];
+      var rows = [];
+      
+      for (var r = 1; r < data.length; r++) {
+        var rowValues = data[r];
+        var hasContent = false;
+        for (var k = 0; k < rowValues.length; k++) {
+          if (rowValues[k] !== "" && rowValues[k] !== null) {
+            hasContent = true;
+            break;
+          }
+        }
+        if (!hasContent) continue;
+
+        var rowObj = { _rowIndex: r + 1 };
+        for (var c = 0; c < headers.length; c++) {
+          var headerKey = String(headers[c] || ('COL_' + (c + 1))).trim();
+          var cellVal = rowValues[c];
+          if (cellVal instanceof Date) {
+            cellVal = Utilities.formatDate(cellVal, "America/Sao_Paulo", "dd/MM/yyyy HH:mm:ss");
+          }
+          rowObj[headerKey] = cellVal !== undefined ? String(cellVal) : "";
+        }
+        rows.push(rowObj);
+      }
+      
+      result.tabs[name] = {
+        name: name,
+        headers: headers.map(function(h, idx) { return String(h || ('COL_' + (idx + 1))).trim(); }),
+        rows: rows,
+        totalRows: rows.length
+      };
+    }
+    
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({
+      success: false,
+      error: err.toString()
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+}`;
+
 
 /**
  * Initialize all 4 official tabs in the linked Google Sheet

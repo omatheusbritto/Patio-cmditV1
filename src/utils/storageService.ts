@@ -137,6 +137,25 @@ const INITIAL_SEEDS: VehicleRecord[] = [
 ];
 
 export async function getAllRecords(): Promise<VehicleRecord[]> {
+  // First try to fetch fresh records from server (shared across all devices)
+  try {
+    const res = await fetch('/api/records');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.records) && data.records.length > 0) {
+        // Update local IndexedDB / localStorage cache in background
+        data.records.forEach((r: VehicleRecord) => {
+          saveRecordToLocalCache(r);
+        });
+        const sorted = [...data.records].sort((a, b) => b.createdAt - a.createdAt);
+        return sorted;
+      }
+    }
+  } catch (netErr) {
+    console.warn('Servidor offline para buscar registros, usando cache local:', netErr);
+  }
+
+  // Fallback to local IndexedDB / localStorage
   try {
     const db = await openDb();
     return new Promise((resolve) => {
@@ -189,7 +208,7 @@ function getFallbackLocalStorage(): VehicleRecord[] {
   return INITIAL_SEEDS;
 }
 
-export async function saveRecord(record: VehicleRecord): Promise<void> {
+async function saveRecordToLocalCache(record: VehicleRecord): Promise<void> {
   const normalized: VehicleRecord = {
     ...record,
     status: record.status || 'parked',
@@ -205,8 +224,8 @@ export async function saveRecord(record: VehicleRecord): Promise<void> {
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
     });
-  } catch (err) {
-    console.warn('IndexedDB write error, using fallback:', err);
+  } catch {
+    // ignore
   }
 
   try {
@@ -219,7 +238,29 @@ export async function saveRecord(record: VehicleRecord): Promise<void> {
     }
     localStorage.setItem('cmdit_records_v3', JSON.stringify(current));
   } catch {
-    // storage limit reached, IndexedDB holds it
+    // ignore
+  }
+}
+
+export async function saveRecord(record: VehicleRecord): Promise<void> {
+  const normalized: VehicleRecord = {
+    ...record,
+    status: record.status || 'parked',
+    operationType: record.operationType || 'entrada',
+  };
+
+  // 1. Save to local cache first
+  await saveRecordToLocalCache(normalized);
+
+  // 2. Sync to central server so other devices see it
+  try {
+    await fetch('/api/records', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(normalized),
+    });
+  } catch (err) {
+    console.warn('Não foi possível sincronizar registro com o servidor:', err);
   }
 }
 
@@ -261,6 +302,12 @@ export async function deleteRecord(id: string): Promise<void> {
   } catch {
     // ignore
   }
+
+  try {
+    await fetch(`/api/records/${id}`, { method: 'DELETE' });
+  } catch (err) {
+    console.warn('Não foi possível sincronizar exclusão com o servidor:', err);
+  }
 }
 
 export async function clearAllRecords(): Promise<void> {
@@ -282,6 +329,12 @@ export async function clearAllRecords(): Promise<void> {
     localStorage.removeItem('cmdit_records_v2');
   } catch {
     // ignore
+  }
+
+  try {
+    await fetch('/api/records/clear', { method: 'POST' });
+  } catch (err) {
+    console.warn('Não foi possível sincronizar limpeza com o servidor:', err);
   }
 }
 
@@ -380,62 +433,76 @@ export function calculatePatioMetrics(records: VehicleRecord[]): PatioMetrics {
 
 /**
  * Export records as CSV spreadsheet for Excel / Google Sheets
+ * 11 colunas fiéis requisitadas:
+ * Data | Hora | Condutor | Placa | Origem | Destino | KM (Odômetro) | Nível do Combustível | Litros Abastecidos | Tipo de Combustível | Observações
  */
 export function exportRecordsToCsv(records: VehicleRecord[]): void {
   const headers = [
-    'Data/Hora',
-    'Operação',
+    'Data',
+    'Hora',
+    'Condutor',
     'Placa',
-    'Status',
-    'Condutor/Responsável',
-    'Origem / Destino',
-    'KM / Odômetro',
+    'Origem',
+    'Destino',
+    'KM (Odômetro)',
+    'Nível do Combustível',
     'Litros Abastecidos',
-    'Tipo Combustível',
-    'Chave Reserva',
-    'Tipo Frota (RAC/GF)',
-    'Local Entrada',
-    'Motivo Entrada',
-    'Setor/Local',
-    'Nível Combustível',
-    'Característica',
-    'Observações'
+    'Tipo de Combustível',
+    'Observações',
   ];
 
-  const rows = records.map(r => {
-    let opLabel = 'Entrada';
-    if (r.operationType === 'saida') opLabel = 'Saída';
-    else if (r.operationType === 'abastecimento') opLabel = 'Abastecimento';
-    else if (r.operationType === 'pdc') opLabel = 'PDC';
-    else if (r.operationType === 'qualidade_51') opLabel = '51 (Qualidade)';
+  const rows = records.map((r) => {
+    const d = new Date(r.createdAt || Date.now());
+    const dateStr = d.toLocaleDateString('pt-BR');
+    const timeStr = d.toLocaleTimeString('pt-BR');
+    const condutor = r.driverName || 'Operador';
+    const placa = (r.plate || '').toUpperCase();
+    const origem = r.origin || (r.operationType === 'entrada' ? 'Pátio Principal' : '-');
+    const destino =
+      r.destination ||
+      (r.operationType === 'pdc'
+        ? 'Fila PDC (Lavagem/Oficina)'
+        : r.operationType === 'qualidade_51' && r.location
+        ? `Pátio ${r.location}`
+        : '-');
 
-    let entrySubtypeLabel = '-';
-    if (r.entrySubtype === 'bolsao_40') entrySubtypeLabel = 'Bolsão 40';
-    else if (r.entrySubtype === 'retorno') entrySubtypeLabel = 'Retorno';
-    else if (r.entrySubtype === 'recusa') entrySubtypeLabel = 'Recusa';
+    const kmStr = r.km ? `${r.km} km` : '-';
+    const fuelStr = r.fuel || '-';
+    const litersStr = r.liters ? `${r.liters} L` : '-';
+    const fuelTypeStr = r.fuelType || (r.operationType === 'abastecimento' ? 'DIESEL S10' : '-');
+
+    const extras: string[] = [];
+    if (r.hasSpareKey !== undefined) extras.push(`Chave: ${r.hasSpareKey ? 'SIM' : 'NÃO'}`);
+    if (r.fleetType) extras.push(`Frota: ${r.fleetType}`);
+    if (r.entrySubtype) extras.push(`Subtipo: ${r.entrySubtype}`);
+    if (r.entryReason) extras.push(`Motivo: ${r.entryReason}`);
+    if (r.characteristic) extras.push(`Caract: ${r.characteristic}`);
+    if (r.location) extras.push(`Local: ${r.location}`);
+
+    let obsFull = r.notes || r.description || '';
+    if (extras.length > 0) {
+      const extraStr = `[${extras.join(' | ')}]`;
+      obsFull = obsFull ? `${extraStr} ${obsFull}` : extraStr;
+    }
+    if (!obsFull) obsFull = '-';
 
     return [
-      new Date(r.createdAt).toLocaleString('pt-BR'),
-      opLabel,
-      r.plate,
-      r.status === 'parked' ? 'No Pátio' : 'Liberado',
-      r.driverName || '-',
-      r.origin || r.destination || '-',
-      r.km ? `${r.km} km` : '-',
-      r.liters ? `${r.liters} L` : '-',
-      r.fuelType || '-',
-      r.hasSpareKey !== undefined ? (r.hasSpareKey ? 'Sim' : 'Não') : '-',
-      r.fleetType || '-',
-      entrySubtypeLabel,
-      (r.entryReason || '-').replace(/,/g, ' '),
-      r.location || '-',
-      r.fuel,
-      r.characteristic || '-',
-      (r.notes || '').replace(/,/g, ' '),
+      dateStr,
+      timeStr,
+      condutor,
+      placa,
+      origem,
+      destino,
+      kmStr,
+      fuelStr,
+      litersStr,
+      fuelTypeStr,
+      obsFull.replace(/"/g, '""'),
     ];
   });
 
-  const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(row => row.map(v => `"${v}"`).join(','))].join('\n');
+  const csvContent =
+    '\uFEFF' + [headers.join(';'), ...rows.map((row) => row.map((v) => `"${v}"`).join(';'))].join('\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

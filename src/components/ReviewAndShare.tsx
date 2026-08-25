@@ -53,6 +53,7 @@ import {
   RotateCcw,
   Ban,
   FileSpreadsheet,
+  Clock,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -192,75 +193,45 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
       description: messageText,
     });
 
-    // Auto-record to Google Sheets if configured (Append-Only mode)
+    // Auto-record to Google Sheets (Universal Webhook + Server sync, ZERO Google Login required!)
     const driveConfig = getStoredDriveConfig();
     const session = getCurrentSession();
     const isMaster = session?.user.role === 'master' || session?.user.username.toLowerCase() === 'mastercmdit';
     const operatorName = session ? `${session.user.name} (${session.user.username})` : 'Operador';
     const targetSpreadsheetId = driveConfig.spreadsheetId || DEFAULT_SPREADSHEET_ID;
 
-    if (targetSpreadsheetId) {
-      let googleToken = getCachedGoogleToken();
-      
-      const recordPayload = {
-        plate: cleanPlate,
-        operationType,
-        fuel,
-        operatorName,
-        driverName,
-        origin,
-        destination,
-        km,
-        hasSpareKey,
-        fleetType,
-        entrySubtype,
-        entryReason,
-        liters,
-        fuelType,
-        characteristic,
-        location: location || undefined,
-      };
+    const recordPayload = {
+      plate: cleanPlate,
+      operationType,
+      fuel,
+      operatorName,
+      driverName,
+      origin,
+      destination,
+      km,
+      hasSpareKey,
+      fleetType,
+      entrySubtype,
+      entryReason,
+      liters,
+      fuelType,
+      characteristic,
+      location: location || undefined,
+    };
 
-      if (googleToken) {
-        setSheetSyncStatus('Gravando dados com segurança...');
-        appendRecordToGoogleSheets(targetSpreadsheetId, recordPayload, googleToken)
-          .then((res) => {
-            setSheetSyncStatus(
-              isMaster
-                ? `✅ Gravado com sucesso na aba ${res.tabName}`
-                : '✅ Dados gravados com sucesso!'
-            );
-          })
-          .catch((err) => {
-            console.warn('Sheets sync warning:', err);
-            setSheetSyncStatus(
-              isMaster
-                ? `⚠️ Erro ao gravar no Sheets: ${err.message || 'Verifique a permissão'}`
-                : '✅ Dados registrados localmente.'
-            );
-          });
-      } else {
-        // Attempt quick token request or notify
-        requestGoogleAccessToken()
-          .then((newToken) => {
-            setSheetSyncStatus('Gravando dados com segurança...');
-            return appendRecordToGoogleSheets(targetSpreadsheetId, recordPayload, newToken);
-          })
-          .then((res) => {
-            setSheetSyncStatus(
-              isMaster
-                ? `✅ Gravado com sucesso na aba ${res.tabName}`
-                : '✅ Dados gravados com sucesso!'
-            );
-          })
-          .catch((authErr) => {
-            console.warn('Could not auto-request token:', authErr);
-            if (isMaster) {
-              setSheetSyncStatus('⚠️ Planilha vinculada. Conecte sua conta Google no início para sincronizar.');
-            }
-          });
-      }
-    }
+    setSheetSyncStatus('Registrando movimentação...');
+    appendRecordToGoogleSheets(targetSpreadsheetId, recordPayload, getCachedGoogleToken() || undefined)
+      .then((res) => {
+        if (res.method === 'webhook' || res.method === 'sheets_api') {
+          setSheetSyncStatus(`✅ Gravado na planilha (${res.tabName})`);
+        } else {
+          setSheetSyncStatus('✅ Registrado com sucesso no sistema');
+        }
+      })
+      .catch((err) => {
+        console.warn('Sheets sync info:', err);
+        setSheetSyncStatus('✅ Registrado localmente');
+      });
 
     try {
       await new Promise((r) => setTimeout(r, 200));
@@ -737,6 +708,58 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
             </div>
           )}
 
+          {/* If FILA PDC */}
+          {operationType === 'pdc' && (
+            <div className="flex flex-col gap-2 p-3 rounded-xl bg-amber-50/70 border border-amber-200">
+              <div className="flex items-center justify-between pb-1.5 border-b border-amber-200/60">
+                <span className="text-[10px] font-bold text-amber-900 uppercase flex items-center gap-1">
+                  <Wrench className="w-3.5 h-3.5 text-amber-700" />
+                  Detalhes da Fila PDC
+                </span>
+                {onEditOperation && (
+                  <button
+                    type="button"
+                    onClick={onEditOperation}
+                    className="text-[11px] font-bold text-amber-700 hover:text-amber-900 flex items-center gap-1"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                    Editar
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-[10px] text-neutral-500 block">Status:</span>
+                  <span className="font-bold text-amber-950">
+                    Em Fila PDC (Lavagem / Oficina)
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-[10px] text-neutral-500 block">Setor:</span>
+                  <span className="font-black text-amber-900 font-mono">
+                    PDC (Pátio Desembarque)
+                  </span>
+                </div>
+
+                {km && (
+                  <div>
+                    <span className="text-[10px] text-neutral-500 block">KM:</span>
+                    <span className="font-mono font-bold text-neutral-900">{km} km</span>
+                  </div>
+                )}
+
+                {driverName && (
+                  <div>
+                    <span className="text-[10px] text-neutral-500 block">Responsável/Condutor:</span>
+                    <span className="font-bold text-neutral-900">{driverName}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Combustível Row (Present in all operations) */}
           <div className="flex items-center justify-between p-2.5 rounded-xl bg-neutral-50 border border-neutral-200">
             <div className="flex items-center gap-2">
@@ -758,6 +781,17 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
               <Edit2 className="w-3 h-3" />
               Alterar
             </button>
+          </div>
+
+          {/* Timestamp Row with Seconds */}
+          <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-neutral-100/80 border border-neutral-200 text-xs text-neutral-600">
+            <div className="flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-neutral-500" />
+              <span className="text-[10px] font-bold uppercase text-neutral-500">Horário Oficial do Registro:</span>
+            </div>
+            <span className="font-mono font-bold text-[11px] text-neutral-800">
+              {new Date().toLocaleDateString('pt-BR')} às {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </span>
           </div>
         </div>
 

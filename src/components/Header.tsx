@@ -1,11 +1,13 @@
 import React from 'react';
-import { Car, CheckCircle2, RotateCcw, History } from 'lucide-react';
+import { Car, CheckCircle2, RotateCcw, History, FileSpreadsheet } from 'lucide-react';
 import { Step } from '../types';
+import { getCurrentSession } from '../utils/authService';
 
 interface HeaderProps {
   currentStep: Step;
   onReset: () => void;
   onOpenHistory: () => void;
+  onOpenSpreadsheetOnline?: () => void;
   historyCount: number;
 }
 
@@ -28,11 +30,14 @@ export const Header: React.FC<HeaderProps> = ({
   currentStep,
   onReset,
   onOpenHistory,
+  onOpenSpreadsheetOnline,
   historyCount,
 }) => {
   const stepInfo = STEP_CONFIG[currentStep] || { label: 'Registro', number: 1 };
   const totalSteps = 5;
   const isFlow = currentStep !== 'home';
+  const session = getCurrentSession();
+  const isMaster = session?.user.role === 'master' || session?.user.username.toLowerCase() === 'mastercmdit';
 
   return (
     <header className="bg-emerald-800 text-white shadow-md sticky top-0 z-30 select-none border-b border-emerald-700">
@@ -63,6 +68,18 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Action buttons */}
           <div className="flex items-center gap-1">
+            {/* Master Spreadsheet Consultation Quick Button */}
+            {isMaster && onOpenSpreadsheetOnline && (
+              <button
+                onClick={onOpenSpreadsheetOnline}
+                title="Consultar Planilha Online (5 Abas)"
+                className="p-2 rounded-lg bg-emerald-950/80 hover:bg-emerald-700 active:scale-95 text-emerald-200 transition-colors flex items-center gap-1 text-xs border border-emerald-600/50"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-300" />
+                <span className="hidden sm:inline font-bold text-[11px]">Planilha</span>
+              </button>
+            )}
+
             <button
               onClick={onOpenHistory}
               title="Histórico de Registros"

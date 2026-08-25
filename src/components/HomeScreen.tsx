@@ -17,11 +17,13 @@ import {
 } from 'lucide-react';
 import { PatioMetrics } from '../types';
 import { GoogleSheetsIntegration } from './GoogleSheetsIntegration';
+import { getCurrentSession } from '../utils/authService';
 
 interface HomeScreenProps {
   onStartRegistration: () => void;
   onOpenPatio: () => void;
   onOpenHistory: () => void;
+  onOpenSpreadsheetOnline?: () => void;
   metrics: PatioMetrics;
 }
 
@@ -29,8 +31,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onStartRegistration,
   onOpenPatio,
   onOpenHistory,
+  onOpenSpreadsheetOnline,
   metrics,
 }) => {
+  const session = getCurrentSession();
+  const isMaster = session?.user.role === 'master' || session?.user.username.toLowerCase() === 'mastercmdit';
+
   return (
     <div className="flex flex-col items-center justify-between min-h-[calc(100vh-130px)] max-w-md mx-auto w-full px-4 py-4 pb-20 gap-3">
       {/* Top Hero Section */}
@@ -62,9 +68,34 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </button>
       </div>
 
+      {/* Master Direct Quick Action: Consultar Planilha Online */}
+      {isMaster && onOpenSpreadsheetOnline && (
+        <div className="w-full">
+          <button
+            type="button"
+            onClick={onOpenSpreadsheetOnline}
+            className="w-full py-3 px-4 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-between shadow-lg shadow-slate-900/20 active:scale-98 transition group cursor-pointer border border-slate-700"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                <FileSpreadsheet className="w-4 h-4" />
+              </div>
+              <div className="text-left">
+                <span className="block text-white font-black text-xs">Consultar Planilha Online</span>
+                <span className="block text-[10px] text-slate-400">Ver todas as 5 abas em tempo real</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 text-[11px] text-emerald-400 font-bold bg-slate-800 px-2 py-1 rounded-lg border border-slate-700">
+              <span>Acessar</span>
+              <ArrowRight className="w-3 h-3" />
+            </div>
+          </button>
+        </div>
+      )}
+
       {/* Google Sheets / Drive Integration Card */}
       <div className="w-full">
-        <GoogleSheetsIntegration />
+        <GoogleSheetsIntegration onOpenSpreadsheetOnline={onOpenSpreadsheetOnline} />
       </div>
 
       {/* Quick Patio Stats Overview Card */}

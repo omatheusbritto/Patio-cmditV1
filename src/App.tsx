@@ -44,19 +44,21 @@ import { OfflineStatusBanner } from './components/OfflineStatusBanner';
 import { LoginModal } from './components/LoginModal';
 import { UserManagementModal } from './components/UserManagementModal';
 import { MyShiftHistoryModal } from './components/MyShiftHistoryModal';
+import { OnlineSpreadsheetViewerModal } from './components/OnlineSpreadsheetViewerModal';
 import {
   getCurrentSession,
   logoutUser,
   formatRemainingSessionTime,
 } from './utils/authService';
 import { AuthSession } from './types';
-import { ShieldCheck, Clock, History, LogOut, AlertTriangle } from 'lucide-react';
+import { ShieldCheck, Clock, History, LogOut, AlertTriangle, FileSpreadsheet } from 'lucide-react';
 
 export default function App() {
   // Authentication & Shift Session State (8 hours)
   const [authSession, setAuthSession] = useState<AuthSession | null>(() => getCurrentSession());
   const [showUserManagement, setShowUserManagement] = useState(false);
   const [showMyShiftModal, setShowMyShiftModal] = useState(false);
+  const [isSpreadsheetModalOpen, setIsSpreadsheetModalOpen] = useState(false);
   const [sessionTimeText, setSessionTimeText] = useState<string>('');
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
 
@@ -462,15 +464,26 @@ export default function App() {
             </button>
 
             {authSession.user.role === 'master' && (
-              <button
-                type="button"
-                onClick={() => setShowUserManagement(true)}
-                className="px-2 py-1 bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg text-[11px] font-black flex items-center gap-1 transition cursor-pointer"
-                title="Gerenciar Usuários (Apenas Master)"
-              >
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Painel Master</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => setIsSpreadsheetModalOpen(true)}
+                  className="px-2 py-1 bg-emerald-800 hover:bg-emerald-700 text-emerald-100 rounded-lg text-[11px] font-bold flex items-center gap-1 transition cursor-pointer border border-emerald-600/50"
+                  title="Consultar Planilha Online (5 Abas)"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-300" />
+                  <span className="hidden sm:inline">Planilha Online</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowUserManagement(true)}
+                  className="px-2 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-lg text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"
+                  title="Gerenciar Usuários (Apenas Master)"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="hidden sm:inline">Usuários</span>
+                </button>
+              </>
             )}
 
             <button
@@ -512,6 +525,7 @@ export default function App() {
         currentStep={currentStep}
         onReset={handleReset}
         onOpenHistory={() => setActiveTab('history')}
+        onOpenSpreadsheetOnline={() => setIsSpreadsheetModalOpen(true)}
         historyCount={records.length}
       />
 
@@ -525,6 +539,7 @@ export default function App() {
                 onStartRegistration={() => handleStartRegistration()}
                 onOpenPatio={() => setActiveTab('patio')}
                 onOpenHistory={() => setActiveTab('history')}
+                onOpenSpreadsheetOnline={() => setIsSpreadsheetModalOpen(true)}
                 metrics={patioMetrics}
               />
             )}
@@ -709,6 +724,7 @@ export default function App() {
             onUpdateStatus={handleUpdateVehicleStatus}
             onDeleteRecord={handleDeleteVehicleRecord}
             onClearHistory={handleClearAllRecords}
+            onOpenSpreadsheetOnline={() => setIsSpreadsheetModalOpen(true)}
           />
         )}
       </main>
@@ -758,6 +774,23 @@ export default function App() {
           allRecords={records}
         />
       )}
+
+      {/* Consulta da Planilha Online (Apenas Master / Visualizador 5 Abas) */}
+      <OnlineSpreadsheetViewerModal
+        isOpen={isSpreadsheetModalOpen}
+        onClose={() => setIsSpreadsheetModalOpen(false)}
+        localRecords={records}
+        onImportRecords={(importedList) => {
+          if (importedList.length > 0) {
+            const combined = [...importedList, ...records];
+            setRecords(combined);
+            importedList.forEach((r) => {
+              saveRecord(r).catch(console.error);
+            });
+            alert(`${importedList.length} registros foram sincronizados com sucesso no sistema!`);
+          }
+        }}
+      />
     </div>
   );
 }

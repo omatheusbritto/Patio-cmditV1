@@ -25,7 +25,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [showDefaultHint, setShowDefaultHint] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
 
@@ -39,8 +39,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
     }
 
     setIsLoading(true);
-    setTimeout(() => {
-      const result = loginUser(username, password);
+    try {
+      const result = await loginUser(username, password);
       setIsLoading(false);
 
       if (result.success && result.session) {
@@ -48,7 +48,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
       } else {
         setErrorMsg(result.error || 'Credenciais inválidas.');
       }
-    }, 200);
+    } catch (err: any) {
+      setIsLoading(false);
+      setErrorMsg('Erro de conexão ao autenticar. Tente novamente.');
+    }
   };
 
   return (

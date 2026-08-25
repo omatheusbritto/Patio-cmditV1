@@ -3,11 +3,26 @@ import path from 'path';
 import { GoogleGenAI, Type } from '@google/genai';
 import { spawn } from 'child_process';
 import dotenv from 'dotenv';
+import * as XLSX from 'xlsx';
 import {
   createStandardFleetSpreadsheet,
   appendVehicleRecordToSheet,
   initializeAllSpreadsheetTabs,
 } from './server/googleSheetsService';
+import {
+  loadServerUsers,
+  createServerUser,
+  resetServerUserPassword,
+  toggleServerUserStatus,
+  deleteServerUser,
+  authenticateServerUser,
+  loadServerRecords,
+  appendOrUpdateServerRecord,
+  deleteServerRecord,
+  clearServerRecords,
+  loadServerSettings,
+  saveServerSettings,
+} from './server/dataStore';
 
 dotenv.config();
 
@@ -83,6 +98,866 @@ async function startServer() {
       latencyTarget: '<500ms',
       serverTime: new Date().toISOString(),
     });
+  });
+
+  // --------------------------------------------------------------------------
+  // USER MANAGEMENT & MULTI-DEVICE AUTHENTICATION (Centralized Store)
+  // --------------------------------------------------------------------------
+  app.get('/api/users', (req: Request, res: Response) => {
+    try {
+      const users = loadServerUsers();
+      res.json({ success: true, users });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post('/api/users', (req: Request, res: Response) => {
+    try {
+      const { username, name, password, role } = req.body;
+      const result = createServerUser(username, name, password, role);
+      if (result.success) {
+        res.json({ success: true, user: result.user, users: loadServerUsers() });
+      } else {
+        res.status(400).json(result);
+      }
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post('/api/users/reset-password', (req: Request, res: Response) => {
+    try {
+      const { userId, newPassword } = req.body;
+      const result = resetServerUserPassword(userId, newPassword);
+      if (result.success) {
+        res.json({ success: true, users: loadServerUsers() });
+      } else {
+        res.status(400).json(result);
+      }
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post('/api/users/toggle-status', (req: Request, res: Response) => {
+    try {
+      const { userId } = req.body;
+      const result = toggleServerUserStatus(userId);
+      if (result.success) {
+        res.json({ success: true, isActive: result.isActive, users: loadServerUsers() });
+      } else {
+        res.status(400).json(result);
+      }
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.delete('/api/users/:id', (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const result = deleteServerUser(id);
+      if (result.success) {
+        res.json({ success: true, users: loadServerUsers() });
+      } else {
+        res.status(400).json(result);
+      }
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post('/api/auth/login', (req: Request, res: Response) => {
+    try {
+      const { username, password } = req.body;
+      if (!username || !password) {
+        res.status(400).json({
+          success: false,
+          error: 'Usuário e senha são obrigatórios.',
+        });
+        return;
+      }
+
+      const result = authenticateServerUser(username, password);
+      if (!result.success || !result.user) {
+        res.status(401).json({
+          success: false,
+          error: result.error || 'Credenciais inválidas.',
+        });
+        return;
+      }
+
+      const now = Date.now();
+      const SESSION_DURATION_MS = 9 * 60 * 60 * 1000; // 9 hours
+      const session = {
+        user: {
+          id: result.user.id,
+          username: result.user.username,
+          name: result.user.name,
+          role: result.user.role,
+        },
+        loginTimestamp: now,
+        expiresAt: now + SESSION_DURATION_MS,
+      };
+
+      res.json({
+        success: true,
+        session,
+        users: loadServerUsers(),
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // --------------------------------------------------------------------------
+  // SHARED VEHICLE RECORDS API (MULTI-DEVICE PATIO SYNC)
+  // --------------------------------------------------------------------------
+  app.get('/api/records', (req: Request, res: Response) => {
+    try {
+      const records = loadServerRecords();
+      res.json({ success: true, records });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post('/api/records', (req: Request, res: Response) => {
+    try {
+      const record = req.body;
+      if (!record || !record.id) {
+        res.status(400).json({ success: false, error: 'Registro inválido.' });
+        return;
+      }
+      const updatedList = appendOrUpdateServerRecord(record);
+      res.json({ success: true, records: updatedList });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.delete('/api/records/:id', (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const updatedList = deleteServerRecord(id);
+      res.json({ success: true, records: updatedList });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post('/api/records/clear', (req: Request, res: Response) => {
+    try {
+      clearServerRecords();
+      res.json({ success: true, records: [] });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // --------------------------------------------------------------------------
+  // GLOBAL SHEETS CONFIGURATION & SETTINGS (Shared across all phones/devices)
+  // --------------------------------------------------------------------------
+  app.get('/api/settings/sheets', (req: Request, res: Response) => {
+    try {
+      const settings = loadServerSettings();
+      res.json({ success: true, settings });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post('/api/settings/sheets', (req: Request, res: Response) => {
+    try {
+      const { sheetsWebhookUrl, spreadsheetId, spreadsheetUrl, autoSync } = req.body;
+      const updated = saveServerSettings({
+        sheetsWebhookUrl: sheetsWebhookUrl !== undefined ? sheetsWebhookUrl : undefined,
+        spreadsheetId: spreadsheetId !== undefined ? spreadsheetId : undefined,
+        spreadsheetUrl: spreadsheetUrl !== undefined ? spreadsheetUrl : undefined,
+        autoSync: autoSync !== undefined ? autoSync : undefined,
+      });
+      res.json({ success: true, settings: updated });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Universal Record Append Endpoint (Supports Google Apps Script Webhook & Direct Sheets API)
+  // ZERO Google login required on worker phones!
+  app.post('/api/sheets/append-record', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { record, spreadsheetId, webhookUrl } = req.body;
+      if (!record || !record.plate) {
+        res.status(400).json({ success: false, error: 'Dados do veículo inválidos.' });
+        return;
+      }
+
+      const settings = loadServerSettings();
+      const targetWebhookUrl = webhookUrl || settings.sheetsWebhookUrl;
+
+      // Normalize operationType and category for webhook
+      const rawOp = String(record.operationType || '').toLowerCase().trim();
+      let normalizedCategory = 'entrada';
+      let expectedTabName = '📥 Entrada';
+
+      if (rawOp === 'saida' || rawOp === 'saída' || rawOp.includes('said')) {
+        normalizedCategory = 'saida';
+        expectedTabName = '📤 Saída';
+      } else if (rawOp === 'abastecimento' || rawOp === 'combustivel' || rawOp.includes('abastec') || rawOp.includes('combust')) {
+        normalizedCategory = 'abastecimento';
+        expectedTabName = '⛽ Combustível';
+      } else if (rawOp === 'qualidade_51' || rawOp === 'qualidade51' || rawOp === 'qualidade' || rawOp.includes('51') || rawOp.includes('qualidade')) {
+        normalizedCategory = 'qualidade';
+        expectedTabName = '🔍 Qualidade 51';
+      } else if (rawOp === 'pdc' || rawOp.includes('pdc') || rawOp.includes('fila')) {
+        normalizedCategory = 'pdc';
+        expectedTabName = '📋 Fila PDC';
+      }
+
+      // Extração fiel dos 11 dados para payload do webhook
+      const condutor = record.driverName || record.condutor || record.operatorName || '-';
+      const placa = (record.plate || record.placa || '').toUpperCase().trim();
+      const origem = record.origin || record.origem || (normalizedCategory === 'entrada' ? 'Pátio Principal' : '-');
+      const destino = record.destination || record.destino || (normalizedCategory === 'pdc' ? 'Fila PDC (Lavagem/Oficina)' : '-');
+      const km = record.km ? `${String(record.km).replace(/\s*km/i, '')} km` : (record.odometro || '-');
+      const nivelCombustivel = record.fuel || record.nivelCombustivel || record.combustivel || '-';
+      const litrosAbastecidos = record.liters ? `${String(record.liters).replace(/\s*l/i, '')} L` : (record.litros || '-');
+      const tipoCombustivel = record.fuelType || record.tipoCombustivel || (normalizedCategory === 'abastecimento' ? 'DIESEL S10' : '-');
+      
+      const extras: string[] = [];
+      if (record.hasSpareKey !== undefined && record.hasSpareKey !== null) {
+        extras.push(`Chave Reserva: ${record.hasSpareKey ? 'SIM' : 'NÃO'}`);
+      }
+      if (record.fleetType) extras.push(`Frota: ${record.fleetType}`);
+      if (record.entrySubtype) extras.push(`Subtipo: ${record.entrySubtype}`);
+      if (record.entryReason) extras.push(`Motivo: ${record.entryReason}`);
+      if (record.characteristic) extras.push(`Característica: ${record.characteristic}`);
+      if (record.location) extras.push(`Local/Poste: ${record.location}`);
+      if (record.operatorName && record.operatorName !== condutor) extras.push(`Operador: ${record.operatorName}`);
+
+      let observacoes = record.notes || record.description || record.observacoes || '';
+      if (extras.length > 0) {
+        const extraStr = `[${extras.join(' | ')}]`;
+        observacoes = observacoes ? `${extraStr} ${observacoes}` : extraStr;
+      }
+      if (!observacoes) observacoes = '-';
+
+      const enrichedRecord = {
+        ...record,
+        operationCategory: normalizedCategory,
+        targetTabName: expectedTabName,
+        condutor,
+        placa,
+        origem,
+        destino,
+        km,
+        nivelCombustivel,
+        litrosAbastecidos,
+        tipoCombustivel,
+        observacoes,
+      };
+
+      // Method 1: Google Apps Script Webhook (Instant, 100% Free, NO GOOGLE LOGIN on any phone)
+      if (targetWebhookUrl && targetWebhookUrl.startsWith('http')) {
+        try {
+          const webhookResp = await fetch(targetWebhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(enrichedRecord),
+            redirect: 'follow',
+          });
+
+          let webhookData: any = {};
+          try {
+            webhookData = await webhookResp.json();
+          } catch {
+            // Some Apps Script webhooks return text or redirect HTML
+            webhookData = { success: webhookResp.ok };
+          }
+
+          res.json({
+            success: true,
+            method: 'webhook',
+            tabName: webhookData.tabName || expectedTabName,
+            message: 'Registro gravado com sucesso na planilha via Webhook.',
+          });
+          return;
+        } catch (webhookErr: any) {
+          console.error('Webhook execution failed:', webhookErr);
+          // Fall through if OAuth token is available as backup
+        }
+      }
+
+      // Method 2: Direct Google Sheets API with Access Token (if supplied)
+      const authHeader = req.headers.authorization;
+      const accessToken = authHeader?.startsWith('Bearer ')
+        ? authHeader.substring(7)
+        : req.body.accessToken;
+
+      const targetSpreadsheetId = spreadsheetId || settings.spreadsheetId;
+
+      if (accessToken && targetSpreadsheetId) {
+        const result = await appendVehicleRecordToSheet(targetSpreadsheetId, record, accessToken);
+        res.json({
+          success: true,
+          method: 'sheets_api',
+          tabName: result.tabName,
+          updatedRange: result.updatedRange,
+        });
+        return;
+      }
+
+      // If no webhook is configured yet, save to internal records store and guide configuration
+      res.json({
+        success: true,
+        method: 'local_store',
+        tabName: 'Salvo Localmente',
+        message: targetWebhookUrl
+          ? 'Salvo no banco de dados. Verifique a URL do Webhook nas configurações do Master.'
+          : 'Salvo no banco de dados. Configure a URL do Webhook na aba Master para gravar diretamente no Google Sheets.',
+      });
+    } catch (err: any) {
+      console.error('Universal Append Error:', err);
+      res.status(500).json({
+        success: false,
+        error: err.message || 'Falha ao registrar dados na planilha.',
+      });
+    }
+  });
+
+  // Test Webhook URL Endpoint
+  app.post('/api/sheets/test-webhook', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { webhookUrl, operationType } = req.body;
+      const targetUrl = webhookUrl || loadServerSettings().sheetsWebhookUrl;
+
+      if (!targetUrl || !targetUrl.startsWith('http')) {
+        res.status(400).json({
+          success: false,
+          error: 'URL do Webhook inválida ou não configurada.',
+        });
+        return;
+      }
+
+      const op = operationType || 'entrada';
+      let opCategory = 'entrada';
+      let targetTabName = '📥 Entrada';
+      let samplePayload: any = {
+        plate: 'TESTE-01',
+        operationType: op,
+        fuel: 'Tanque Cheio',
+        operatorName: 'Auditor Teste CMDIT',
+        origin: 'Pátio Principal',
+        driverName: 'Motorista Teste',
+        hasSpareKey: true,
+        fleetType: 'FROTA PRÓPRIA',
+        notes: 'Registro de teste automático',
+      };
+
+      if (op === 'saida' || op === 'saída') {
+        opCategory = 'saida';
+        targetTabName = '📤 Saída';
+        samplePayload.destination = 'Operação Externa';
+        samplePayload.km = '45210';
+      } else if (op === 'abastecimento' || op === 'combustivel') {
+        opCategory = 'abastecimento';
+        targetTabName = '⛽ Combustível';
+        samplePayload.fuelType = 'DIESEL S10';
+        samplePayload.liters = '120.5';
+        samplePayload.km = '89400';
+      } else if (op === 'qualidade_51' || op === 'qualidade') {
+        opCategory = 'qualidade';
+        targetTabName = '🔍 Qualidade 51';
+        samplePayload.location = 'P2';
+        samplePayload.characteristic = 'Revisado';
+      } else if (op === 'pdc') {
+        opCategory = 'pdc';
+        targetTabName = '📋 Fila PDC';
+        samplePayload.destination = 'Lava-Rápido';
+      }
+
+      samplePayload.operationCategory = opCategory;
+      samplePayload.targetTabName = targetTabName;
+
+      const testResp = await fetch(targetUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(samplePayload),
+        redirect: 'follow',
+      });
+
+      let resData: any = {};
+      try {
+        resData = await testResp.json();
+      } catch {
+        resData = { success: testResp.ok };
+      }
+
+      res.json({
+        success: testResp.ok && (resData.success !== false),
+        status: testResp.status,
+        data: resData,
+        tabName: resData.tabName || targetTabName,
+        message: `Linha de teste gravada com sucesso na aba ${resData.tabName || targetTabName}!`,
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        error: err.message || 'Falha ao testar webhook.',
+      });
+    }
+  });
+
+  // API Route: Obter dados em tempo real da Planilha Online (Google Sheets API, doGet Apps Script, Drive/Excel XLSX Parser, GViz e Servidor)
+  app.get('/api/sheets/online-data', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const settings = loadServerSettings();
+      let webhookUrl = (req.query.webhookUrl as string) || settings.sheetsWebhookUrl;
+      let spreadsheetId = (req.query.spreadsheetId as string) || settings.spreadsheetId || '';
+      const spreadsheetUrl = (req.query.spreadsheetUrl as string) || settings.spreadsheetUrl || '';
+      const authHeader = req.headers.authorization;
+      const accessToken = (req.query.accessToken as string) || (authHeader ? authHeader.replace(/^Bearer\s+/i, '') : '');
+
+      if (!spreadsheetId && spreadsheetUrl) {
+        const match = spreadsheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/) ||
+                      spreadsheetUrl.match(/\/file\/d\/([a-zA-Z0-9-_]+)/) ||
+                      spreadsheetUrl.match(/id=([a-zA-Z0-9-_]+)/);
+        if (match && match[1]) {
+          spreadsheetId = match[1];
+        }
+      }
+
+      // 1. Strategy 1: Google Sheets API v4 with OAuth accessToken
+      if (spreadsheetId && accessToken) {
+        try {
+          const metaResp = await fetch(
+            `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?includeGridData=true`,
+            {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                Accept: 'application/json',
+              },
+            }
+          );
+
+          if (metaResp.ok) {
+            const sheetDoc: any = await metaResp.json();
+            if (sheetDoc && Array.isArray(sheetDoc.sheets) && sheetDoc.sheets.length > 0) {
+              const liveTabs: Record<string, { name: string; headers: string[]; rows: any[] }> = {};
+
+              sheetDoc.sheets.forEach((sheetItem: any) => {
+                const title = sheetItem.properties?.title || 'Aba';
+                const gridData = sheetItem.data?.[0]?.rowData || [];
+                if (gridData.length === 0) return;
+
+                // Row 0 is headers
+                const headerRow = gridData[0]?.values || [];
+                const headers: string[] = headerRow
+                  .map((c: any) => (c?.formattedValue || c?.userEnteredValue?.stringValue || '').trim())
+                  .filter(Boolean);
+
+                const rows: any[] = [];
+                for (let i = 1; i < gridData.length; i++) {
+                  const rowValues = gridData[i]?.values || [];
+                  const rowObj: any = { _rowIndex: i + 1 };
+                  let hasValue = false;
+
+                  headers.forEach((h, hIdx) => {
+                    const cell = rowValues[hIdx];
+                    const val = cell?.formattedValue || cell?.userEnteredValue?.stringValue || cell?.userEnteredValue?.numberValue || '';
+                    if (val !== '' && val !== null && val !== undefined) {
+                      hasValue = true;
+                    }
+                    rowObj[h] = val !== undefined ? String(val) : '';
+                  });
+
+                  if (hasValue) {
+                    rows.push(rowObj);
+                  }
+                }
+
+                liveTabs[title] = {
+                  name: title,
+                  headers,
+                  rows,
+                };
+              });
+
+              if (Object.keys(liveTabs).length > 0) {
+                res.json({
+                  success: true,
+                  source: 'google_sheets_oauth_api',
+                  spreadsheetTitle: sheetDoc.properties?.title || 'Planilha CMDIT',
+                  updatedAt: new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
+                  tabs: liveTabs,
+                });
+                return;
+              }
+            }
+          }
+        } catch (oauthErr) {
+          console.warn('OAuth Google Sheets API fetch failed, trying next strategy:', oauthErr);
+        }
+      }
+
+      // 2. Strategy 2: Google Apps Script Webhook (doGet)
+      if (webhookUrl && webhookUrl.startsWith('http')) {
+        try {
+          const fetchResp = await fetch(webhookUrl, {
+            method: 'GET',
+            redirect: 'follow',
+          });
+
+          if (fetchResp.ok) {
+            const text = await fetchResp.text();
+            try {
+              const data: any = JSON.parse(text);
+              if (data && data.tabs && Object.keys(data.tabs).length > 0) {
+                res.json({
+                  success: true,
+                  source: 'apps_script_live',
+                  spreadsheetTitle: data.spreadsheetTitle || 'Planilha CMDIT',
+                  updatedAt: data.updatedAt || new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
+                  tabs: data.tabs,
+                });
+                return;
+              }
+            } catch (jsonErr) {
+              console.warn('Response from webhook is not valid JSON:', text.substring(0, 100));
+            }
+          }
+        } catch (fetchErr) {
+          console.warn('Apps script doGet not answering JSON, trying next strategy:', fetchErr);
+        }
+      }
+
+      // 3. Strategy 3: Google Drive / Sheets Direct XLSX Export & Parser (Reads all tabs from Excel or Sheet files)
+      if (spreadsheetId) {
+        try {
+          const downloadUrls = [
+            `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=xlsx`,
+            `https://drive.google.com/uc?export=download&id=${spreadsheetId}`,
+          ];
+
+          for (const dUrl of downloadUrls) {
+            try {
+              const fetchHeaders: Record<string, string> = {};
+              if (accessToken) {
+                fetchHeaders['Authorization'] = `Bearer ${accessToken}`;
+              }
+
+              const dlResp = await fetch(dUrl, {
+                headers: fetchHeaders,
+                redirect: 'follow',
+              });
+
+              if (dlResp.ok) {
+                const arrayBuffer = await dlResp.arrayBuffer();
+                const buffer = Buffer.from(arrayBuffer);
+                if (buffer.length > 500) {
+                  const workbook = XLSX.read(buffer, { type: 'buffer' });
+                  if (workbook && workbook.SheetNames && workbook.SheetNames.length > 0) {
+                    const parsedTabs: Record<string, { name: string; headers: string[]; rows: any[] }> = {};
+
+                    workbook.SheetNames.forEach((sheetName) => {
+                      const worksheet = workbook.Sheets[sheetName];
+                      if (!worksheet) return;
+
+                      const rawMatrix: any[][] = XLSX.utils.sheet_to_json(worksheet, {
+                        header: 1,
+                        defval: '',
+                      }) as any[][];
+
+                      if (!rawMatrix || rawMatrix.length === 0) return;
+
+                      const headerRow = rawMatrix[0] || [];
+                      const headers = headerRow.map((h: any, idx: number) => String(h || `COL_${idx + 1}`).trim());
+
+                      const rows: any[] = [];
+                      for (let r = 1; r < rawMatrix.length; r++) {
+                        const rowVals = rawMatrix[r];
+                        if (!rowVals || rowVals.length === 0) continue;
+
+                        let hasContent = false;
+                        const rowObj: any = { _rowIndex: r + 1 };
+
+                        headers.forEach((hdr, cIdx) => {
+                          const cellVal = rowVals[cIdx];
+                          if (cellVal !== undefined && cellVal !== null && String(cellVal).trim() !== '') {
+                            hasContent = true;
+                          }
+                          rowObj[hdr] = cellVal !== undefined && cellVal !== null ? String(cellVal) : '';
+                        });
+
+                        if (hasContent) {
+                          rows.push(rowObj);
+                        }
+                      }
+
+                      parsedTabs[sheetName] = {
+                        name: sheetName,
+                        headers,
+                        rows,
+                      };
+                    });
+
+                    if (Object.keys(parsedTabs).length > 0) {
+                      res.json({
+                        success: true,
+                        source: 'google_drive_xlsx_live',
+                        spreadsheetTitle: 'Planilha Excel / Google Drive',
+                        updatedAt: new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
+                        tabs: parsedTabs,
+                      });
+                      return;
+                    }
+                  }
+                }
+              }
+            } catch (xlsxFetchErr) {
+              // Try next URL
+            }
+          }
+        } catch (xlsxErr) {
+          console.warn('Direct XLSX download failed, falling back to GViz:', xlsxErr);
+        }
+      }
+
+      // 4. Strategy 4: Google Visualization API (GViz) for Shared / Public Spreadsheets
+      if (spreadsheetId) {
+        try {
+          const possibleTabs = [
+            '📥 Entrada',
+            'Entrada',
+            'ENTRADA',
+            '📤 Saída',
+            'Saída',
+            'Saida',
+            'SAIDA',
+            '⛽ Combustível',
+            'Combustível',
+            'Combustivel',
+            'Abastecimento',
+            '🔍 Qualidade 51',
+            'Qualidade 51',
+            'Qualidade',
+            '51',
+            '📋 Fila PDC',
+            'Fila PDC',
+            'PDC',
+            'Página1',
+            'Sheet1',
+            'Planilha1',
+          ];
+
+          const gvizTabs: Record<string, { name: string; headers: string[]; rows: any[] }> = {};
+
+          await Promise.all(
+            possibleTabs.map(async (sheetName) => {
+              try {
+                const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(
+                  sheetName
+                )}`;
+                const gvizResp = await fetch(gvizUrl, { redirect: 'follow' });
+                if (!gvizResp.ok) return;
+
+                const text = await gvizResp.text();
+                const match = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]+)\);/);
+                if (!match || !match[1]) return;
+
+                const gvizJson = JSON.parse(match[1]);
+                if (!gvizJson.table || !gvizJson.table.rows) return;
+
+                const cols = gvizJson.table.cols || [];
+                const rawRows = gvizJson.table.rows || [];
+                if (rawRows.length === 0 && cols.length === 0) return;
+
+                let headers: string[] = cols
+                  .map((c: any) => c.label || '')
+                  .filter(Boolean);
+                let startRowIdx = 0;
+
+                if (headers.length === 0 && rawRows.length > 0) {
+                  headers = (rawRows[0]?.c || [])
+                    .map((cell: any) => (cell?.v !== undefined && cell?.v !== null ? String(cell.v).trim() : ''))
+                    .filter(Boolean);
+                  startRowIdx = 1;
+                }
+
+                if (headers.length === 0) {
+                  headers = ['DATA', 'HORA', 'CONDUTOR', 'PLACA', 'ORIGEM', 'DESTINO', 'KM (ODÔMETRO)', 'NÍVEL DO COMBUSTÍVEL', 'LITROS ABASTECIDOS', 'TIPO DE COMBUSTÍVEL', 'OBSERVAÇÕES'];
+                }
+
+                const rows: any[] = [];
+                for (let r = startRowIdx; r < rawRows.length; r++) {
+                  const cellObjs = rawRows[r]?.c || [];
+                  const rowItem: any = { _rowIndex: r + 1 };
+                  let hasData = false;
+
+                  headers.forEach((h, cIdx) => {
+                    const cell = cellObjs[cIdx];
+                    const val =
+                      cell?.f !== undefined && cell?.f !== null
+                        ? cell.f
+                        : cell?.v !== undefined && cell?.v !== null
+                        ? cell.v
+                        : '';
+                    if (val !== '' && val !== null && val !== undefined) {
+                      hasData = true;
+                    }
+                    rowItem[h || `COL_${cIdx + 1}`] = val !== null && val !== undefined ? String(val) : '';
+                  });
+
+                  if (hasData) {
+                    rows.push(rowItem);
+                  }
+                }
+
+                if (rows.length > 0 || headers.length > 0) {
+                  gvizTabs[sheetName] = {
+                    name: sheetName,
+                    headers,
+                    rows,
+                  };
+                }
+              } catch (tabErr) {
+                // Ignore individual tab errors
+              }
+            })
+          );
+
+          if (Object.keys(gvizTabs).length > 0) {
+            res.json({
+              success: true,
+              source: 'google_sheets_gviz_live',
+              spreadsheetTitle: 'Planilha Online Google Drive',
+              updatedAt: new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
+              tabs: gvizTabs,
+            });
+            return;
+          }
+        } catch (gvizAllErr) {
+          console.warn('GViz query failed, falling back to server records:', gvizAllErr);
+        }
+      }
+
+      // 5. Strategy 5: Faithful structured 5-tab output from server synced records
+      const STANDARD_HEADERS = [
+        'DATA',
+        'HORA',
+        'CONDUTOR',
+        'PLACA',
+        'ORIGEM',
+        'DESTINO',
+        'KM (ODÔMETRO)',
+        'NÍVEL DO COMBUSTÍVEL',
+        'LITROS ABASTECIDOS',
+        'TIPO DE COMBUSTÍVEL',
+        'OBSERVAÇÕES'
+      ];
+
+      const allRecords = loadServerRecords();
+      const tabs: Record<string, { name: string; headers: string[]; rows: any[] }> = {
+        '📥 Entrada': {
+          name: '📥 Entrada',
+          headers: [...STANDARD_HEADERS],
+          rows: [],
+        },
+        '📤 Saída': {
+          name: '📤 Saída',
+          headers: [...STANDARD_HEADERS],
+          rows: [],
+        },
+        '⛽ Combustível': {
+          name: '⛽ Combustível',
+          headers: [...STANDARD_HEADERS],
+          rows: [],
+        },
+        '🔍 Qualidade 51': {
+          name: '🔍 Qualidade 51',
+          headers: [...STANDARD_HEADERS],
+          rows: [],
+        },
+        '📋 Fila PDC': {
+          name: '📋 Fila PDC',
+          headers: [...STANDARD_HEADERS],
+          rows: [],
+        },
+      };
+
+      allRecords.forEach((r: any) => {
+        const d = new Date(r.createdAt || Date.now());
+        const dateStr = d.toLocaleDateString('pt-BR');
+        const timeStr = d.toLocaleTimeString('pt-BR');
+        const op = String(r.operationType || '').toLowerCase();
+
+        const condutor = r.driverName || r.condutor || r.operatorName || '-';
+        const placa = (r.plate || r.placa || '').toUpperCase().trim();
+        const origem = r.origin || r.origem || (op === 'entrada' ? 'Pátio Principal' : '-');
+        const destino = r.destination || r.destino || (op === 'pdc' ? 'Fila PDC (Lavagem/Oficina)' : '-');
+        const km = r.km ? `${String(r.km).replace(/\s*km/i, '')} km` : (r.odometro || '-');
+        const nivelCombustivel = r.fuel || r.nivelCombustivel || r.combustivel || '-';
+        const litrosAbastecidos = r.liters ? `${String(r.liters).replace(/\s*l/i, '')} L` : (r.litros || '-');
+        const tipoCombustivel = r.fuelType || r.tipoCombustivel || (op === 'abastecimento' || op === 'combustivel' ? 'DIESEL S10' : '-');
+
+        const extras: string[] = [];
+        if (r.hasSpareKey !== undefined && r.hasSpareKey !== null) {
+          extras.push(`Chave Reserva: ${r.hasSpareKey ? 'SIM' : 'NÃO'}`);
+        }
+        if (r.fleetType) extras.push(`Frota: ${r.fleetType}`);
+        if (r.entrySubtype) extras.push(`Subtipo: ${r.entrySubtype}`);
+        if (r.entryReason) extras.push(`Motivo: ${r.entryReason}`);
+        if (r.characteristic) extras.push(`Característica: ${r.characteristic}`);
+        if (r.location) extras.push(`Local/Poste: ${r.location}`);
+        if (r.operatorName && r.operatorName !== condutor) extras.push(`Operador: ${r.operatorName}`);
+
+        let observacoes = r.notes || r.description || r.observacoes || '';
+        if (extras.length > 0) {
+          const extraStr = `[${extras.join(' | ')}]`;
+          observacoes = observacoes ? `${extraStr} ${observacoes}` : extraStr;
+        }
+        if (!observacoes) observacoes = '-';
+
+        const rowObj = {
+          DATA: dateStr,
+          HORA: timeStr,
+          CONDUTOR: condutor,
+          PLACA: placa,
+          ORIGEM: origem,
+          DESTINO: destino,
+          'KM (ODÔMETRO)': km,
+          'NÍVEL DO COMBUSTÍVEL': nivelCombustivel,
+          'LITROS ABASTECIDOS': litrosAbastecidos,
+          'TIPO DE COMBUSTÍVEL': tipoCombustivel,
+          OBSERVAÇÕES: observacoes,
+          _rawDate: r.createdAt,
+          _plate: placa,
+        };
+
+        if (op === 'saida' || op === 'saída') {
+          tabs['📤 Saída'].rows.push(rowObj);
+        } else if (op === 'abastecimento' || op === 'combustivel') {
+          tabs['⛽ Combustível'].rows.push(rowObj);
+        } else if (op === 'qualidade_51' || op === 'qualidade') {
+          tabs['🔍 Qualidade 51'].rows.push(rowObj);
+        } else if (op === 'pdc') {
+          tabs['📋 Fila PDC'].rows.push(rowObj);
+        } else {
+          tabs['📥 Entrada'].rows.push(rowObj);
+        }
+      });
+
+      res.json({
+        success: true,
+        source: 'server_synced_store',
+        spreadsheetTitle: 'Planilha CMDIT',
+        updatedAt: new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
+        tabs,
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
   });
 
   // API Route: Criar Planilha no Google Drive com 5 abas organizadas
