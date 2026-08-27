@@ -430,10 +430,38 @@ function getSaoPauloDateTime(): { dateStr: string; timeStr: string; fullStr: str
   return { dateStr, timeStr, fullStr };
 }
 
+export function formatFuelLevelDisplay(fuel?: string | null): string {
+  if (!fuel) return '-';
+  const clean = String(fuel).trim().toUpperCase();
+  switch (clean) {
+    case '1/8':
+      return '1/8 (RESERVA)';
+    case '2/8':
+      return '2/8 (1/4)';
+    case '3/8':
+      return '3/8';
+    case '4/8':
+      return '4/8 (1/2)';
+    case '5/8':
+      return '5/8';
+    case '6/8':
+      return '6/8 (3/4)';
+    case '7/8':
+      return '7/8';
+    case '8/8':
+      return '8/8 (CHEIO)';
+    default:
+      if (clean.includes('CHEIO')) return '8/8 (CHEIO)';
+      if (clean.includes('1/2') || clean.includes('MEIO')) return '4/8 (1/2)';
+      return clean.toUpperCase();
+  }
+}
+
 /**
  * Appends a new vehicle record safely into the appropriate sheet tab (Append-Only mode)
  * Faithfully maps all 11 fields requested:
  * 1. DATA | 2. HORA | 3. CONDUTOR | 4. PLACA | 5. ORIGEM | 6. DESTINO | 7. KM (ODÔMETRO) | 8. NÍVEL DO COMBUSTÍVEL | 9. LITROS ABASTECIDOS | 10. TIPO DE COMBUSTÍVEL | 11. OBSERVAÇÕES
+ * All text entries are strictly uppercase.
  */
 export async function appendVehicleRecordToSheet(
   spreadsheetId: string,
@@ -451,99 +479,103 @@ export async function appendVehicleRecordToSheet(
   const getSubtypeClean = (subtype?: string) => {
     switch (subtype) {
       case 'bolsao_40':
-        return 'Bolsão 40';
+        return 'BOLSÃO 40';
       case 'retorno':
-        return 'Retorno';
+        return 'RETORNO';
       case 'recusa':
-        return 'Recusa';
+        return 'RECUSA';
       case 'remocao_adesivos':
-        return 'Remoção de Adesivos';
+        return 'REMOÇÃO DE ADESIVOS';
       default:
-        return subtype || '';
+        return subtype ? String(subtype).toUpperCase() : '';
     }
   };
 
+  const isAbastecimento = record.operationType === 'abastecimento';
+
   // 1. DATA & 2. HORA already computed
   // 3. CONDUTOR
-  const condutor = record.driverName || record.operatorName || '-';
+  const condutor = String(record.driverName || record.operatorName || '-').toUpperCase().trim();
 
   // 4. PLACA
   const placa = (record.plate || '').toUpperCase().trim();
 
   // 5. ORIGEM
-  const origem = record.origin || (record.operationType === 'entrada' ? 'Pátio Principal' : '-');
+  const origem = String(record.origin || (record.operationType === 'entrada' ? 'PÁTIO PRINCIPAL' : '-')).toUpperCase().trim();
 
   // 6. DESTINO
   let destino = record.destination || '-';
   if (record.operationType === 'pdc') {
-    destino = record.destination || 'Fila PDC (Lavagem / Oficina)';
+    destino = record.destination || 'FILA PDC (LAVAGEM / OFICINA)';
   } else if (record.operationType === 'qualidade_51' && record.location) {
-    destino = `Pátio ${record.location}`;
+    destino = `PÁTIO ${record.location}`;
   }
+  destino = String(destino).toUpperCase().trim();
 
   // 7. KM (ODÔMETRO)
   const kmClean =
     record.km !== undefined && record.km !== null && String(record.km).trim() !== ''
-      ? String(record.km).trim().replace(/\s*km/i, '')
+      ? `${String(record.km).trim().replace(/\s*km/i, '').toUpperCase()} KM`
       : '-';
 
   // 8. NÍVEL DO COMBUSTÍVEL
-  const nivelCombustivel = record.fuel || '-';
+  const nivelCombustivel = formatFuelLevelDisplay(record.fuel).toUpperCase();
 
   // 9. LITROS ABASTECIDOS
   const litrosAbastecidos =
     record.liters !== undefined && record.liters !== null && String(record.liters).trim() !== ''
-      ? String(record.liters).trim().replace(/\s*l/i, '')
+      ? `${String(record.liters).trim().replace(/\s*l/i, '').toUpperCase()} L`
       : '-';
 
   // 10. TIPO DE COMBUSTÍVEL
   const tipoCombustivel =
-    record.fuelType || (record.operationType === 'abastecimento' ? 'DIESEL S10' : '-');
+    String(record.fuelType || (isAbastecimento ? 'DIESEL S10' : '-')).toUpperCase().trim();
 
-  // 11. OBSERVAÇÕES (reúne fielmente notas e complementos do veículo)
+  // 11. OBSERVAÇÕES
   const extraDetails: string[] = [];
   if (record.hasSpareKey !== undefined) {
-    extraDetails.push(`Chave Reserva: ${formatSpareKey(record.hasSpareKey)}`);
+    extraDetails.push(`CHAVE RESERVA: ${formatSpareKey(record.hasSpareKey)}`);
   }
   if (record.fleetType) {
-    extraDetails.push(`Frota: ${record.fleetType}`);
+    extraDetails.push(`FROTA: ${String(record.fleetType).toUpperCase().trim()}`);
   }
   if (record.entrySubtype) {
-    extraDetails.push(`Subtipo: ${getSubtypeClean(record.entrySubtype)}`);
+    extraDetails.push(`SUBTIPO: ${getSubtypeClean(record.entrySubtype)}`);
   }
   if (record.entryReason) {
-    extraDetails.push(`Motivo: ${record.entryReason}`);
+    extraDetails.push(`MOTIVO: ${String(record.entryReason).toUpperCase().trim()}`);
   }
   if (record.characteristic) {
-    extraDetails.push(`Característica: ${record.characteristic}`);
+    extraDetails.push(`CARACTERÍSTICA: ${String(record.characteristic).toUpperCase().trim()}`);
   }
   if (record.location) {
-    extraDetails.push(`Local/Poste: ${record.location}`);
+    extraDetails.push(`LOCAL/POSTE: ${String(record.location).toUpperCase().trim()}`);
   }
-  if (record.operatorName && record.operatorName !== condutor) {
-    extraDetails.push(`Operador Auditor: ${record.operatorName}`);
+  if (record.operatorName && record.operatorName.toUpperCase().trim() !== condutor) {
+    extraDetails.push(`OPERADOR AUDITOR: ${String(record.operatorName).toUpperCase().trim()}`);
   }
 
   let observacoes = record.notes || record.description || '';
   if (extraDetails.length > 0) {
     const extraStr = `[${extraDetails.join(' | ')}]`;
-    observacoes = observacoes ? `${extraStr} ${observacoes}` : extraStr;
+    observacoes = observacoes ? `${extraStr} ${observacoes.toUpperCase().trim()}` : extraStr;
   }
   if (!observacoes) observacoes = '-';
+  observacoes = observacoes.toUpperCase().trim();
 
   // Standard 11 columns in strictly faithful order
   const standardRow = [
-    dateStr,             // 1. DATA
-    timeStr,             // 2. HORA
-    condutor,            // 3. CONDUTOR
-    placa,               // 4. PLACA
-    origem,              // 5. ORIGEM
-    destino,             // 6. DESTINO
-    kmClean,             // 7. KM (ODÔMETRO)
-    nivelCombustivel,    // 8. NÍVEL DO COMBUSTÍVEL
-    litrosAbastecidos,   // 9. LITROS ABASTECIDOS
-    tipoCombustivel,     // 10. TIPO DE COMBUSTÍVEL
-    observacoes,         // 11. OBSERVAÇÕES
+    dateStr,             // 1. DATA (Col A)
+    timeStr,             // 2. HORA (Col B)
+    condutor,            // 3. CONDUTOR (Col C)
+    placa,               // 4. PLACA (Col D)
+    origem,              // 5. ORIGEM (Col E)
+    destino,             // 6. DESTINO (Col F)
+    kmClean,             // 7. KM (ODÔMETRO) (Col G)
+    nivelCombustivel,    // 8. NÍVEL DO COMBUSTÍVEL (Col H)
+    litrosAbastecidos,   // 9. LITROS ABASTECIDOS (Col I)
+    tipoCombustivel,     // 10. TIPO DE COMBUSTÍVEL (Col J)
+    observacoes,         // 11. OBSERVAÇÕES (Col K)
   ];
 
   let categoryKey: 'entrada' | 'saida' | 'combustivel' | 'pdc' | 'qualidade' = 'entrada';
@@ -568,35 +600,99 @@ export async function appendVehicleRecordToSheet(
     );
     if (headerCheck.ok) {
       const headerData = await headerCheck.json();
-      const existingHeaders: string[] = (headerData.values?.[0] || []).map((h: string) =>
-        String(h || '').trim().toLowerCase()
-      );
+      const rawExistingHeaders: string[] = headerData.values?.[0] || [];
 
-      if (existingHeaders.length > 0) {
-        const mappedRow: any[] = new Array(existingHeaders.length).fill('');
-        existingHeaders.forEach((hdr, idx) => {
-          if (hdr.includes('data') || hdr === 'dt') mappedRow[idx] = dateStr;
-          else if (hdr.includes('hora') || hdr === 'hr') mappedRow[idx] = timeStr;
-          else if (hdr.includes('condut') || hdr.includes('motor') || hdr.includes('operad')) mappedRow[idx] = condutor;
-          else if (hdr.includes('plac')) mappedRow[idx] = placa;
-          else if (hdr.includes('orig')) mappedRow[idx] = origem;
-          else if (hdr.includes('dest')) mappedRow[idx] = destino;
-          else if (hdr.includes('km') || hdr.includes('odôm') || hdr.includes('odomet')) mappedRow[idx] = kmClean;
-          else if (
-            hdr.includes('nível') ||
+      if (rawExistingHeaders.length > 0) {
+        const normalizedHeaders = rawExistingHeaders.map((h: string) =>
+          String(h || '')
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .trim()
+        );
+
+        // Check if there is an explicit 'nivel' column to avoid conflict with 'combustivel'
+        const hasExplicitNivelCol = normalizedHeaders.some((h) =>
+          h.includes('nivel') || h.includes('marcad') || h.includes('tanque')
+        );
+
+        const mappedRow: any[] = new Array(normalizedHeaders.length).fill('');
+        normalizedHeaders.forEach((hdr, idx) => {
+          if (hdr.includes('data') || hdr === 'dt' || hdr.includes('date') || hdr === 'dia') {
+            mappedRow[idx] = dateStr;
+          } else if (hdr.includes('hora') || hdr === 'hr' || hdr.includes('horario') || hdr.includes('time')) {
+            mappedRow[idx] = timeStr;
+          } else if (hdr.includes('operad') || hdr.includes('audit')) {
+            mappedRow[idx] = record.operatorName || 'Operador';
+          } else if (
+            hdr.includes('condut') ||
+            hdr.includes('motor') ||
+            hdr.includes('driver')
+          ) {
+            mappedRow[idx] = condutor;
+          } else if (hdr.includes('plac') || hdr.includes('veic') || hdr.includes('plate')) {
+            mappedRow[idx] = placa;
+          } else if (hdr.includes('orig') || hdr.includes('proced') || hdr === 'de') {
+            mappedRow[idx] = origem;
+          } else if (hdr.includes('dest') || hdr.includes('para') || hdr.includes('setor')) {
+            mappedRow[idx] = destino;
+          } else if (
+            hdr.includes('km') ||
+            hdr.includes('odomet') ||
+            hdr.includes('hodomet') ||
+            hdr.includes('quilomet')
+          ) {
+            mappedRow[idx] = kmClean;
+          } else if (
+            hdr.includes('litr') ||
+            hdr.includes('abastec') ||
+            hdr.includes('volume') ||
+            hdr.includes('qtd') ||
+            hdr.includes('quant') ||
+            hdr === 'l'
+          ) {
+            // Coluna 9: LITROS ABASTECIDOS
+            mappedRow[idx] = litrosAbastecidos;
+          } else if (
+            (hdr.includes('tipo') && (hdr.includes('combust') || hdr.includes('comb'))) ||
+            hdr === 'tipo' ||
+            hdr === 'tipo de combustivel' ||
+            hdr === 'tipo combustivel' ||
+            hdr === 'produto' ||
+            (hasExplicitNivelCol && (hdr.includes('combust') || hdr === 'comb'))
+          ) {
+            // Coluna 10: TIPO DE COMBUSTÍVEL
+            mappedRow[idx] = tipoCombustivel;
+          } else if (
             hdr.includes('nivel') ||
+            hdr.includes('marcad') ||
+            hdr.includes('tanque') ||
+            hdr.includes('ponteiro') ||
             (hdr.includes('combust') && !hdr.includes('tipo') && !hdr.includes('litr'))
-          )
+          ) {
+            // Coluna 8: NÍVEL DO COMBUSTÍVEL
             mappedRow[idx] = nivelCombustivel;
-          else if (hdr.includes('litr') || hdr.includes('abastec')) mappedRow[idx] = litrosAbastecidos;
-          else if (hdr.includes('tipo') && hdr.includes('combust')) mappedRow[idx] = tipoCombustivel;
-          else if (hdr.includes('obs') || hdr.includes('nota') || hdr.includes('detalh')) mappedRow[idx] = observacoes;
-          else if (hdr.includes('chave')) mappedRow[idx] = formatSpareKey(record.hasSpareKey) || '-';
-          else if (hdr.includes('frota')) mappedRow[idx] = record.fleetType || '-';
-          else if (hdr.includes('local') || hdr.includes('posto') || hdr.includes('poste')) mappedRow[idx] = record.location || '-';
-          else if (hdr.includes('caract')) mappedRow[idx] = record.characteristic || '-';
-          else if (hdr.includes('status')) mappedRow[idx] = 'REGISTRADO';
-          else if (idx < standardRow.length) mappedRow[idx] = standardRow[idx];
+          } else if (
+            hdr.includes('obs') ||
+            hdr.includes('nota') ||
+            hdr.includes('detalh') ||
+            hdr.includes('motivo') ||
+            hdr.includes('descri')
+          ) {
+            mappedRow[idx] = observacoes;
+          } else if (hdr.includes('chave')) {
+            mappedRow[idx] = formatSpareKey(record.hasSpareKey) || '-';
+          } else if (hdr.includes('frota')) {
+            mappedRow[idx] = record.fleetType || '-';
+          } else if (hdr.includes('local') || hdr.includes('posto') || hdr.includes('poste')) {
+            mappedRow[idx] = record.location || '-';
+          } else if (hdr.includes('caract')) {
+            mappedRow[idx] = record.characteristic || '-';
+          } else if (hdr.includes('status')) {
+            mappedRow[idx] = 'REGISTRADO';
+          } else if (idx < standardRow.length) {
+            mappedRow[idx] = standardRow[idx];
+          }
         });
         rowValuesToSend = mappedRow;
       }

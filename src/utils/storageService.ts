@@ -211,6 +211,17 @@ function getFallbackLocalStorage(): VehicleRecord[] {
 async function saveRecordToLocalCache(record: VehicleRecord): Promise<void> {
   const normalized: VehicleRecord = {
     ...record,
+    plate: (record.plate || '').toUpperCase().trim(),
+    driverName: record.driverName ? record.driverName.toUpperCase().trim() : undefined,
+    origin: record.origin ? record.origin.toUpperCase().trim() : undefined,
+    destination: record.destination ? record.destination.toUpperCase().trim() : undefined,
+    km: record.km ? String(record.km).toUpperCase().trim() : undefined,
+    fleetType: record.fleetType ? String(record.fleetType).toUpperCase().trim() : undefined,
+    entryReason: record.entryReason ? record.entryReason.toUpperCase().trim() : undefined,
+    liters: record.liters ? String(record.liters).toUpperCase().trim() : undefined,
+    fuelType: record.fuelType ? record.fuelType.toUpperCase().trim() : undefined,
+    characteristic: record.characteristic ? (String(record.characteristic).toUpperCase().trim() as any) : undefined,
+    notes: record.notes ? record.notes.toUpperCase().trim() : undefined,
     status: record.status || 'parked',
     operationType: record.operationType || 'entrada',
   };
@@ -245,6 +256,17 @@ async function saveRecordToLocalCache(record: VehicleRecord): Promise<void> {
 export async function saveRecord(record: VehicleRecord): Promise<void> {
   const normalized: VehicleRecord = {
     ...record,
+    plate: (record.plate || '').toUpperCase().trim(),
+    driverName: record.driverName ? record.driverName.toUpperCase().trim() : undefined,
+    origin: record.origin ? record.origin.toUpperCase().trim() : undefined,
+    destination: record.destination ? record.destination.toUpperCase().trim() : undefined,
+    km: record.km ? String(record.km).toUpperCase().trim() : undefined,
+    fleetType: record.fleetType ? String(record.fleetType).toUpperCase().trim() : undefined,
+    entryReason: record.entryReason ? record.entryReason.toUpperCase().trim() : undefined,
+    liters: record.liters ? String(record.liters).toUpperCase().trim() : undefined,
+    fuelType: record.fuelType ? record.fuelType.toUpperCase().trim() : undefined,
+    characteristic: record.characteristic ? (String(record.characteristic).toUpperCase().trim() as any) : undefined,
+    notes: record.notes ? record.notes.toUpperCase().trim() : undefined,
     status: record.status || 'parked',
     operationType: record.operationType || 'entrada',
   };
@@ -455,36 +477,49 @@ export function exportRecordsToCsv(records: VehicleRecord[]): void {
     const d = new Date(r.createdAt || Date.now());
     const dateStr = d.toLocaleDateString('pt-BR');
     const timeStr = d.toLocaleTimeString('pt-BR');
-    const condutor = r.driverName || 'Operador';
-    const placa = (r.plate || '').toUpperCase();
-    const origem = r.origin || (r.operationType === 'entrada' ? 'Pátio Principal' : '-');
-    const destino =
+    const condutor = String(r.driverName || 'OPERADOR').toUpperCase().trim();
+    const placa = (r.plate || '').toUpperCase().trim();
+    const origem = String(r.origin || (r.operationType === 'entrada' ? 'PÁTIO PRINCIPAL' : '-')).toUpperCase().trim();
+    const destino = String(
       r.destination ||
       (r.operationType === 'pdc'
-        ? 'Fila PDC (Lavagem/Oficina)'
+        ? 'FILA PDC (LAVAGEM/OFICINA)'
         : r.operationType === 'qualidade_51' && r.location
-        ? `Pátio ${r.location}`
-        : '-');
+        ? `PÁTIO ${r.location}`
+        : '-')
+    ).toUpperCase().trim();
 
-    const kmStr = r.km ? `${r.km} km` : '-';
-    const fuelStr = r.fuel || '-';
-    const litersStr = r.liters ? `${r.liters} L` : '-';
-    const fuelTypeStr = r.fuelType || (r.operationType === 'abastecimento' ? 'DIESEL S10' : '-');
+    const kmStr = r.km ? `${String(r.km).replace(/\s*km/i, '').toUpperCase().trim()} KM` : '-';
+    
+    let fuelStr = r.fuel || '-';
+    if (fuelStr === '1/8') fuelStr = '1/8 (RESERVA)';
+    else if (fuelStr === '2/8') fuelStr = '2/8 (1/4)';
+    else if (fuelStr === '3/8') fuelStr = '3/8';
+    else if (fuelStr === '4/8' || fuelStr === '4/8 • 1/2' || fuelStr === 'Meio Tanque (1/2)') fuelStr = '4/8 (1/2)';
+    else if (fuelStr === '5/8') fuelStr = '5/8';
+    else if (fuelStr === '6/8') fuelStr = '6/8 (3/4)';
+    else if (fuelStr === '7/8') fuelStr = '7/8';
+    else if (fuelStr === '8/8' || fuelStr === '8/8 • Cheio' || fuelStr === 'Tanque Cheio') fuelStr = '8/8 (CHEIO)';
+    else fuelStr = fuelStr.toUpperCase();
+
+    const litersStr = r.liters ? `${String(r.liters).toUpperCase().trim()} L` : '-';
+    const fuelTypeStr = String(r.fuelType || (r.operationType === 'abastecimento' ? 'DIESEL S10' : '-')).toUpperCase().trim();
 
     const extras: string[] = [];
-    if (r.hasSpareKey !== undefined) extras.push(`Chave: ${r.hasSpareKey ? 'SIM' : 'NÃO'}`);
-    if (r.fleetType) extras.push(`Frota: ${r.fleetType}`);
-    if (r.entrySubtype) extras.push(`Subtipo: ${r.entrySubtype}`);
-    if (r.entryReason) extras.push(`Motivo: ${r.entryReason}`);
-    if (r.characteristic) extras.push(`Caract: ${r.characteristic}`);
-    if (r.location) extras.push(`Local: ${r.location}`);
+    if (r.hasSpareKey !== undefined) extras.push(`CHAVE: ${r.hasSpareKey ? 'SIM' : 'NÃO'}`);
+    if (r.fleetType) extras.push(`FROTA: ${String(r.fleetType).toUpperCase().trim()}`);
+    if (r.entrySubtype) extras.push(`SUBTIPO: ${String(r.entrySubtype).toUpperCase().trim()}`);
+    if (r.entryReason) extras.push(`MOTIVO: ${String(r.entryReason).toUpperCase().trim()}`);
+    if (r.characteristic) extras.push(`CARACT: ${String(r.characteristic).toUpperCase().trim()}`);
+    if (r.location) extras.push(`LOCAL: ${String(r.location).toUpperCase().trim()}`);
 
     let obsFull = r.notes || r.description || '';
     if (extras.length > 0) {
       const extraStr = `[${extras.join(' | ')}]`;
-      obsFull = obsFull ? `${extraStr} ${obsFull}` : extraStr;
+      obsFull = obsFull ? `${extraStr} ${obsFull.toUpperCase().trim()}` : extraStr;
     }
     if (!obsFull) obsFull = '-';
+    obsFull = obsFull.toUpperCase().trim();
 
     return [
       dateStr,

@@ -52,37 +52,54 @@ export interface FormattedVehicleMessageData {
 
 export function getLocationMeaning(loc?: string): string {
   if (!loc) return '';
-  switch (loc) {
+  switch (loc.toUpperCase()) {
     case 'P1':
-      return 'P1 (Poste 1)';
+      return 'P1 (POSTE 1)';
     case 'P2':
-      return 'P2 (Poste 2)';
+      return 'P2 (POSTE 2)';
     case 'P3':
-      return 'P3 (Poste 3)';
+      return 'P3 (POSTE 3)';
     case 'R1':
-      return 'R1 (Rua 1)';
+      return 'R1 (RUA 1)';
     case 'PDC':
-      return 'PDC (Pátio Desembarque / Carga)';
+      return 'PDC (PÁTIO DESEMBARQUE / CARGA)';
     case 'ADM':
-      return 'ADM (Administração)';
+      return 'ADM (ADMINISTRAÇÃO)';
     default:
-      return loc;
+      return loc.toUpperCase();
   }
 }
 
 export function getEntrySubtypeLabel(subtype?: EntrySubtype): string {
   switch (subtype) {
     case 'bolsao_40':
-      return 'Bolsão 40';
+      return 'BOLSÃO 40';
     case 'retorno':
-      return 'Retorno';
+      return 'RETORNO';
     case 'recusa':
-      return 'Recusa';
+      return 'RECUSA';
     case 'remocao_adesivos':
-      return 'Remoção de Adesivos';
+      return 'REMOÇÃO DE ADESIVOS';
     default:
-      return '';
+      return subtype ? String(subtype).toUpperCase() : '';
   }
+}
+
+/**
+ * Format fuel level with uppercase label
+ */
+export function formatFuelLevelCaption(fuel?: string): string {
+  if (!fuel) return '';
+  const clean = fuel.trim();
+  if (clean === '1/8') return '1/8 (RESERVA)';
+  if (clean === '2/8') return '2/8 (1/4)';
+  if (clean === '3/8') return '3/8';
+  if (clean === '4/8' || clean.includes('1/2')) return '4/8 (1/2)';
+  if (clean === '5/8') return '5/8';
+  if (clean === '6/8' || clean.includes('3/4')) return '6/8 (3/4)';
+  if (clean === '7/8') return '7/8';
+  if (clean === '8/8' || clean.toLowerCase().includes('cheio')) return '8/8 (CHEIO)';
+  return clean.toUpperCase();
 }
 
 /**
@@ -96,7 +113,7 @@ export function stripEmojis(str: string): string {
 
 /**
  * Generates formatted Brazilian vehicle caption customized by Operation Type.
- * Only fields that have actual answers/values are included in the message.
+ * All text fields and values are rendered strictly in UPPERCASE.
  */
 export function generateWhatsAppMessage(data: FormattedVehicleMessageData): string {
   const lines: string[] = [];
@@ -108,84 +125,91 @@ export function generateWhatsAppMessage(data: FormattedVehicleMessageData): stri
       const trimmed = val.trim();
       if (!trimmed) return false;
       const lower = trimmed.toLowerCase();
-      return lower !== 'não informado' && lower !== 'não informada' && lower !== 'sem característica';
+      return lower !== 'não informado' && lower !== 'não informada' && lower !== 'sem característica' && lower !== '-';
     }
     if (typeof val === 'number') return !isNaN(val);
     return true;
   };
 
+  const toUpper = (val: unknown): string => {
+    return String(val ?? '').toUpperCase().trim();
+  };
+
+  const cleanPlate = toUpper(data.plate);
+  const fuelDisplay = formatFuelLevelCaption(data.fuel);
+
   switch (data.operationType) {
     case 'entrada':
-      if (hasValue(data.plate)) lines.push(`*Placa:* ${data.plate}`);
-      if (hasValue(data.driverName)) lines.push(`*Condutor:* ${String(data.driverName).trim()}`);
-      if (hasValue(data.origin)) lines.push(`*Origem:* ${String(data.origin).trim()}`);
-      if (hasValue(data.km)) lines.push(`*KM:* ${String(data.km).trim()} km`);
-      if (hasValue(data.fuel)) lines.push(`*Combustível:* ${data.fuel}`);
+      if (hasValue(data.plate)) lines.push(`*Placa:* ${cleanPlate}`);
+      if (hasValue(data.driverName)) lines.push(`*Condutor:* ${toUpper(data.driverName)}`);
+      if (hasValue(data.origin)) lines.push(`*Origem:* ${toUpper(data.origin)}`);
+      if (hasValue(data.km)) lines.push(`*KM:* ${toUpper(data.km).replace(/\s*KM/i, '')} KM`);
+      if (hasValue(data.fuel)) lines.push(`*Combustível:* ${fuelDisplay}`);
       if (data.hasSpareKey !== undefined) {
         lines.push(`*Chave Reserva:* ${data.hasSpareKey ? 'SIM' : 'NÃO'}`);
       }
       if (hasValue(data.fleetType)) {
-        lines.push(`*Tipo de Veículo:* ${String(data.fleetType).trim()}`);
+        lines.push(`*Tipo de Veículo:* ${toUpper(data.fleetType)}`);
       }
       if (data.entrySubtype) {
         const subtypeLabel = getEntrySubtypeLabel(data.entrySubtype);
         if (subtypeLabel) lines.push(`*Local:* ${subtypeLabel}`);
         if ((data.entrySubtype === 'retorno' || data.entrySubtype === 'recusa') && hasValue(data.entryReason)) {
-          lines.push(`*Motivo do ${subtypeLabel}:* ${String(data.entryReason).trim()}`);
+          lines.push(`*Motivo do ${subtypeLabel}:* ${toUpper(data.entryReason)}`);
         }
       }
       break;
 
     case 'saida':
-      if (hasValue(data.plate)) lines.push(`*Placa:* ${data.plate}`);
-      if (hasValue(data.driverName)) lines.push(`*Condutor:* ${String(data.driverName).trim()}`);
-      if (hasValue(data.destination)) lines.push(`*Destino:* ${String(data.destination).trim()}`);
-      if (hasValue(data.km)) lines.push(`*KM:* ${String(data.km).trim()} km`);
-      if (hasValue(data.fuel)) lines.push(`*Combustível:* ${data.fuel}`);
+      if (hasValue(data.plate)) lines.push(`*Placa:* ${cleanPlate}`);
+      if (hasValue(data.driverName)) lines.push(`*Condutor:* ${toUpper(data.driverName)}`);
+      if (hasValue(data.destination)) lines.push(`*Destino:* ${toUpper(data.destination)}`);
+      if (hasValue(data.km)) lines.push(`*KM:* ${toUpper(data.km).replace(/\s*KM/i, '')} KM`);
+      if (hasValue(data.fuel)) lines.push(`*Combustível:* ${fuelDisplay}`);
       if (data.hasSpareKey !== undefined) {
         lines.push(`*Chave Reserva:* ${data.hasSpareKey ? 'SIM' : 'NÃO'}`);
       }
       if (hasValue(data.fleetType)) {
-        lines.push(`*Tipo de Veículo:* ${String(data.fleetType).trim()}`);
+        lines.push(`*Tipo de Veículo:* ${toUpper(data.fleetType)}`);
       }
       break;
 
     case 'abastecimento':
-      if (hasValue(data.plate)) lines.push(`*Placa:* ${data.plate}`);
-      if (hasValue(data.km)) lines.push(`*Odômetro:* ${String(data.km).trim()} km`);
-      if (hasValue(data.fuel)) lines.push(`*Nível do combustível:* ${data.fuel}`);
-      if (hasValue(data.destination)) lines.push(`*Destino:* ${String(data.destination).trim()}`);
-      if (hasValue(data.driverName)) lines.push(`*Condutor:* ${String(data.driverName).trim()}`);
-      if (hasValue(data.liters)) lines.push(`*Litros:* ${String(data.liters).trim()} L`);
-      if (hasValue(data.fuelType)) lines.push(`*Tipo de Combustível:* ${String(data.fuelType).trim()}`);
+      if (hasValue(data.plate)) lines.push(`*Placa:* ${cleanPlate}`);
+      if (hasValue(data.km)) lines.push(`*Odômetro:* ${toUpper(data.km).replace(/\s*KM/i, '')} KM`);
+      if (hasValue(data.fuel)) lines.push(`*Nível do combustível:* ${fuelDisplay}`);
+      if (hasValue(data.destination)) lines.push(`*Destino:* ${toUpper(data.destination)}`);
+      if (hasValue(data.driverName)) lines.push(`*Condutor:* ${toUpper(data.driverName)}`);
+      if (hasValue(data.liters)) lines.push(`*Litros:* ${toUpper(data.liters).replace(/\s*L/i, '')} L`);
+      if (hasValue(data.fuelType)) lines.push(`*Tipo de Combustível:* ${toUpper(data.fuelType)}`);
       break;
 
     case 'pdc':
-      if (hasValue(data.plate)) lines.push(`*Placa:* ${data.plate}`);
-      if (hasValue(data.fuel)) lines.push(`*Combustível:* ${data.fuel}`);
-      if (hasValue(data.driverName)) lines.push(`*Condutor:* ${String(data.driverName).trim()}`);
-      if (hasValue(data.km)) lines.push(`*KM:* ${String(data.km).trim()} km`);
+      if (hasValue(data.plate)) lines.push(`*Placa:* ${cleanPlate}`);
+      if (hasValue(data.fuel)) lines.push(`*Combustível:* ${fuelDisplay}`);
+      if (hasValue(data.driverName)) lines.push(`*Condutor:* ${toUpper(data.driverName)}`);
+      if (hasValue(data.km)) lines.push(`*KM:* ${toUpper(data.km).replace(/\s*KM/i, '')} KM`);
       break;
 
     case 'qualidade_51':
-      if (hasValue(data.plate)) lines.push(`*Placa:* ${data.plate}`);
+      if (hasValue(data.plate)) lines.push(`*Placa:* ${cleanPlate}`);
       if (hasValue(data.location)) lines.push(`*Local:* ${getLocationMeaning(data.location)}`);
-      if (hasValue(data.characteristic)) lines.push(`*Característica:* ${String(data.characteristic).trim()}`);
-      if (hasValue(data.fuel)) lines.push(`*Combustível:* ${data.fuel}`);
+      if (hasValue(data.characteristic)) lines.push(`*Característica:* ${toUpper(data.characteristic)}`);
+      if (hasValue(data.fuel)) lines.push(`*Combustível:* ${fuelDisplay}`);
       break;
 
     default:
-      if (hasValue(data.plate)) lines.push(`*Placa:* ${data.plate}`);
+      if (hasValue(data.plate)) lines.push(`*Placa:* ${cleanPlate}`);
       if (hasValue(data.location)) lines.push(`*Local:* ${getLocationMeaning(data.location)}`);
-      if (hasValue(data.characteristic)) lines.push(`*Característica:* ${String(data.characteristic).trim()}`);
-      if (hasValue(data.fuel)) lines.push(`*Combustível:* ${data.fuel}`);
-      if (hasValue(data.driverName)) lines.push(`*Condutor:* ${String(data.driverName).trim()}`);
-      if (hasValue(data.km)) lines.push(`*KM:* ${String(data.km).trim()} km`);
+      if (hasValue(data.characteristic)) lines.push(`*Característica:* ${toUpper(data.characteristic)}`);
+      if (hasValue(data.fuel)) lines.push(`*Combustível:* ${fuelDisplay}`);
+      if (hasValue(data.driverName)) lines.push(`*Condutor:* ${toUpper(data.driverName)}`);
+      if (hasValue(data.km)) lines.push(`*KM:* ${toUpper(data.km).replace(/\s*KM/i, '')} KM`);
       break;
   }
 
   if (hasValue(data.notes)) {
-    lines.push(`*Observação:* ${String(data.notes).trim()}`);
+    lines.push(`*Observação:* ${toUpper(data.notes)}`);
   }
 
   return lines.join('\n');

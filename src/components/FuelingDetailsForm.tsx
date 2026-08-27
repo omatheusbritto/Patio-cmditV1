@@ -14,7 +14,10 @@ import {
   Plus,
   Minus,
   Sparkles,
+  Edit2,
 } from 'lucide-react';
+import { QuickPlateEditModal } from './QuickPlateEditModal';
+import { formatPlateForDisplay } from '../utils/plateNormalizer';
 
 interface FuelingDetailsFormProps {
   plate: string;
@@ -27,6 +30,7 @@ interface FuelingDetailsFormProps {
   initialDriverName?: string;
   initialDestination?: string;
   onRetakeDashboardPhoto?: () => void;
+  onUpdatePlate?: (newPlate: string) => void;
   onSubmit: (data: {
     km: string;
     fuel: FuelLevel;
@@ -50,16 +54,16 @@ const FUEL_LEVELS: { id: FuelLevel; label: string; percent: string; color: strin
 ];
 
 const FUEL_TYPES = [
-  'Gasolina Comum',
-  'Gasolina Aditivada',
-  'Etanol',
-  'Diesel S10',
-  'Diesel Comum',
-  'Arla 32',
+  'GASOLINA COMUM',
+  'GASOLINA ADITIVADA',
+  'ETANOL',
+  'DIESEL S10',
+  'DIESEL COMUM',
+  'ARLA 32',
 ];
 
 const QUICK_LITERS = ['10', '20', '30', '40', '50', '60'];
-const QUICK_DESTINATIONS = ['Pátio', 'Loja', 'Oficina', 'Lavador', 'Cliente'];
+const QUICK_DESTINATIONS = ['PÁTIO', 'LOJA', 'OFICINA', 'LAVADOR', 'CLIENTE'];
 
 export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
   plate,
@@ -72,6 +76,7 @@ export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
   initialDriverName = '',
   initialDestination = '',
   onRetakeDashboardPhoto,
+  onUpdatePlate,
   onSubmit,
   onBack,
 }) => {
@@ -82,6 +87,7 @@ export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
   const [driverName, setDriverName] = useState<string>(initialDriverName || '');
   const [destination, setDestination] = useState<string>(initialDestination || '');
   const [error, setError] = useState<string | null>(null);
+  const [isEditPlateOpen, setIsEditPlateOpen] = useState<boolean>(false);
 
   const handleAdjustKm = (amount: number) => {
     const cleanCurrent = parseInt(km.replace(/\D/g, ''), 10) || 0;
@@ -109,12 +115,12 @@ export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
     }
     setError(null);
     onSubmit({
-      km: km.trim(),
+      km: km.trim().toUpperCase(),
       fuel,
-      destination: destination.trim(),
-      driverName: driverName.trim(),
-      liters: liters.trim(),
-      fuelType: fuelType.trim(),
+      destination: destination.trim().toUpperCase(),
+      driverName: driverName.trim().toUpperCase(),
+      liters: liters.trim().toUpperCase(),
+      fuelType: fuelType.trim().toUpperCase(),
     });
   };
 
@@ -127,9 +133,18 @@ export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
             <Fuel className="w-3 h-3 text-cyan-700" />
             Abastecimento • Detalhes
           </span>
-          <span className="text-xs font-mono font-bold bg-neutral-900 text-white px-2.5 py-1 rounded-lg">
-            {plate}
-          </span>
+          <button
+            type="button"
+            onClick={() => setIsEditPlateOpen(true)}
+            className="flex items-center gap-1.5 bg-neutral-900 hover:bg-neutral-800 text-white px-2.5 py-1 rounded-lg transition active:scale-95 cursor-pointer shadow-xs"
+            title="Alterar placa sem alterar a foto"
+          >
+            <span className="text-xs font-mono font-bold">{formatPlateForDisplay(plate)}</span>
+            <span className="text-[9px] bg-emerald-600 text-white font-bold px-1 rounded flex items-center gap-0.5">
+              <Edit2 className="w-2.5 h-2.5" />
+              Alterar
+            </span>
+          </button>
         </div>
 
         <h2 className="text-xl font-black text-neutral-900 leading-tight">
@@ -334,8 +349,8 @@ export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
             type="text"
             placeholder="Ex: Pátio, Loja, Oficina, Lavador, Cliente..."
             value={destination}
-            onChange={(e) => setDestination(e.target.value)}
-            className="w-full text-sm font-semibold py-2.5 px-3 rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-cyan-500 bg-neutral-50/50"
+            onChange={(e) => setDestination(e.target.value.toUpperCase())}
+            className="w-full text-sm font-semibold uppercase placeholder:normal-case py-2.5 px-3 rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-cyan-500 bg-neutral-50/50"
           />
           {/* Quick destinations */}
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -371,10 +386,10 @@ export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
           <input
             id="driver-input"
             type="text"
-            placeholder="Ex: Nome do condutor / motorista (opcional)"
+            placeholder="Ex: NOME DO CONDUTOR / MOTORISTA (OPCIONAL)"
             value={driverName}
-            onChange={(e) => setDriverName(e.target.value)}
-            className="w-full text-sm font-semibold py-2.5 px-3 rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-cyan-500 bg-neutral-50/50"
+            onChange={(e) => setDriverName(e.target.value.toUpperCase())}
+            className="w-full text-sm font-semibold uppercase placeholder:normal-case py-2.5 px-3 rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-cyan-500 bg-neutral-50/50"
           />
         </div>
 
@@ -487,6 +502,17 @@ export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
           </button>
         </div>
       </form>
+
+      {/* Modal para Alterar Placa mantendo a foto */}
+      <QuickPlateEditModal
+        isOpen={isEditPlateOpen}
+        currentPlate={plate}
+        photoUrl={platePhotoUrl}
+        onSave={(newPlate) => {
+          if (onUpdatePlate) onUpdatePlate(newPlate);
+        }}
+        onClose={() => setIsEditPlateOpen(false)}
+      />
     </div>
   );
 };

@@ -28,6 +28,7 @@ import {
   DEFAULT_SPREADSHEET_ID,
 } from '../utils/googleDriveClient';
 import { getCurrentSession } from '../utils/authService';
+import { QuickPlateEditModal } from './QuickPlateEditModal';
 import {
   Camera,
   CheckCircle2,
@@ -78,6 +79,7 @@ interface ReviewAndShareProps {
   onRetakePhoto?: () => void;
   onRetakeDashboardPhoto?: () => void;
   onEditPlate: () => void;
+  onUpdatePlate?: (newPlate: string) => void;
   onEditOperation: () => void;
   onEditDetails?: () => void;
   onEditFuel: () => void;
@@ -127,6 +129,7 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
   onRetakePhoto,
   onRetakeDashboardPhoto,
   onEditPlate,
+  onUpdatePlate,
   onEditOperation,
   onEditDetails,
   onEditFuel,
@@ -139,9 +142,27 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
   const [shareStatusMsg, setShareStatusMsg] = useState<string | null>(null);
   const [isStatusError, setIsStatusError] = useState<boolean>(false);
   const [copiedText, setCopiedText] = useState<boolean>(false);
+  const [isPlateModalOpen, setIsPlateModalOpen] = useState<boolean>(false);
 
-  const cleanPlate = sanitizeRawText(plate) || 'SEM_PLACA';
+  const [activePlate, setActivePlate] = useState<string>(plate);
+
+  // Sync activePlate if prop changes
+  React.useEffect(() => {
+    setActivePlate(plate);
+  }, [plate]);
+
+  const cleanPlate = sanitizeRawText(activePlate) || 'SEM_PLACA';
   const isMercosul = isMercosulFormat(cleanPlate);
+
+  const handleSaveNewPlate = (newPlate: string) => {
+    const clean = sanitizeRawText(newPlate);
+    setActivePlate(clean);
+    if (onUpdatePlate) {
+      onUpdatePlate(clean);
+    }
+    setShareStatusMsg(`Placa atualizada para ${formatPlateForDisplay(clean)}`);
+    setTimeout(() => setShareStatusMsg(null), 3000);
+  };
 
   const messageText = generateWhatsAppMessage({
     operationType,
@@ -171,25 +192,36 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
     setIsStatusError(false);
     setShareStatusMsg('Preparando compartilhamento...');
 
+    const upperDriverName = driverName ? driverName.trim().toUpperCase() : undefined;
+    const upperOrigin = origin ? origin.trim().toUpperCase() : undefined;
+    const upperDestination = destination ? destination.trim().toUpperCase() : undefined;
+    const upperKm = km ? String(km).trim().toUpperCase() : undefined;
+    const upperFleetType = fleetType ? String(fleetType).trim().toUpperCase() : undefined;
+    const upperEntryReason = entryReason ? entryReason.trim().toUpperCase() : undefined;
+    const upperLiters = liters ? String(liters).trim().toUpperCase() : undefined;
+    const upperFuelType = fuelType ? fuelType.trim().toUpperCase() : undefined;
+    const upperCharacteristic = characteristic ? String(characteristic).trim().toUpperCase() : undefined;
+    const upperLocation = location ? (String(location).trim().toUpperCase() as LocationCode) : undefined;
+
     // Save to local history immediately
     onSaveToHistory({
       photoDataUrl,
       dashboardPhotoUrl,
-      plate: cleanPlate,
+      plate: cleanPlate.toUpperCase(),
       operationType,
       fuel,
-      driverName,
-      origin,
-      destination,
-      km,
+      driverName: upperDriverName,
+      origin: upperOrigin,
+      destination: upperDestination,
+      km: upperKm,
       hasSpareKey,
-      fleetType,
+      fleetType: upperFleetType,
       entrySubtype,
-      entryReason,
-      liters,
-      fuelType,
-      characteristic,
-      location: location || (operationType === 'pdc' ? 'PDC' : 'P1'),
+      entryReason: upperEntryReason,
+      liters: upperLiters,
+      fuelType: upperFuelType,
+      characteristic: (upperCharacteristic as any) || undefined,
+      location: upperLocation || (operationType === 'pdc' ? 'PDC' : 'P1'),
       description: messageText,
     });
 
@@ -197,26 +229,26 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
     const driveConfig = getStoredDriveConfig();
     const session = getCurrentSession();
     const isMaster = session?.user.role === 'master' || session?.user.username.toLowerCase() === 'mastercmdit';
-    const operatorName = session ? `${session.user.name} (${session.user.username})` : 'Operador';
+    const operatorName = session ? `${session.user.name.toUpperCase()} (${session.user.username.toUpperCase()})` : 'OPERADOR';
     const targetSpreadsheetId = driveConfig.spreadsheetId || DEFAULT_SPREADSHEET_ID;
 
     const recordPayload = {
-      plate: cleanPlate,
+      plate: cleanPlate.toUpperCase(),
       operationType,
       fuel,
       operatorName,
-      driverName,
-      origin,
-      destination,
-      km,
+      driverName: upperDriverName,
+      origin: upperOrigin,
+      destination: upperDestination,
+      km: upperKm,
       hasSpareKey,
-      fleetType,
+      fleetType: upperFleetType,
       entrySubtype,
-      entryReason,
-      liters,
-      fuelType,
-      characteristic,
-      location: location || undefined,
+      entryReason: upperEntryReason,
+      liters: upperLiters,
+      fuelType: upperFuelType,
+      characteristic: (upperCharacteristic as any) || undefined,
+      location: upperLocation || undefined,
     };
 
     setSheetSyncStatus('Registrando movimentação...');
@@ -387,6 +419,15 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
                 <span className="absolute bottom-1 left-1 text-[9px] font-bold bg-black/70 text-white px-1.5 py-0.5 rounded">
                   1. Placa
                 </span>
+                <button
+                  type="button"
+                  onClick={() => setIsPlateModalOpen(true)}
+                  className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-emerald-600/90 text-white rounded text-[10px] font-bold flex items-center gap-0.5 shadow hover:bg-emerald-500"
+                  title="Alterar Placa (mantendo a foto)"
+                >
+                  <Edit2 className="w-2.5 h-2.5" />
+                  <span>Placa</span>
+                </button>
                 {onRetakePhoto && (
                   <button
                     type="button"
@@ -446,16 +487,25 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
               </span>
             </div>
 
-            {/* Floating Plate Display */}
+            {/* Floating Plate Display with Click-to-Edit */}
             <div className="absolute bottom-3 left-3">
-              <div className="bg-white/95 backdrop-blur-sm px-3 py-1.5 rounded-xl border border-neutral-300 shadow-lg flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsPlateModalOpen(true)}
+                className="bg-white/95 hover:bg-white backdrop-blur-sm px-3 py-1.5 rounded-xl border border-neutral-300 shadow-lg flex items-center gap-2 text-left group transition cursor-pointer active:scale-95"
+                title="Clique para alterar a placa sem alterar a foto"
+              >
                 <span className="text-[10px] font-bold text-neutral-500 uppercase">
                   Placa
                 </span>
                 <span className="font-mono text-base font-black text-neutral-900 tracking-wider">
                   {formatPlateForDisplay(cleanPlate)}
                 </span>
-              </div>
+                <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded flex items-center gap-0.5 group-hover:bg-emerald-600 group-hover:text-white transition">
+                  <Edit2 className="w-2.5 h-2.5" />
+                  Alterar
+                </span>
+              </button>
             </div>
 
             {/* Edit photo button */}
@@ -473,6 +523,43 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
 
         {/* Dynamic Fields List based on Operation */}
         <div className="p-4 flex flex-col gap-2.5">
+          {/* Dedicated Plate Row with prominent Alterar button */}
+          <div className="flex items-center justify-between p-3 rounded-xl bg-neutral-900 text-white shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-lg bg-white/10 text-emerald-400">
+                <Car className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">
+                  Placa Identificada
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-base font-black text-white tracking-wider">
+                    {formatPlateForDisplay(cleanPlate)}
+                  </span>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      isMercosul
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-neutral-700 text-neutral-200'
+                    }`}
+                  >
+                    {isMercosul ? 'Mercosul' : 'Antiga'}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsPlateModalOpen(true)}
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black rounded-lg shadow flex items-center gap-1.5 active:scale-95 transition cursor-pointer"
+              title="Alterar placa mantendo a foto intacta"
+            >
+              <Edit2 className="w-3 h-3" />
+              <span>Alterar Placa</span>
+            </button>
+          </div>
+
           {/* Operation Switcher Row */}
           <div className="flex items-center justify-between p-2.5 rounded-xl bg-neutral-50 border border-neutral-200">
             <div className="flex items-center gap-2">
@@ -923,6 +1010,15 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Modal para Alterar Placa mantendo a foto intacta */}
+      <QuickPlateEditModal
+        isOpen={isPlateModalOpen}
+        currentPlate={cleanPlate}
+        photoUrl={photoDataUrl}
+        onSave={handleSaveNewPlate}
+        onClose={() => setIsPlateModalOpen(false)}
+      />
     </div>
   );
 };

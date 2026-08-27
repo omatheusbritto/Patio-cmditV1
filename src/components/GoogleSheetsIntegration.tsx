@@ -3,29 +3,19 @@ import {
   FileSpreadsheet,
   CheckCircle2,
   ExternalLink,
-  PlusCircle,
-  Layers,
   Sparkles,
-  LogOut,
   AlertTriangle,
-  LogIn,
-  Copy,
-  Check,
   Zap,
   Code2,
   HelpCircle,
-  PlayCircle,
+  Copy,
+  Check,
 } from 'lucide-react';
 import {
   getStoredDriveConfig,
   saveDriveConfig,
   fetchServerDriveConfig,
-  getCachedGoogleToken,
-  requestGoogleAccessToken,
-  createDriveSpreadsheet,
   clearGoogleToken,
-  initAuth,
-  initSpreadsheetTabs,
   testWebhookUrl,
   GOOGLE_APPS_SCRIPT_TEMPLATE,
   DEFAULT_SPREADSHEET_ID,
@@ -43,7 +33,6 @@ export const GoogleSheetsIntegration: React.FC<GoogleSheetsIntegrationProps> = (
   onOpenSpreadsheetOnline,
 }) => {
   const [config, setConfig] = useState(getStoredDriveConfig());
-  const [token, setToken] = useState<string | null>(getCachedGoogleToken());
   const [isLoading, setIsLoading] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [statusMsg, setStatusMsg] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -65,19 +54,6 @@ export const GoogleSheetsIntegration: React.FC<GoogleSheetsIntegrationProps> = (
         setWebhookInput(serverCfg.webhookUrl);
       }
     });
-
-    const unsubscribe = initAuth(
-      (_user, activeToken) => {
-        setToken(activeToken);
-      },
-      () => {
-        setToken(getCachedGoogleToken());
-      }
-    );
-    
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
   }, []);
 
   // Strict User Access Control: Ordinary operators do NOT see or access the Google Sheets panel
@@ -171,7 +147,6 @@ export const GoogleSheetsIntegration: React.FC<GoogleSheetsIntegrationProps> = (
   const handleDisconnect = () => {
     if (!isMaster) return;
     clearGoogleToken();
-    setToken(null);
     const newConfig = saveDriveConfig({
       webhookUrl: null,
       spreadsheetId: null,
@@ -305,28 +280,43 @@ export const GoogleSheetsIntegration: React.FC<GoogleSheetsIntegrationProps> = (
 
         {/* Instructions dropdown */}
         {showInstructions && (
-          <div className="bg-white rounded-xl p-3 border border-emerald-200 text-xs text-neutral-700 flex flex-col gap-2.5 my-1">
-            <div className="flex items-center justify-between font-black text-emerald-900 border-b border-emerald-100 pb-1.5">
-              <span>Passo a Passo Rápido (1 minuto):</span>
+          <div className="bg-white rounded-xl p-3.5 border border-emerald-200 text-xs text-neutral-700 flex flex-col gap-3 my-1">
+            <div className="flex items-center justify-between font-black text-emerald-900 border-b border-emerald-100 pb-2">
+              <span>Como Atualizar/Configurar o Script (1 minuto):</span>
               <button
                 type="button"
                 onClick={handleCopyScript}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg text-[10px] font-black flex items-center gap-1 cursor-pointer transition active:scale-95"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-[11px] font-black flex items-center gap-1.5 cursor-pointer transition active:scale-95 shadow-xs"
               >
-                {copiedScript ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                <span>{copiedScript ? 'Copiado!' : '1. Copiar Código do Script'}</span>
+                {copiedScript ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedScript ? 'Código Copiado!' : 'Copiar Código Corrigido'}</span>
               </button>
             </div>
 
-            <ol className="list-decimal list-inside space-y-1.5 text-[11px] text-neutral-600">
-              <li>Abra sua Planilha Google no computador ou navegador.</li>
-              <li>Clique no menu superior em: <strong>Extensões ➔ Apps Script</strong>.</li>
-              <li>Apague o que estiver lá, <strong>cole o código copiado</strong> e salve (Ctrl+S).</li>
-              <li>Clique no botão azul superior: <strong>Implantar ➔ Nova implantação</strong>.</li>
-              <li>Escolha tipo: <strong>Aplicativo da Web</strong> (Web app).</li>
-              <li>Em <em>"Quem pode acessar"</em>, selecione: <strong>Qualquer pessoa (Anyone)</strong>.</li>
-              <li>Clique em <strong>Implantar</strong>, copie a URL gerada e cole no campo abaixo.</li>
-            </ol>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-[11px] text-amber-900 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <strong>Atenção se você já tinha o script colado no Google Sheets:</strong>
+                <p className="mt-0.5 text-amber-800">
+                  No Apps Script do Google, ao colar o código novo você <strong>precisa gerar uma Nova Versão</strong> da implantação para que ele pare de rodar o script antigo.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2 text-[11px] text-neutral-600">
+              <p className="font-bold text-neutral-800">Passo a passo no Google Sheets:</p>
+              <ol className="list-decimal list-inside space-y-1.5 pl-1">
+                <li>Abra sua Planilha Google &gt; Menu superior <strong>Extensões ➔ Apps Script</strong>.</li>
+                <li>Apague todo o código antigo, <strong>cole o código copiado</strong> e salve (Ctrl+S).</li>
+                <li>
+                  No topo direito, clique em <strong>Implantar ➔ Gerenciar implantações</strong> (ou <em>Nova implantação</em>).
+                </li>
+                <li>
+                  Clique no <strong>ícone de Lápis (Editar)</strong>, no campo <em>Versão</em> selecione <strong>&quot;Nova versão&quot;</strong> e clique em <strong>Implantar</strong>.
+                </li>
+                <li>Copie a <strong>URL do aplicativo da Web</strong> e cole no campo abaixo.</li>
+              </ol>
+            </div>
           </div>
         )}
 

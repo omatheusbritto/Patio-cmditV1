@@ -574,6 +574,7 @@ export default function App() {
                 selectedOperation={operationType}
                 onSelectOperation={handleSelectOperation}
                 onBack={() => setCurrentStep('plate_confirm')}
+                onUpdatePlate={(newPlate) => setPlate(newPlate)}
               />
             )}
 
@@ -589,6 +590,7 @@ export default function App() {
                 initialFleetType={fleetType}
                 initialEntrySubtype={entrySubtype}
                 initialEntryReason={entryReason}
+                onUpdatePlate={(newPlate) => setPlate(newPlate)}
                 onSubmit={handleSubmitOperationDetails}
                 onBack={() => setCurrentStep('operation_select')}
               />
@@ -600,6 +602,7 @@ export default function App() {
                 onPhotoCaptured={handleDashboardPhotoCaptured}
                 onSkip={handleSkipDashboardPhoto}
                 onBack={() => setCurrentStep('operation_select')}
+                onUpdatePlate={(newPlate) => setPlate(newPlate)}
               />
             )}
 
@@ -615,6 +618,7 @@ export default function App() {
                 initialDriverName={driverName}
                 initialDestination={destination}
                 onRetakeDashboardPhoto={() => setCurrentStep('dashboard_camera')}
+                onUpdatePlate={(newPlate) => setPlate(newPlate)}
                 onSubmit={handleSubmitFuelingDetails}
                 onBack={() => setCurrentStep('operation_select')}
               />
@@ -652,6 +656,7 @@ export default function App() {
                 onSelectLocation={handleSelectQualityLocation}
                 onNext={handleNextFromQualityLocation}
                 onBack={() => setCurrentStep('fuel')}
+                onUpdatePlate={(newPlate) => setPlate(newPlate)}
               />
             )}
 
@@ -675,6 +680,7 @@ export default function App() {
                 characteristic={characteristic}
                 location={location}
                 onEditPlate={() => setCurrentStep('plate_confirm')}
+                onUpdatePlate={(newPlate) => setPlate(newPlate)}
                 onRetakePhoto={() => setCurrentStep('camera')}
                 onRetakeDashboardPhoto={() => setCurrentStep('dashboard_camera')}
                 onEditOperation={() => setCurrentStep('operation_select')}

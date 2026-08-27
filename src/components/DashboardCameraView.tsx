@@ -11,14 +11,18 @@ import {
   Fuel,
   ArrowLeft,
   SkipForward,
+  Edit2,
 } from 'lucide-react';
 import { stampDateTimeOnCanvas, stampDateTimeOnDataUrl } from '../utils/imageOptimizer';
+import { QuickPlateEditModal } from './QuickPlateEditModal';
+import { formatPlateForDisplay } from '../utils/plateNormalizer';
 
 interface DashboardCameraViewProps {
   plate: string;
   onPhotoCaptured: (dataUrl: string) => void;
   onSkip: () => void;
   onBack: () => void;
+  onUpdatePlate?: (newPlate: string) => void;
 }
 
 export const DashboardCameraView: React.FC<DashboardCameraViewProps> = ({
@@ -26,6 +30,7 @@ export const DashboardCameraView: React.FC<DashboardCameraViewProps> = ({
   onPhotoCaptured,
   onSkip,
   onBack,
+  onUpdatePlate,
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -37,6 +42,7 @@ export const DashboardCameraView: React.FC<DashboardCameraViewProps> = ({
   const [isTorchOn, setIsTorchOn] = useState<boolean>(false);
   const [hasTorch, setHasTorch] = useState<boolean>(false);
   const [isLoadingCamera, setIsLoadingCamera] = useState<boolean>(true);
+  const [isEditPlateOpen, setIsEditPlateOpen] = useState<boolean>(false);
 
   // Start Camera Stream
   useEffect(() => {
@@ -280,7 +286,15 @@ export const DashboardCameraView: React.FC<DashboardCameraViewProps> = ({
           <span className="text-[11px] font-black uppercase tracking-wider text-cyan-400 bg-cyan-950/80 border border-cyan-500/40 px-2.5 py-0.5 rounded-full">
             Foto 2/2 • Painel
           </span>
-          <span className="text-[10px] font-mono text-white/80 font-bold mt-0.5">{plate}</span>
+          <button
+            type="button"
+            onClick={() => setIsEditPlateOpen(true)}
+            className="flex items-center gap-1 text-[11px] font-mono text-white bg-black/60 hover:bg-black/80 px-2 py-0.5 rounded-lg border border-neutral-700/60 font-bold mt-1 cursor-pointer"
+            title="Alterar placa"
+          >
+            <span>{formatPlateForDisplay(plate)}</span>
+            <Edit2 className="w-2.5 h-2.5 text-cyan-400" />
+          </button>
         </div>
 
         <div className="flex items-center gap-2">
@@ -438,6 +452,16 @@ export const DashboardCameraView: React.FC<DashboardCameraViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Modal para Alterar Placa mantendo a foto */}
+      <QuickPlateEditModal
+        isOpen={isEditPlateOpen}
+        currentPlate={plate}
+        onSave={(newPlate) => {
+          if (onUpdatePlate) onUpdatePlate(newPlate);
+        }}
+        onClose={() => setIsEditPlateOpen(false)}
+      />
     </div>
   );
 };

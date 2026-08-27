@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { OperationType } from '../types';
 import {
   LogIn,
@@ -10,13 +10,17 @@ import {
   ArrowLeft,
   Sparkles,
   Check,
+  Edit2,
 } from 'lucide-react';
+import { QuickPlateEditModal } from './QuickPlateEditModal';
+import { formatPlateForDisplay } from '../utils/plateNormalizer';
 
 interface OperationSelectorProps {
   plate: string;
   selectedOperation: OperationType | null;
   onSelectOperation: (operation: OperationType) => void;
   onBack: () => void;
+  onUpdatePlate?: (newPlate: string) => void;
 }
 
 interface OperationOption {
@@ -100,7 +104,10 @@ export const OperationSelector: React.FC<OperationSelectorProps> = ({
   selectedOperation,
   onSelectOperation,
   onBack,
+  onUpdatePlate,
 }) => {
+  const [isEditPlateOpen, setIsEditPlateOpen] = useState<boolean>(false);
+
   return (
     <div className="flex flex-col gap-3.5 max-w-md mx-auto w-full pb-10">
       {/* Header Info */}
@@ -109,9 +116,18 @@ export const OperationSelector: React.FC<OperationSelectorProps> = ({
           <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full">
             Etapa 2 • Tipo de Registro
           </span>
-          <span className="text-xs font-mono font-bold bg-neutral-900 text-white px-2.5 py-1 rounded-lg">
-            {plate}
-          </span>
+          <button
+            type="button"
+            onClick={() => setIsEditPlateOpen(true)}
+            className="flex items-center gap-1.5 bg-neutral-900 hover:bg-neutral-800 text-white px-2.5 py-1 rounded-lg transition active:scale-95 cursor-pointer shadow-xs"
+            title="Alterar placa sem alterar a foto"
+          >
+            <span className="text-xs font-mono font-bold">{formatPlateForDisplay(plate)}</span>
+            <span className="text-[9px] bg-emerald-600 text-white font-bold px-1 rounded flex items-center gap-0.5">
+              <Edit2 className="w-2.5 h-2.5" />
+              Alterar
+            </span>
+          </button>
         </div>
 
         <h2 className="text-xl font-black text-neutral-900 leading-tight">
@@ -194,6 +210,16 @@ export const OperationSelector: React.FC<OperationSelectorProps> = ({
           Voltar para Placa
         </button>
       </div>
+
+      {/* Modal para Alterar Placa mantendo a foto */}
+      <QuickPlateEditModal
+        isOpen={isEditPlateOpen}
+        currentPlate={plate}
+        onSave={(newPlate) => {
+          if (onUpdatePlate) onUpdatePlate(newPlate);
+        }}
+        onClose={() => setIsEditPlateOpen(false)}
+      />
     </div>
   );
 };

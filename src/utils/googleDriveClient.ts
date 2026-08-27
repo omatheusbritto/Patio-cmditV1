@@ -367,14 +367,14 @@ export const GOOGLE_APPS_SCRIPT_TEMPLATE = `// =================================
 var STANDARD_HEADERS = [
   "DATA",
   "HORA",
-  "CONDUTOR",
+  "OPERADOR (AUDITORIA)",
   "PLACA",
-  "ORIGEM",
-  "DESTINO",
+  "CONDUTOR",
   "KM (ODÔMETRO)",
   "NÍVEL DO COMBUSTÍVEL",
   "LITROS ABASTECIDOS",
   "TIPO DE COMBUSTÍVEL",
+  "DESTINO",
   "OBSERVAÇÕES"
 ];
 
@@ -450,26 +450,46 @@ function doPost(e) {
     var dateStr = Utilities.formatDate(now, "America/Sao_Paulo", "dd/MM/yyyy");
     var timeStr = Utilities.formatDate(now, "America/Sao_Paulo", "HH:mm:ss");
     
-    // Extração fiel dos 11 dados
-    var condutor = data.driverName || data.condutor || data.operatorName || "-";
-    var placa = (data.plate || data.placa || "").toUpperCase().trim();
-    var origem = data.origin || data.origem || (tabCategory === "entrada" ? "Pátio Principal" : "-");
-    var destino = data.destination || data.destino || (tabCategory === "pdc" ? "Fila PDC (Lavagem/Oficina)" : "-");
-    var km = data.km ? (String(data.km).replace(/\\s*km/i, '') + " km") : (data.odometro || "-");
-    var nivelCombustivel = data.fuel || data.nivelCombustivel || data.combustivel || "-";
-    var litrosAbastecidos = data.liters ? (String(data.liters).replace(/\\s*l/i, '') + " L") : (data.litros || "-");
-    var tipoCombustivel = data.fuelType || data.tipoCombustivel || (tabCategory === "abastecimento" ? "DIESEL S10" : "-");
+    // Função para formatar o nível do combustível de 1/8 até 8/8
+    var formatFuelLevel = function(f) {
+      if (!f) return "-";
+      var clean = String(f).trim();
+      if (clean === "1/8" || clean === "1/8 (Reserva)") return "1/8 (Reserva)";
+      if (clean === "2/8" || clean === "2/8 (1/4)") return "2/8 (1/4)";
+      if (clean === "3/8") return "3/8";
+      if (clean === "4/8" || clean === "4/8 (1/2)") return "4/8 (1/2)";
+      if (clean === "5/8") return "5/8";
+      if (clean === "6/8" || clean === "6/8 (3/4)") return "6/8 (3/4)";
+      if (clean === "7/8") return "7/8";
+      if (clean === "8/8" || clean === "8/8 (Cheio)" || clean === "8/8 • Cheio" || clean === "Tanque Cheio") return "8/8 (Cheio)";
+      return clean;
+    };
+
+    var isAbastecimento = (tabCategory === "abastecimento");
+
+    // Extração fiel dos dados em LETRAS MAIÚSCULAS
+    var operador = String(data.operatorName || data.operador || "OPERADOR").toUpperCase().trim();
+    var condutor = String(data.driverName || data.condutor || data.motorista || "-").toUpperCase().trim();
+    var placa = String(data.plate || data.placa || "").toUpperCase().trim();
+    var origem = String(data.origin || data.origem || (tabCategory === "entrada" ? "PÁTIO PRINCIPAL" : "-")).toUpperCase().trim();
+    var destino = String(data.destination || data.destino || (tabCategory === "pdc" ? "FILA PDC (LAVAGEM/OFICINA)" : "-")).toUpperCase().trim();
+    var km = data.km ? (String(data.km).replace(/\s*km/i, '').toUpperCase().trim() + " KM") : (data.odometro ? (String(data.odometro).replace(/\s*km/i, '').toUpperCase().trim() + " KM") : "-");
+    var nivelCombustivel = String(formatFuelLevel(data.nivelCombustivel || data.fuel || data.combustivel)).toUpperCase().trim();
+    var litrosAbastecidos = data.litrosAbastecidos
+      ? (String(data.litrosAbastecidos).replace(/\s*l/i, '').toUpperCase().trim() + " L")
+      : (data.liters ? (String(data.liters).replace(/\s*l/i, '').toUpperCase().trim() + " L") : (data.litros ? (String(data.litros).replace(/\s*l/i, '').toUpperCase().trim() + " L") : "-"));
+    var tipoCombustivel = String(data.tipoCombustivel || data.fuelType || (isAbastecimento ? "DIESEL S10" : "-")).toUpperCase().trim();
     
     var extras = [];
     if (data.hasSpareKey !== undefined && data.hasSpareKey !== null) {
-      extras.push("Chave Reserva: " + (data.hasSpareKey ? "SIM" : "NÃO"));
+      extras.push("CHAVE RESERVA: " + (data.hasSpareKey ? "SIM" : "NÃO"));
     }
-    if (data.fleetType) extras.push("Frota: " + data.fleetType);
-    if (data.entrySubtype) extras.push("Subtipo: " + data.entrySubtype);
-    if (data.entryReason) extras.push("Motivo: " + data.entryReason);
-    if (data.characteristic) extras.push("Característica: " + data.characteristic);
-    if (data.location) extras.push("Local/Poste: " + data.location);
-    if (data.operatorName && data.operatorName !== condutor) extras.push("Operador: " + data.operatorName);
+    if (data.fleetType) extras.push("FROTA: " + String(data.fleetType).toUpperCase().trim());
+    if (data.entrySubtype) extras.push("SUBTIPO: " + String(data.entrySubtype).toUpperCase().trim());
+    if (data.entryReason) extras.push("MOTIVO: " + String(data.entryReason).toUpperCase().trim());
+    if (data.characteristic) extras.push("CARACTERÍSTICA: " + String(data.characteristic).toUpperCase().trim());
+    if (data.location) extras.push("LOCAL/POSTE: " + String(data.location).toUpperCase().trim());
+    if (origem && origem !== "-" && origem !== "PÁTIO PRINCIPAL") extras.push("ORIGEM: " + origem);
     
     var observacoes = data.notes || data.description || data.observacoes || "";
     if (extras.length > 0) {
@@ -477,27 +497,28 @@ function doPost(e) {
       observacoes = observacoes ? (extraStr + " " + observacoes) : extraStr;
     }
     if (!observacoes) observacoes = "-";
+    observacoes = String(observacoes).toUpperCase().trim();
     
     var standardRow = [
-      dateStr,             // 1. DATA
-      timeStr,             // 2. HORA
-      condutor,            // 3. CONDUTOR
-      placa,               // 4. PLACA
-      origem,              // 5. ORIGEM
-      destino,             // 6. DESTINO
-      km,                  // 7. KM (ODÔMETRO)
-      nivelCombustivel,    // 8. NÍVEL DO COMBUSTÍVEL
-      litrosAbastecidos,   // 9. LITROS ABASTECIDOS
-      tipoCombustivel,     // 10. TIPO DE COMBUSTÍVEL
-      observacoes          // 11. OBSERVAÇÕES
+      dateStr,             // 1. DATA (Col A)
+      timeStr,             // 2. HORA (Col B)
+      operador,            // 3. OPERADOR (AUDITORIA) (Col C)
+      placa,               // 4. PLACA (Col D)
+      condutor,            // 5. CONDUTOR (Col E)
+      km,                  // 6. KM (ODÔMETRO) (Col F)
+      nivelCombustivel,    // 7. NÍVEL DO COMBUSTÍVEL (Col G)
+      litrosAbastecidos,   // 8. LITROS ABASTECIDOS (Col H)
+      tipoCombustivel,     // 9. TIPO DE COMBUSTÍVEL (Col I)
+      destino,             // 10. DESTINO (Col J)
+      observacoes          // 11. OBSERVAÇÕES (Col K)
     ];
     
     // Inspeção de cabeçalhos existentes na linha 1
     var lastCol = Math.max(sheet.getLastColumn(), 1);
-    var existingHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0] || [];
+    var rawHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0] || [];
     var hasHeaders = false;
-    for (var h = 0; h < existingHeaders.length; h++) {
-      if (String(existingHeaders[h] || '').trim() !== '') {
+    for (var h = 0; h < rawHeaders.length; h++) {
+      if (String(rawHeaders[h] || '').trim() !== '') {
         hasHeaders = true;
         break;
       }
@@ -509,26 +530,72 @@ function doPost(e) {
       hr.setFontWeight("bold");
       hr.setBackground("#0f172a");
       hr.setFontColor("#ffffff");
-      sheet.appendRow(standardRow);
+      
+      // Inserção no topo (Linha 2, logo abaixo dos cabeçalhos - modo Pilha)
+      sheet.insertRowAfter(1);
+      var rRange = sheet.getRange(2, 1, 1, standardRow.length);
+      rRange.setValues([standardRow]);
+      rRange.setFontWeight("normal");
+      rRange.setBackground(null);
+      rRange.setFontColor("#000000");
     } else {
-      var mappedRow = [];
-      for (var c = 0; c < existingHeaders.length; c++) {
-        var hdr = String(existingHeaders[c] || '').toLowerCase().trim();
-        if (hdr.indexOf("data") !== -1 || hdr === "dt") mappedRow.push(dateStr);
-        else if (hdr.indexOf("hora") !== -1 || hdr === "hr") mappedRow.push(timeStr);
-        else if (hdr.indexOf("condut") !== -1 || hdr.indexOf("motor") !== -1 || hdr.indexOf("operad") !== -1) mappedRow.push(condutor);
-        else if (hdr.indexOf("plac") !== -1) mappedRow.push(placa);
-        else if (hdr.indexOf("orig") !== -1) mappedRow.push(origem);
-        else if (hdr.indexOf("dest") !== -1) mappedRow.push(destino);
-        else if (hdr.indexOf("km") !== -1 || hdr.indexOf("odôm") !== -1 || hdr.indexOf("odomet") !== -1) mappedRow.push(km);
-        else if (hdr.indexOf("nível") !== -1 || hdr.indexOf("nivel") !== -1 || (hdr.indexOf("combust") !== -1 && hdr.indexOf("tipo") === -1 && hdr.indexOf("litr") === -1)) mappedRow.push(nivelCombustivel);
-        else if (hdr.indexOf("litr") !== -1 || hdr.indexOf("abastec") !== -1) mappedRow.push(litrosAbastecidos);
-        else if (hdr.indexOf("tipo") !== -1 && hdr.indexOf("combust") !== -1) mappedRow.push(tipoCombustivel);
-        else if (hdr.indexOf("obs") !== -1 || hdr.indexOf("nota") !== -1 || hdr.indexOf("detalh") !== -1) mappedRow.push(observacoes);
-        else if (c < standardRow.length) mappedRow.push(standardRow[c]);
-        else mappedRow.push("");
+      var normalizedHeaders = [];
+      for (var hi = 0; hi < rawHeaders.length; hi++) {
+        var nh = String(rawHeaders[hi] || '').toLowerCase()
+          .replace(/[áàãâä]/g, 'a')
+          .replace(/[éèêë]/g, 'e')
+          .replace(/[íìîï]/g, 'i')
+          .replace(/[óòõôö]/g, 'o')
+          .replace(/[úùûü]/g, 'u')
+          .replace(/[ç]/g, 'c')
+          .trim();
+        normalizedHeaders.push(nh);
       }
-      sheet.appendRow(mappedRow);
+
+      var mappedRow = [];
+      for (var c = 0; c < normalizedHeaders.length; c++) {
+        var hdr = normalizedHeaders[c];
+        if (hdr.indexOf("data") !== -1 || hdr === "dt" || hdr.indexOf("date") !== -1 || hdr === "dia") {
+          mappedRow.push(dateStr);
+        } else if (hdr.indexOf("hora") !== -1 || hdr === "hr" || hdr.indexOf("horario") !== -1 || hdr.indexOf("time") !== -1) {
+          mappedRow.push(timeStr);
+        } else if (hdr.indexOf("operad") !== -1 || hdr.indexOf("audit") !== -1) {
+          mappedRow.push(operador);
+        } else if (hdr.indexOf("plac") !== -1 || hdr.indexOf("veic") !== -1 || hdr.indexOf("plate") !== -1) {
+          mappedRow.push(placa);
+        } else if ((hdr.indexOf("condut") !== -1 || hdr.indexOf("motor") !== -1 || hdr.indexOf("driver") !== -1) && hdr.indexOf("operad") === -1) {
+          mappedRow.push(condutor);
+        } else if (hdr.indexOf("km") !== -1 || hdr.indexOf("odomet") !== -1 || hdr.indexOf("hodomet") !== -1 || hdr.indexOf("quilomet") !== -1) {
+          mappedRow.push(km);
+        } else if (hdr.indexOf("nivel") !== -1 || hdr.indexOf("marcad") !== -1 || hdr.indexOf("tanque") !== -1 || hdr.indexOf("ponteiro") !== -1 || ((hdr.indexOf("combust") !== -1 || hdr === "comb") && hdr.indexOf("tipo") === -1 && hdr.indexOf("litr") === -1 && hdr.indexOf("abastec") === -1 && hdr.indexOf("prod") === -1)) {
+          // Coluna: NÍVEL DO COMBUSTÍVEL (1/8 até 8/8)
+          mappedRow.push(nivelCombustivel);
+        } else if (hdr.indexOf("litr") !== -1 || hdr.indexOf("volume") !== -1 || hdr.indexOf("qtd") !== -1 || (hdr.indexOf("abastec") !== -1 && hdr.indexOf("posto") === -1 && hdr.indexOf("dest") === -1)) {
+          // Coluna: LITROS ABASTECIDOS (ex: 120.5 L ou -)
+          mappedRow.push(litrosAbastecidos);
+        } else if (hdr.indexOf("tipo") !== -1 || hdr.indexOf("produto") !== -1 || hdr === "combustivel tipo" || hdr === "combustivel_tipo") {
+          // Coluna: TIPO DE COMBUSTÍVEL (ex: DIESEL S10, GASOLINA, ou -)
+          mappedRow.push(tipoCombustivel);
+        } else if (hdr.indexOf("dest") !== -1 || hdr.indexOf("para") !== -1 || hdr.indexOf("setor") !== -1 || hdr.indexOf("localidade") !== -1) {
+          mappedRow.push(destino);
+        } else if (hdr.indexOf("orig") !== -1 || hdr.indexOf("proced") !== -1 || hdr === "de") {
+          mappedRow.push(origem);
+        } else if (hdr.indexOf("obs") !== -1 || hdr.indexOf("nota") !== -1 || hdr.indexOf("detalh") !== -1 || hdr.indexOf("motivo") !== -1 || hdr.indexOf("descri") !== -1) {
+          mappedRow.push(observacoes);
+        } else if (c < standardRow.length) {
+          mappedRow.push(standardRow[c]);
+        } else {
+          mappedRow.push("");
+        }
+      }
+
+      // Inserção no topo da tabela (Linha 2, logo abaixo dos cabeçalhos na Linha 1) - Formato Pilha (LIFO / Último registro no topo)
+      sheet.insertRowAfter(1);
+      var newRange = sheet.getRange(2, 1, 1, mappedRow.length);
+      newRange.setValues([mappedRow]);
+      newRange.setFontWeight("normal");
+      newRange.setBackground(null);
+      newRange.setFontColor("#000000");
     }
     
     return ContentService.createTextOutput(JSON.stringify({

@@ -17,7 +17,10 @@ import {
   RotateCcw,
   Ban,
   Package,
+  Edit2,
 } from 'lucide-react';
+import { QuickPlateEditModal } from './QuickPlateEditModal';
+import { formatPlateForDisplay } from '../utils/plateNormalizer';
 
 interface OperationDetailsFormProps {
   operationType: 'entrada' | 'saida';
@@ -30,6 +33,7 @@ interface OperationDetailsFormProps {
   initialEntrySubtype?: EntrySubtype;
   initialEntryReason?: string;
   plate: string;
+  onUpdatePlate?: (newPlate: string) => void;
   onSubmit: (details: {
     driverName: string;
     origin?: string;
@@ -44,21 +48,21 @@ interface OperationDetailsFormProps {
 }
 
 const QUICK_REASONS_RETORNO = [
-  'Avaria / Batida',
-  'Problema Mecânico',
-  'Higienização Incompleta',
-  'Cliente desistiu',
-  'Documentação',
-  'Troca de Frota',
+  'AVARIA / BATIDA',
+  'PROBLEMA MECÂNICO',
+  'HIGIENIZAÇÃO INCOMPLETA',
+  'CLIENTE DESISTIU',
+  'DOCUMENTAÇÃO',
+  'TROCA DE FROTA',
 ];
 
 const QUICK_REASONS_RECUSA = [
-  'Avaria não conformada',
-  'Luz de injeção acesa',
-  'Pneu danificado',
-  'Mau cheiro / Sujeira',
-  'Veículo divergente',
-  'Falta de opcionais',
+  'AVARIA NÃO CONFORMADA',
+  'LUZ DE INJEÇÃO ACESA',
+  'PNEU DANIFICADO',
+  'MAU CHEIRO / SUJEIRA',
+  'VEÍCULO DIVERGENTE',
+  'FALTA DE OPCIONAIS',
 ];
 
 export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
@@ -72,6 +76,7 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
   initialEntrySubtype,
   initialEntryReason = '',
   plate,
+  onUpdatePlate,
   onSubmit,
   onBack,
 }) => {
@@ -90,23 +95,24 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
   );
   const [entrySubtype, setEntrySubtype] = useState<EntrySubtype | undefined>(initialEntrySubtype);
   const [entryReason, setEntryReason] = useState<string>(initialEntryReason);
+  const [isEditPlateOpen, setIsEditPlateOpen] = useState<boolean>(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const finalFleetType =
       fleetType === 'OUTROS'
-        ? customFleetType.trim() || 'OUTROS'
+        ? (customFleetType.trim().toUpperCase() || 'OUTROS')
         : fleetType;
 
     onSubmit({
-      driverName: driverName.trim(),
-      origin: isEntrada ? origin.trim() : undefined,
-      destination: !isEntrada ? destination.trim() : undefined,
-      km: km.trim(),
+      driverName: driverName.trim().toUpperCase(),
+      origin: isEntrada ? origin.trim().toUpperCase() : undefined,
+      destination: !isEntrada ? destination.trim().toUpperCase() : undefined,
+      km: km.trim().toUpperCase(),
       hasSpareKey,
-      fleetType: finalFleetType,
+      fleetType: finalFleetType ? finalFleetType.toUpperCase() : undefined,
       entrySubtype: isEntrada ? entrySubtype : undefined,
-      entryReason: isEntrada && (entrySubtype === 'retorno' || entrySubtype === 'recusa') ? entryReason.trim() : undefined,
+      entryReason: isEntrada && (entrySubtype === 'retorno' || entrySubtype === 'recusa') ? entryReason.trim().toUpperCase() : undefined,
     });
   };
 
@@ -149,9 +155,18 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
           >
             {isEntrada ? '🟢 Registro de Entrada' : '🔴 Registro de Saída'}
           </span>
-          <span className="text-xs font-mono font-bold bg-neutral-900 text-white px-2.5 py-1 rounded-lg">
-            {plate}
-          </span>
+          <button
+            type="button"
+            onClick={() => setIsEditPlateOpen(true)}
+            className="flex items-center gap-1.5 bg-neutral-900 hover:bg-neutral-800 text-white px-2.5 py-1 rounded-lg transition active:scale-95 cursor-pointer shadow-xs"
+            title="Alterar placa sem alterar a foto"
+          >
+            <span className="text-xs font-mono font-bold">{formatPlateForDisplay(plate)}</span>
+            <span className="text-[9px] bg-emerald-600 text-white font-bold px-1 rounded flex items-center gap-0.5">
+              <Edit2 className="w-2.5 h-2.5" />
+              Alterar
+            </span>
+          </button>
         </div>
 
         <h2 className="text-xl font-black text-neutral-900 leading-tight">
@@ -171,9 +186,9 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
         <input
           type="text"
           value={driverName}
-          onChange={(e) => setDriverName(e.target.value)}
-          placeholder="Ex: Carlos Eduardo / João Silva"
-          className="w-full px-3.5 py-3 rounded-xl border border-neutral-300 bg-neutral-50 focus:bg-white focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 text-neutral-900 text-sm font-medium transition outline-none"
+          onChange={(e) => setDriverName(e.target.value.toUpperCase())}
+          placeholder="Ex: CARLOS EDUARDO / JOÃO SILVA"
+          className="w-full px-3.5 py-3 rounded-xl border border-neutral-300 bg-neutral-50 focus:bg-white focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 text-neutral-900 text-sm font-semibold uppercase placeholder:normal-case transition outline-none"
         />
       </div>
 
@@ -186,9 +201,9 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
         <input
           type="text"
           value={isEntrada ? origin : destination}
-          onChange={(e) => (isEntrada ? setOrigin(e.target.value) : setDestination(e.target.value))}
+          onChange={(e) => (isEntrada ? setOrigin(e.target.value.toUpperCase()) : setDestination(e.target.value.toUpperCase()))}
           placeholder={isEntrada ? 'Digite a origem do veículo' : 'Digite o destino do veículo'}
-          className="w-full px-3.5 py-3 rounded-xl border border-neutral-300 bg-neutral-50 focus:bg-white focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 text-neutral-900 text-sm font-medium transition outline-none"
+          className="w-full px-3.5 py-3 rounded-xl border border-neutral-300 bg-neutral-50 focus:bg-white focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 text-neutral-900 text-sm font-semibold uppercase placeholder:normal-case transition outline-none"
         />
       </div>
 
@@ -325,13 +340,13 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
               <input
                 type="text"
                 value={entryReason}
-                onChange={(e) => setEntryReason(e.target.value)}
+                onChange={(e) => setEntryReason(e.target.value.toUpperCase())}
                 placeholder={
                   entrySubtype === 'retorno'
-                    ? 'Ex: Avaria pós-locação / Problema mecânico / Troca de frota'
-                    : 'Ex: Avaria não acordada / Luz de injeção acesa / Pneu furado'
+                    ? 'Ex: AVARIA PÓS-LOCAÇÃO / PROBLEMA MECÂNICO'
+                    : 'Ex: AVARIA NÃO ACORDADA / LUZ DE INJEÇÃO ACESA'
                 }
-                className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-300 bg-neutral-50 focus:bg-white focus:border-amber-600 focus:ring-2 focus:ring-amber-500/20 text-neutral-900 text-xs font-medium transition outline-none"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-300 bg-neutral-50 focus:bg-white focus:border-amber-600 focus:ring-2 focus:ring-amber-500/20 text-neutral-900 text-xs font-semibold uppercase placeholder:normal-case transition outline-none"
               />
 
               {/* Sugestões rápidas de motivos */}
@@ -485,9 +500,9 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
             <input
               type="text"
               value={customFleetType}
-              onChange={(e) => setCustomFleetType(e.target.value)}
-              placeholder="Especifique o tipo (Ex: Terceiro, Diretoria...)"
-              className="w-full px-3 py-2 rounded-xl border border-neutral-300 bg-neutral-50 focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-500/20 text-neutral-900 text-xs font-medium transition outline-none"
+              onChange={(e) => setCustomFleetType(e.target.value.toUpperCase())}
+              placeholder="Especifique o tipo (Ex: TERCEIRO, DIRETORIA...)"
+              className="w-full px-3 py-2 rounded-xl border border-neutral-300 bg-neutral-50 focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-500/20 text-neutral-900 text-xs font-semibold uppercase placeholder:normal-case transition outline-none"
             />
           )}
 
@@ -524,6 +539,16 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>
+
+      {/* Modal para Alterar Placa mantendo a foto */}
+      <QuickPlateEditModal
+        isOpen={isEditPlateOpen}
+        currentPlate={plate}
+        onSave={(newPlate) => {
+          if (onUpdatePlate) onUpdatePlate(newPlate);
+        }}
+        onClose={() => setIsEditPlateOpen(false)}
+      />
     </form>
   );
 };

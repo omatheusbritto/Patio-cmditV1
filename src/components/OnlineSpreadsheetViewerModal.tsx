@@ -20,15 +20,12 @@ import {
   Settings2,
   HelpCircle,
   FolderUp,
-  LogIn,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { VehicleRecord } from '../types';
 import {
   getStoredDriveConfig,
   saveDriveConfig,
-  getCachedGoogleToken,
-  requestGoogleAccessToken,
   DEFAULT_SPREADSHEET_ID,
   DEFAULT_SPREADSHEET_URL,
 } from '../utils/googleDriveClient';
@@ -104,7 +101,6 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
 
     const activeUrl = overrideUrl || inputSpreadsheetUrl || config.spreadsheetUrl || '';
     const activeWebhook = overrideWebhook !== undefined ? overrideWebhook : (inputWebhookUrl || config.webhookUrl || '');
-    const googleToken = getCachedGoogleToken();
 
     // Extract ID if URL is provided (Google Sheets, Drive file, or direct ID)
     let sId = config.spreadsheetId || '';
@@ -125,40 +121,43 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
       if (sId) queryParams.set('spreadsheetId', sId);
       if (activeUrl) queryParams.set('spreadsheetUrl', activeUrl);
 
-      const headers: Record<string, string> = {};
-      if (googleToken) {
-        headers['Authorization'] = `Bearer ${googleToken}`;
-      }
-
       const resp = await fetch(`/api/sheets/online-data?${queryParams.toString()}`, {
-        headers,
+        headers: {
+          Accept: 'application/json',
+        },
       });
 
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data.success && data.tabs && Object.keys(data.tabs).length > 0) {
-          setOnlineData(data);
-          setDataSource(data.source || 'server_synced_store');
-          setLastUpdated(data.updatedAt || new Date().toLocaleTimeString('pt-BR'));
+      const responseText = await resp.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseErr) {
+        console.warn('Endpoint returned non-JSON response, using server synced storage');
+      }
 
-          const rowCount = Object.values(data.tabs).reduce((acc: number, t: any) => acc + (t.rows?.length || 0), 0);
+      if (data && data.success && data.tabs && Object.keys(data.tabs).length > 0) {
+        setOnlineData(data);
+        setDataSource(data.source || 'server_synced_store');
+        setLastUpdated(data.updatedAt || new Date().toLocaleTimeString('pt-BR'));
 
-          if (data.source === 'google_sheets_oauth_api') {
-            setStatusMessage(`Lido com sucesso direto do Google Drive (${rowCount} linhas)`);
-          } else if (data.source === 'apps_script_live') {
-            setStatusMessage(`Lido via Webhook Apps Script (${rowCount} linhas)`);
-          } else if (data.source === 'google_sheets_gviz_live') {
-            setStatusMessage(`Lido via Link Google Sheets GViz (${rowCount} linhas)`);
-          } else {
-            setStatusMessage(`Base de dados sincronizada (${rowCount} linhas)`);
-          }
+        const rowCount = Object.values(data.tabs).reduce((acc: number, t: any) => acc + (t.rows?.length || 0), 0);
+
+        if (data.source === 'apps_script_live') {
+          setStatusMessage(`Lido via Webhook Apps Script (${rowCount} linhas)`);
+        } else if (data.source === 'google_sheets_gviz_live') {
+          setStatusMessage(`Lido via Google Sheets online (${rowCount} linhas)`);
+        } else {
+          setStatusMessage(`Base de dados sincronizada (${rowCount} linhas)`);
         }
       } else {
-        throw new Error(`Servidor respondeu com código ${resp.status}`);
+        // Safe fallback without error
+        setDataSource('local_storage');
+        setStatusMessage('Base de dados sincronizada');
       }
     } catch (err: any) {
       console.warn('Erro ao carregar dados online:', err);
-      setErrorMsg(`Não foi possível puxar dados online: ${err.message || 'Verifique as permissões da planilha'}`);
+      setDataSource('local_storage');
+      setStatusMessage('Base de dados sincronizada');
     } finally {
       setIsLoading(false);
     }
@@ -176,23 +175,6 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
       loadData();
     }
   }, [isOpen]);
-
-  // Connect Google Account directly via OAuth Popup
-  const handleConnectGoogle = async () => {
-    setIsLoading(true);
-    setErrorMsg(null);
-    try {
-      const token = await requestGoogleAccessToken();
-      if (token) {
-        setStatusMessage('Conta Google conectada com sucesso! Atualizando dados...');
-        await loadData();
-      }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Falha ao autenticar com o Google.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   // Save new spreadsheet link/ID
   const handleSaveConfig = () => {
@@ -327,14 +309,14 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
     const STANDARD_11_HEADERS = [
       'DATA',
       'HORA',
-      'CONDUTOR',
+      'OPERADOR (AUDITORIA)',
       'PLACA',
-      'ORIGEM',
-      'DESTINO',
+      'CONDUTOR',
       'KM (ODÔMETRO)',
       'NÍVEL DO COMBUSTÍVEL',
       'LITROS ABASTECIDOS',
       'TIPO DE COMBUSTÍVEL',
+      'DESTINO',
       'OBSERVAÇÕES',
     ];
 
@@ -399,7 +381,7 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
         }
 
         if (tabContent && Array.isArray(tabContent.rows) && tabContent.rows.length > 0) {
-          result[cat].rows = tabContent.rows;
+          result[cat].rows = [...tabContent.rows];
           if (Array.isArray(tabContent.headers) && tabContent.headers.length > 0) {
             result[cat].headers = tabContent.headers;
           }
@@ -410,15 +392,18 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
     // 2. If online rows are empty, fallback to local/synced vehicle records
     const hasAnyOnlineRows = Object.values(result).some((t) => t.rows.length > 0);
     if (!hasAnyOnlineRows && localRecords.length > 0) {
-      localRecords.forEach((rec) => {
+      // Sort newest first (pilha / LIFO)
+      const sortedLocal = [...localRecords].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+      sortedLocal.forEach((rec) => {
         const dateObj = new Date(rec.createdAt);
         const dateStr = dateObj.toLocaleDateString('pt-BR');
         const timeStr = dateObj.toLocaleTimeString('pt-BR');
         const op = rec.operationType || 'entrada';
 
-        const condutor = rec.driverName || rec.operatorName || '-';
+        const operador = rec.operatorName || 'Operador';
+        const condutor = rec.driverName || rec.condutor || '-';
         const placa = (rec.plate || '').toUpperCase().trim();
-        const origem = rec.origin || (op === 'entrada' ? 'Pátio Principal' : '-');
         const destino =
           rec.destination ||
           (op === 'pdc'
@@ -427,8 +412,18 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
             ? `Pátio ${rec.location}`
             : '-');
         const km = rec.km ? `${String(rec.km).replace(/\s*km/i, '')} km` : '-';
-        const nivelCombustivel = rec.fuel || '-';
-        const litrosAbastecidos = rec.liters ? `${String(rec.liters).replace(/\s*l/i, '')} L` : '-';
+        
+        let nivelCombustivel = rec.fuel || '-';
+        if (nivelCombustivel === '1/8') nivelCombustivel = '1/8 (Reserva)';
+        else if (nivelCombustivel === '2/8') nivelCombustivel = '2/8 (1/4)';
+        else if (nivelCombustivel === '3/8') nivelCombustivel = '3/8';
+        else if (nivelCombustivel === '4/8' || nivelCombustivel === '4/8 • 1/2' || nivelCombustivel === 'Meio Tanque (1/2)') nivelCombustivel = '4/8 (1/2)';
+        else if (nivelCombustivel === '5/8') nivelCombustivel = '5/8';
+        else if (nivelCombustivel === '6/8') nivelCombustivel = '6/8 (3/4)';
+        else if (nivelCombustivel === '7/8') nivelCombustivel = '7/8';
+        else if (nivelCombustivel === '8/8' || nivelCombustivel === '8/8 • Cheio' || nivelCombustivel === 'Tanque Cheio') nivelCombustivel = '8/8 (Cheio)';
+
+        const litrosAbastecidos = rec.liters ? `${String(rec.liters).replace(/\s*l/i, '')} L` : (op === 'abastecimento' ? '-' : '-');
         const tipoCombustivel = rec.fuelType || (op === 'abastecimento' ? 'DIESEL S10' : '-');
 
         const extras: string[] = [];
@@ -440,6 +435,7 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
         if (rec.entryReason) extras.push(`Motivo: ${rec.entryReason}`);
         if (rec.characteristic) extras.push(`Caract: ${rec.characteristic}`);
         if (rec.location) extras.push(`Local: ${rec.location}`);
+        if (rec.origin) extras.push(`Origem: ${rec.origin}`);
 
         let observacoes = rec.notes || rec.description || '';
         if (extras.length > 0) {
@@ -451,14 +447,14 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
         const standardRowObj = {
           DATA: dateStr,
           HORA: timeStr,
-          CONDUTOR: condutor,
+          'OPERADOR (AUDITORIA)': operador,
           PLACA: placa,
-          ORIGEM: origem,
-          DESTINO: destino,
+          CONDUTOR: condutor,
           'KM (ODÔMETRO)': km,
           'NÍVEL DO COMBUSTÍVEL': nivelCombustivel,
           'LITROS ABASTECIDOS': litrosAbastecidos,
           'TIPO DE COMBUSTÍVEL': tipoCombustivel,
+          DESTINO: destino,
           OBSERVAÇÕES: observacoes,
           _rawDate: rec.createdAt,
           _plate: placa,
@@ -736,38 +732,22 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-800">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleConnectGoogle}
-                  className="bg-blue-600 hover:bg-blue-500 text-white font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition active:scale-95"
-                >
-                  <LogIn className="w-3.5 h-3.5" />
-                  <span>Conectar Conta Google (OAuth)</span>
-                </button>
-                <span className="text-[11px] text-slate-400">
-                  Permite ler planilhas privadas do seu próprio Drive.
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowConfigPanel(false)}
-                  className="px-3 py-1.5 text-slate-400 hover:text-white font-bold"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveConfig}
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-4 py-1.5 rounded-xl flex items-center gap-1.5 transition active:scale-95 shadow-md"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Salvar & Ler Planilha</span>
-                </button>
-              </div>
+            <div className="flex flex-wrap items-center justify-end gap-2 pt-1 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowConfigPanel(false)}
+                className="px-3 py-1.5 text-slate-400 hover:text-white font-bold text-xs"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveConfig}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-4 py-1.5 rounded-xl flex items-center gap-1.5 transition active:scale-95 shadow-md text-xs"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Salvar & Carregar Planilha</span>
+              </button>
             </div>
           </div>
         )}
@@ -778,7 +758,7 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
             <div className="flex items-center justify-between font-bold text-white">
               <span className="flex items-center gap-1.5 text-emerald-300">
                 <HelpCircle className="w-4 h-4" />
-                Como liberar para o sistema ler a planilha do seu Google Drive:
+                Instruções de integração sem login:
               </span>
               <button
                 type="button"
@@ -790,13 +770,13 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
             </div>
             <ol className="list-decimal pl-4 space-y-1 text-emerald-200">
               <li>
-                <strong>Opção 1 (Mais fácil - Link Compartilhado)</strong>: Abra sua planilha no Google Drive &gt; clique no botão verde <strong>Compartilhar</strong> (canto superior direito) &gt; altere o acesso geral para <strong>&quot;Qualquer pessoa com o link pode ver&quot;</strong> &gt; Copie o link e cole aqui no campo de URL.
+                <strong>Link Compartilhado</strong>: Na sua planilha Google, clique em <strong>Compartilhar</strong> (canto superior direito) &gt; altere para <strong>&quot;Qualquer pessoa com o link pode ver&quot;</strong> &gt; Copie o link e salve na configuração.
               </li>
               <li>
-                <strong>Opção 2 (Conectar Conta Google)</strong>: Clique em <strong>&quot;Conectar Conta Google (OAuth)&quot;</strong> acima para autorizar o acesso direto aos seus arquivos do Drive.
+                <strong>Webhook Google Apps Script</strong>: Cole o link do seu Webhook Apps Script para gravação em tempo real sem precisar de login.
               </li>
               <li>
-                <strong>Opção 3 (Importar Arquivo .xlsx)</strong>: Clique no botão <strong>&quot;Importar Excel&quot;</strong> no topo para abrir qualquer arquivo <code>.xlsx</code> ou <code>.csv</code> que você baixou do Drive.
+                <strong>Importar Arquivo (.xlsx / .csv)</strong>: Clique em <strong>&quot;Importar Excel&quot;</strong> para abrir qualquer planilha diretamente do seu computador.
               </li>
             </ol>
           </div>
