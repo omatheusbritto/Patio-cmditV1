@@ -55,12 +55,14 @@ import {
   Ban,
   FileSpreadsheet,
   Clock,
+  FileText,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface ReviewAndShareProps {
   photoDataUrl: string;
   dashboardPhotoUrl?: string;
+  documentPhotoUrl?: string;
   plate: string;
   operationType: OperationType;
   fuel: FuelLevel;
@@ -89,6 +91,7 @@ interface ReviewAndShareProps {
   onSaveToHistory: (record: {
     photoDataUrl: string;
     dashboardPhotoUrl?: string;
+    documentPhotoUrl?: string;
     plate: string;
     operationType: OperationType;
     fuel: FuelLevel;
@@ -111,6 +114,7 @@ interface ReviewAndShareProps {
 export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
   photoDataUrl,
   dashboardPhotoUrl,
+  documentPhotoUrl,
   plate,
   operationType,
   fuel,
@@ -207,6 +211,7 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
     onSaveToHistory({
       photoDataUrl,
       dashboardPhotoUrl,
+      documentPhotoUrl,
       plate: cleanPlate.toUpperCase(),
       operationType,
       fuel,
@@ -249,6 +254,8 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
       fuelType: upperFuelType,
       characteristic: (upperCharacteristic as any) || undefined,
       location: upperLocation || undefined,
+      documentPhotoUrl: documentPhotoUrl || undefined,
+      hasDocumentPhoto: !!documentPhotoUrl,
     };
 
     setSheetSyncStatus('Registrando movimentação...');
@@ -680,14 +687,31 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
                   </span>
                 </div>
 
-                <div>
-                  <span className="text-[10px] text-neutral-500 block">
-                    {operationType === 'entrada' ? 'Origem:' : 'Destino:'}
-                  </span>
-                  <span className="font-bold text-neutral-900 font-sans">
-                    {(operationType === 'entrada' ? origin : destination) || 'Não informado'}
-                  </span>
-                </div>
+                {operationType === 'entrada' ? (
+                  <>
+                    <div>
+                      <span className="text-[10px] text-neutral-500 block">Origem:</span>
+                      <span className="font-bold text-neutral-900 font-sans">
+                        {origin || 'Não informado'}
+                      </span>
+                    </div>
+                    {destination && (
+                      <div>
+                        <span className="text-[10px] text-neutral-500 block">Destino:</span>
+                        <span className="font-bold text-neutral-900 font-sans">
+                          {destination}
+                        </span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div>
+                    <span className="text-[10px] text-neutral-500 block">Destino:</span>
+                    <span className="font-bold text-neutral-900 font-sans">
+                      {destination || 'Não informado'}
+                    </span>
+                  </div>
+                )}
 
                 <div>
                   <span className="text-[10px] text-neutral-500 block">Quilometragem:</span>
@@ -754,6 +778,38 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
                     )}
                   </div>
                 )}
+
+                {/* Foto do Documento do Veículo (Se capturada) */}
+                <div className="col-span-2 pt-1.5 border-t border-neutral-200/60 flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-neutral-500 flex items-center gap-1">
+                      <FileText className="w-3 h-3 text-emerald-700" />
+                      Foto do Documento (CRLV):
+                    </span>
+                    <span
+                      className={`text-[10px] font-black px-2 py-0.5 rounded ${
+                        documentPhotoUrl
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                          : 'bg-neutral-100 text-neutral-500'
+                      }`}
+                    >
+                      {documentPhotoUrl ? '✅ ANEXADA' : 'NÃO ANEXADA'}
+                    </span>
+                  </div>
+                  {documentPhotoUrl && (
+                    <div className="relative aspect-video max-h-32 rounded-lg overflow-hidden border border-emerald-300 bg-neutral-950 mt-0.5">
+                      <img
+                        src={documentPhotoUrl}
+                        alt="Documento do Veículo"
+                        className="w-full h-full object-contain"
+                        referrerPolicy="no-referrer"
+                      />
+                      <span className="absolute bottom-1 right-1 text-[8px] font-bold bg-black/75 text-emerald-300 px-1 py-0.5 rounded">
+                        Documento CRLV
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}

@@ -421,6 +421,9 @@ export const SmartHistory: React.FC<SmartHistoryProps> = ({
                         {r.fleetType ? (
                           <> • <span className="text-blue-700 font-black">{r.fleetType}</span></>
                         ) : null}
+                        {r.documentPhotoUrl ? (
+                          <> • <span className="text-emerald-700 font-bold">📄 Doc</span></>
+                        ) : null}
                       </span>
                     </div>
 

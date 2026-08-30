@@ -26,20 +26,64 @@ export interface SheetVehiclePayload {
 
 const SPREADSHEET_TITLE = 'Controle de Frota & Pátio CMDIT';
 
-// Standard 11-field specification requested by the user:
-// DATA | HORA | CONDUTOR | PLACA | ORIGEM | DESTINO | KM (ODÔMETRO) | NÍVEL DO COMBUSTÍVEL | LITROS ABASTECIDOS | TIPO DE COMBUSTÍVEL | OBSERVAÇÕES
-export const STANDARD_HEADERS = [
+// Header specifications per tab customized strictly as requested (no unnecessary fields):
+export const HEADERS_ENTRADA = [
   'DATA',
   'HORA',
-  'CONDUTOR',
   'PLACA',
-  'ORIGEM',
-  'DESTINO',
+  'CONDUTOR',
   'KM (ODÔMETRO)',
   'NÍVEL DO COMBUSTÍVEL',
-  'LITROS ABASTECIDOS',
-  'TIPO DE COMBUSTÍVEL',
-  'OBSERVAÇÕES',
+  'ORIGEM',
+  'DESTINO',
+  'CHAVE RESERVA',
+  'TIPO DE VEÍCULO',
+  'OBSERVAÇÃO',
+  'OPERADOR DO REGISTRO',
+];
+
+export const HEADERS_SAIDA = [
+  'DATA',
+  'HORA',
+  'PLACA',
+  'CONDUTOR',
+  'KM (ODÔMETRO)',
+  'NÍVEL DO COMBUSTÍVEL',
+  'DESTINO',
+  'CHAVE RESERVA',
+  'OBSERVAÇÃO',
+  'OPERADOR DO REGISTRO',
+];
+
+export const HEADERS_QUALIDADE = [
+  'DATA',
+  'HORA',
+  'PLACA',
+  'CONDUTOR',
+  'CARACTERÍSTICA DO VEÍCULO',
+  'NÍVEL DO COMBUSTÍVEL',
+  'DESTINO',
+  'OPERADOR DO REGISTRO',
+];
+
+export const HEADERS_COMBUSTIVEL = [
+  'DATA',
+  'HORA',
+  'PLACA',
+  'KM (ODÔMETRO)',
+  'NÍVEL DO COMBUSTÍVEL',
+  'CONDUTOR',
+  'DESTINO',
+  'OPERADOR DO REGISTRO',
+];
+
+export const HEADERS_PDC = [
+  'DATA',
+  'HORA',
+  'PLACA',
+  'NÍVEL DO COMBUSTÍVEL',
+  'OBSERVAÇÃO',
+  'OPERADOR DO REGISTRO',
 ];
 
 // Standard tab specifications
@@ -48,37 +92,37 @@ export const TAB_DEFINITIONS = {
     title: '📊 Geral',
     aliases: ['geral', 'todos', 'registros', 'movimentacoes', 'consolidado', 'sheet1', 'planilha1', 'página1'],
     color: { red: 0.15, green: 0.2, blue: 0.3 },
-    headers: STANDARD_HEADERS,
+    headers: HEADERS_ENTRADA,
   },
   entrada: {
     title: '📥 Entrada',
     aliases: ['entrada', 'entradas', 'chegada', 'inbound', 'in'],
     color: { red: 0.13, green: 0.69, blue: 0.3 },
-    headers: STANDARD_HEADERS,
+    headers: HEADERS_ENTRADA,
   },
   saida: {
     title: '📤 Saída',
     aliases: ['saida', 'saidas', 'liberacao', 'outbound', 'out'],
     color: { red: 0.88, green: 0.25, blue: 0.25 },
-    headers: STANDARD_HEADERS,
+    headers: HEADERS_SAIDA,
   },
   combustivel: {
     title: '⛽ Combustível',
     aliases: ['combustivel', 'abastecimento', 'abastecimentos', 'abastec', 'posto', 'gasolina', 'diesel'],
     color: { red: 0.06, green: 0.73, blue: 0.85 },
-    headers: STANDARD_HEADERS,
+    headers: HEADERS_COMBUSTIVEL,
   },
   pdc: {
     title: '📋 Fila PDC',
     aliases: ['fila pdc', 'pdc', 'fila_pdc', 'fila', 'lavagem', 'oficina'],
     color: { red: 0.95, green: 0.55, blue: 0.1 },
-    headers: STANDARD_HEADERS,
+    headers: HEADERS_PDC,
   },
   qualidade: {
     title: '🔍 Qualidade 51',
     aliases: ['qualidade 51', 'qualidade', '51 (qualidade)', '51', 'vistoria', 'inspecao'],
     color: { red: 0.39, green: 0.36, blue: 0.93 },
-    headers: STANDARD_HEADERS,
+    headers: HEADERS_QUALIDADE,
   },
 };
 
@@ -230,7 +274,7 @@ async function ensureTargetTab(
   spreadsheetId: string,
   categoryKey: 'entrada' | 'saida' | 'combustivel' | 'pdc' | 'qualidade',
   accessToken: string
-): Promise<string> {
+): Promise<{ title: string; sheetId?: number }> {
   const tabDef = TAB_DEFINITIONS[categoryKey];
 
   try {
@@ -260,6 +304,7 @@ async function ensureTargetTab(
 
       if (match?.properties?.title) {
         const foundTitle = match.properties.title;
+        const foundSheetId = match.properties.sheetId;
         // Check if sheet has headers
         try {
           const checkResp = await fetch(
@@ -296,7 +341,7 @@ async function ensureTargetTab(
           console.warn('Header check notice:', hErr);
         }
 
-        return foundTitle;
+        return { title: foundTitle, sheetId: foundSheetId };
       }
 
       // 2. Tab does not exist yet -> Create it automatically
@@ -328,6 +373,8 @@ async function ensureTargetTab(
       );
 
       if (addResp.ok) {
+        const addData = await addResp.json();
+        const createdSheetId = addData.replies?.[0]?.addSheet?.properties?.sheetId;
         // Write header row to the newly created tab
         await fetch(
           `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
@@ -344,14 +391,14 @@ async function ensureTargetTab(
             }),
           }
         );
-        return tabDef.title;
+        return { title: tabDef.title, sheetId: createdSheetId };
       }
     }
   } catch (err) {
     console.warn('ensureTargetTab notice:', err);
   }
 
-  return tabDef.title;
+  return { title: tabDef.title };
 }
 
 /**
@@ -366,7 +413,8 @@ export async function initializeAllSpreadsheetTabs(
 
   for (const cat of tabs) {
     const tabDef = TAB_DEFINITIONS[cat];
-    const tabTitle = await ensureTargetTab(spreadsheetId, cat, accessToken);
+    const targetSheet = await ensureTargetTab(spreadsheetId, cat, accessToken);
+    const tabTitle = targetSheet.title;
     createdOrFoundTabs.push(tabTitle);
 
     // Overwrite header row 1 to guarantee all columns (DATA, HORA, etc.) are 100% aligned
@@ -459,8 +507,12 @@ export function formatFuelLevelDisplay(fuel?: string | null): string {
 
 /**
  * Appends a new vehicle record safely into the appropriate sheet tab (Append-Only mode)
- * Faithfully maps all 11 fields requested:
- * 1. DATA | 2. HORA | 3. CONDUTOR | 4. PLACA | 5. ORIGEM | 6. DESTINO | 7. KM (ODÔMETRO) | 8. NÍVEL DO COMBUSTÍVEL | 9. LITROS ABASTECIDOS | 10. TIPO DE COMBUSTÍVEL | 11. OBSERVAÇÕES
+ * Uses custom per-tab schemas without unnecessary fields:
+ * - Entrada (12): DATA | HORA | PLACA | CONDUTOR | KM | NÍVEL COMBUSTÍVEL | ORIGEM | DESTINO | CHAVE RESERVA | TIPO VEÍCULO | OBSERVAÇÃO | OPERADOR
+ * - Saída (10): DATA | HORA | PLACA | CONDUTOR | KM | NÍVEL COMBUSTÍVEL | DESTINO | CHAVE RESERVA | OBSERVAÇÃO | OPERADOR
+ * - Qualidade 51 (8): DATA | HORA | PLACA | CONDUTOR | KM | NÍVEL COMBUSTÍVEL | DESTINO | OPERADOR
+ * - Combustível (8): DATA | HORA | PLACA | KM | NÍVEL COMBUSTÍVEL | CONDUTOR | DESTINO | OPERADOR
+ * - Fila PDC (6): DATA | HORA | PLACA | NÍVEL COMBUSTÍVEL | OBSERVAÇÃO | OPERADOR
  * All text entries are strictly uppercase.
  */
 export async function appendVehicleRecordToSheet(
@@ -473,37 +525,23 @@ export async function appendVehicleRecordToSheet(
   const formatSpareKey = (key?: boolean) => {
     if (key === true) return 'SIM';
     if (key === false) return 'NÃO';
-    return '';
+    return '-';
   };
 
-  const getSubtypeClean = (subtype?: string) => {
-    switch (subtype) {
-      case 'bolsao_40':
-        return 'BOLSÃO 40';
-      case 'retorno':
-        return 'RETORNO';
-      case 'recusa':
-        return 'RECUSA';
-      case 'remocao_adesivos':
-        return 'REMOÇÃO DE ADESIVOS';
-      default:
-        return subtype ? String(subtype).toUpperCase() : '';
+  const extractCleanOperator = (rawName?: string) => {
+    if (!rawName) return 'OPERADOR';
+    let clean = String(rawName).replace(/\(.*?\)/g, '').replace(/\[.*?\]/g, '').trim();
+    if (clean.includes('@')) {
+      clean = clean.split('@')[0].replace(/[._-]/g, ' ');
     }
+    return clean ? clean.toUpperCase() : 'OPERADOR';
   };
 
-  const isAbastecimento = record.operationType === 'abastecimento';
-
-  // 1. DATA & 2. HORA already computed
-  // 3. CONDUTOR
-  const condutor = String(record.driverName || record.operatorName || '-').toUpperCase().trim();
-
-  // 4. PLACA
+  const operador = extractCleanOperator(record.operatorName);
+  const condutor = String(record.driverName || '-').toUpperCase().trim();
   const placa = (record.plate || '').toUpperCase().trim();
+  const origem = String(record.origin || 'PÁTIO PRINCIPAL').toUpperCase().trim();
 
-  // 5. ORIGEM
-  const origem = String(record.origin || (record.operationType === 'entrada' ? 'PÁTIO PRINCIPAL' : '-')).toUpperCase().trim();
-
-  // 6. DESTINO
   let destino = record.destination || '-';
   if (record.operationType === 'pdc') {
     destino = record.destination || 'FILA PDC (LAVAGEM / OFICINA)';
@@ -512,83 +550,108 @@ export async function appendVehicleRecordToSheet(
   }
   destino = String(destino).toUpperCase().trim();
 
-  // 7. KM (ODÔMETRO)
   const kmClean =
     record.km !== undefined && record.km !== null && String(record.km).trim() !== ''
       ? `${String(record.km).trim().replace(/\s*km/i, '').toUpperCase()} KM`
       : '-';
 
-  // 8. NÍVEL DO COMBUSTÍVEL
   const nivelCombustivel = formatFuelLevelDisplay(record.fuel).toUpperCase();
-
-  // 9. LITROS ABASTECIDOS
-  const litrosAbastecidos =
-    record.liters !== undefined && record.liters !== null && String(record.liters).trim() !== ''
-      ? `${String(record.liters).trim().replace(/\s*l/i, '').toUpperCase()} L`
-      : '-';
-
-  // 10. TIPO DE COMBUSTÍVEL
-  const tipoCombustivel =
-    String(record.fuelType || (isAbastecimento ? 'DIESEL S10' : '-')).toUpperCase().trim();
-
-  // 11. OBSERVAÇÕES
-  const extraDetails: string[] = [];
-  if (record.hasSpareKey !== undefined) {
-    extraDetails.push(`CHAVE RESERVA: ${formatSpareKey(record.hasSpareKey)}`);
-  }
-  if (record.fleetType) {
-    extraDetails.push(`FROTA: ${String(record.fleetType).toUpperCase().trim()}`);
-  }
-  if (record.entrySubtype) {
-    extraDetails.push(`SUBTIPO: ${getSubtypeClean(record.entrySubtype)}`);
-  }
-  if (record.entryReason) {
-    extraDetails.push(`MOTIVO: ${String(record.entryReason).toUpperCase().trim()}`);
-  }
-  if (record.characteristic) {
-    extraDetails.push(`CARACTERÍSTICA: ${String(record.characteristic).toUpperCase().trim()}`);
-  }
-  if (record.location) {
-    extraDetails.push(`LOCAL/POSTE: ${String(record.location).toUpperCase().trim()}`);
-  }
-  if (record.operatorName && record.operatorName.toUpperCase().trim() !== condutor) {
-    extraDetails.push(`OPERADOR AUDITOR: ${String(record.operatorName).toUpperCase().trim()}`);
-  }
-
-  let observacoes = record.notes || record.description || '';
-  if (extraDetails.length > 0) {
-    const extraStr = `[${extraDetails.join(' | ')}]`;
-    observacoes = observacoes ? `${extraStr} ${observacoes.toUpperCase().trim()}` : extraStr;
-  }
-  if (!observacoes) observacoes = '-';
-  observacoes = observacoes.toUpperCase().trim();
-
-  // Standard 11 columns in strictly faithful order
-  const standardRow = [
-    dateStr,             // 1. DATA (Col A)
-    timeStr,             // 2. HORA (Col B)
-    condutor,            // 3. CONDUTOR (Col C)
-    placa,               // 4. PLACA (Col D)
-    origem,              // 5. ORIGEM (Col E)
-    destino,             // 6. DESTINO (Col F)
-    kmClean,             // 7. KM (ODÔMETRO) (Col G)
-    nivelCombustivel,    // 8. NÍVEL DO COMBUSTÍVEL (Col H)
-    litrosAbastecidos,   // 9. LITROS ABASTECIDOS (Col I)
-    tipoCombustivel,     // 10. TIPO DE COMBUSTÍVEL (Col J)
-    observacoes,         // 11. OBSERVAÇÕES (Col K)
-  ];
+  const chaveReserva = formatSpareKey(record.hasSpareKey);
+  const tipoVeiculo = String(record.fleetType || 'GF').toUpperCase().trim();
+  const observacoes = String(record.notes || record.description || '-').toUpperCase().trim();
+  const rawChar = record.characteristic || (record as any).caracteristica || (record as any).tipoCaracteristica || '-';
+  const formatCharWithEmoji = (val: string) => {
+    if (!val || val === '-') return '-';
+    const clean = val.trim();
+    const upper = clean.toUpperCase();
+    if (upper.includes('DT')) return '🟣 DT';
+    if (upper.includes('REVENDA')) return '🟠 REVENDA';
+    if (upper.includes('CONSUMIDOR')) return '🟢 CONSUMIDOR';
+    if (upper.includes('OUTROS')) return '⚪ OUTROS';
+    return clean;
+  };
+  const caracteristica = formatCharWithEmoji(String(rawChar));
 
   let categoryKey: 'entrada' | 'saida' | 'combustivel' | 'pdc' | 'qualidade' = 'entrada';
-  if (record.operationType === 'saida') categoryKey = 'saida';
-  else if (record.operationType === 'abastecimento') categoryKey = 'combustivel';
-  else if (record.operationType === 'pdc') categoryKey = 'pdc';
-  else if (record.operationType === 'qualidade_51') categoryKey = 'qualidade';
+  let customRow: string[] = [];
+
+  if (record.operationType === 'saida') {
+    categoryKey = 'saida';
+    // 10 Colunas: Data, Hora, Placa, Condutor, KM, Nível Combustível, Destino, Chave Reserva, Observação, Operador
+    customRow = [
+      dateStr,
+      timeStr,
+      placa,
+      condutor,
+      kmClean,
+      nivelCombustivel,
+      destino,
+      chaveReserva,
+      observacoes,
+      operador,
+    ];
+  } else if (record.operationType === 'abastecimento') {
+    categoryKey = 'combustivel';
+    // 8 Colunas: Data, Hora, Placa, KM, Nível Combustível, Condutor, Destino, Operador
+    customRow = [
+      dateStr,
+      timeStr,
+      placa,
+      kmClean,
+      nivelCombustivel,
+      condutor,
+      destino || 'POSTO DE ABASTECIMENTO',
+      operador,
+    ];
+  } else if (record.operationType === 'pdc') {
+    categoryKey = 'pdc';
+    // 6 Colunas: Data, Hora, Placa, Nível Combustível, Observação, Operador
+    customRow = [
+      dateStr,
+      timeStr,
+      placa,
+      nivelCombustivel,
+      observacoes,
+      operador,
+    ];
+  } else if (record.operationType === 'qualidade_51') {
+    categoryKey = 'qualidade';
+    // 8 Colunas: Data, Hora, Placa, Condutor, Característica do Veículo, Nível Combustível, Destino, Operador
+    customRow = [
+      dateStr,
+      timeStr,
+      placa,
+      condutor,
+      caracteristica,
+      nivelCombustivel,
+      destino || 'P1',
+      operador,
+    ];
+  } else {
+    categoryKey = 'entrada';
+    // 12 Colunas: Data, Hora, Placa, Condutor, KM, Nível Combustível, Origem, Destino, Chave Reserva, Tipo Veículo, Observação, Operador
+    customRow = [
+      dateStr,
+      timeStr,
+      placa,
+      condutor,
+      kmClean,
+      nivelCombustivel,
+      origem,
+      destino || 'BOLSÃO 40',
+      chaveReserva,
+      tipoVeiculo,
+      observacoes,
+      operador,
+    ];
+  }
 
   // Resolve or automatically create the dedicated tab for this operation
-  const resolvedTabTitle = await ensureTargetTab(spreadsheetId, categoryKey, accessToken);
+  const targetSheet = await ensureTargetTab(spreadsheetId, categoryKey, accessToken);
+  const resolvedTabTitle = targetSheet.title;
+  const tabDef = TAB_DEFINITIONS[categoryKey];
 
-  // Smart header inspection: if the sheet tab already has headers in row 1, match by column name
-  let rowValuesToSend = standardRow;
+  let rowValuesToSend = customRow;
   try {
     const headerCheck = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'${encodeURIComponent(
@@ -611,11 +674,6 @@ export async function appendVehicleRecordToSheet(
             .trim()
         );
 
-        // Check if there is an explicit 'nivel' column to avoid conflict with 'combustivel'
-        const hasExplicitNivelCol = normalizedHeaders.some((h) =>
-          h.includes('nivel') || h.includes('marcad') || h.includes('tanque')
-        );
-
         const mappedRow: any[] = new Array(normalizedHeaders.length).fill('');
         normalizedHeaders.forEach((hdr, idx) => {
           if (hdr.includes('data') || hdr === 'dt' || hdr.includes('date') || hdr === 'dia') {
@@ -623,13 +681,11 @@ export async function appendVehicleRecordToSheet(
           } else if (hdr.includes('hora') || hdr === 'hr' || hdr.includes('horario') || hdr.includes('time')) {
             mappedRow[idx] = timeStr;
           } else if (hdr.includes('operad') || hdr.includes('audit')) {
-            mappedRow[idx] = record.operatorName || 'Operador';
-          } else if (
-            hdr.includes('condut') ||
-            hdr.includes('motor') ||
-            hdr.includes('driver')
-          ) {
+            mappedRow[idx] = operador;
+          } else if (hdr.includes('condut') || hdr.includes('motor') || hdr.includes('driver')) {
             mappedRow[idx] = condutor;
+          } else if (hdr.includes('caracter') || hdr.includes('perfil') || hdr.includes('classif')) {
+            mappedRow[idx] = caracteristica;
           } else if (hdr.includes('plac') || hdr.includes('veic') || hdr.includes('plate')) {
             mappedRow[idx] = placa;
           } else if (hdr.includes('orig') || hdr.includes('proced') || hdr === 'de') {
@@ -644,34 +700,17 @@ export async function appendVehicleRecordToSheet(
           ) {
             mappedRow[idx] = kmClean;
           } else if (
-            hdr.includes('litr') ||
-            hdr.includes('abastec') ||
-            hdr.includes('volume') ||
-            hdr.includes('qtd') ||
-            hdr.includes('quant') ||
-            hdr === 'l'
-          ) {
-            // Coluna 9: LITROS ABASTECIDOS
-            mappedRow[idx] = litrosAbastecidos;
-          } else if (
-            (hdr.includes('tipo') && (hdr.includes('combust') || hdr.includes('comb'))) ||
-            hdr === 'tipo' ||
-            hdr === 'tipo de combustivel' ||
-            hdr === 'tipo combustivel' ||
-            hdr === 'produto' ||
-            (hasExplicitNivelCol && (hdr.includes('combust') || hdr === 'comb'))
-          ) {
-            // Coluna 10: TIPO DE COMBUSTÍVEL
-            mappedRow[idx] = tipoCombustivel;
-          } else if (
             hdr.includes('nivel') ||
             hdr.includes('marcad') ||
             hdr.includes('tanque') ||
             hdr.includes('ponteiro') ||
             (hdr.includes('combust') && !hdr.includes('tipo') && !hdr.includes('litr'))
           ) {
-            // Coluna 8: NÍVEL DO COMBUSTÍVEL
             mappedRow[idx] = nivelCombustivel;
+          } else if (hdr.includes('chave')) {
+            mappedRow[idx] = chaveReserva;
+          } else if (hdr.includes('tipo') || hdr.includes('frota')) {
+            mappedRow[idx] = tipoVeiculo;
           } else if (
             hdr.includes('obs') ||
             hdr.includes('nota') ||
@@ -680,18 +719,8 @@ export async function appendVehicleRecordToSheet(
             hdr.includes('descri')
           ) {
             mappedRow[idx] = observacoes;
-          } else if (hdr.includes('chave')) {
-            mappedRow[idx] = formatSpareKey(record.hasSpareKey) || '-';
-          } else if (hdr.includes('frota')) {
-            mappedRow[idx] = record.fleetType || '-';
-          } else if (hdr.includes('local') || hdr.includes('posto') || hdr.includes('poste')) {
-            mappedRow[idx] = record.location || '-';
-          } else if (hdr.includes('caract')) {
-            mappedRow[idx] = record.characteristic || '-';
-          } else if (hdr.includes('status')) {
-            mappedRow[idx] = 'REGISTRADO';
-          } else if (idx < standardRow.length) {
-            mappedRow[idx] = standardRow[idx];
+          } else if (idx < customRow.length) {
+            mappedRow[idx] = customRow[idx];
           }
         });
         rowValuesToSend = mappedRow;
@@ -701,8 +730,69 @@ export async function appendVehicleRecordToSheet(
     console.warn('Header inspection fallback:', hdrErr);
   }
 
-  const range = `'${resolvedTabTitle}'!A:Z`;
+  // 1. Tenta inserção no topo da planilha (LIFO / Pilha - Linha 2, logo abaixo do cabeçalho)
+  if (typeof targetSheet.sheetId === 'number') {
+    try {
+      const insertRowResp = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            requests: [
+              {
+                insertDimension: {
+                  range: {
+                    sheetId: targetSheet.sheetId,
+                    dimension: 'ROWS',
+                    startIndex: 1,
+                    endIndex: 2,
+                    inheritFromBefore: false,
+                  },
+                },
+              },
+            ],
+          }),
+        }
+      );
 
+      if (insertRowResp.ok) {
+        const lastColLetter = String.fromCharCode(64 + Math.max(rowValuesToSend.length, 1));
+        const putResp = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'${encodeURIComponent(
+            resolvedTabTitle
+          )}'!A2:${lastColLetter}2?valueInputOption=USER_ENTERED`,
+          {
+            method: 'PUT',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              values: [rowValuesToSend],
+            }),
+          }
+        );
+
+        if (putResp.ok) {
+          const putJson = await putResp.json();
+          return {
+            success: true,
+            updatedRange: putJson.updatedRange || `'${resolvedTabTitle}'!A2:${lastColLetter}2`,
+            tabName: resolvedTabTitle,
+          };
+        }
+      }
+    } catch (insertErr) {
+      console.warn('LIFO insertDimension fallback to append:', insertErr);
+    }
+  }
+
+  // Fallback: Append padrão
+  const range = `'${resolvedTabTitle}'!A:Z`;
   const appendResp = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
       range

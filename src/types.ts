@@ -10,7 +10,7 @@ export type OperationType = 'entrada' | 'saida' | 'abastecimento' | 'pdc' | 'qua
 
 export type EntrySubtype = 'bolsao_40' | 'retorno' | 'recusa' | 'remocao_adesivos';
 
-export type VehicleFleetType = 'RAC' | 'GF' | 'OUTROS' | string;
+export type VehicleFleetType = 'GF' | 'RAC' | 'OUTROS' | string;
 
 export type VehicleStatus = 'parked' | 'released';
 
@@ -37,6 +37,8 @@ export interface VehicleRecord {
   photoBlob?: Blob;
   dashboardPhotoUrl?: string;
   dashboardPhotoBlob?: Blob;
+  documentPhotoUrl?: string;
+  documentPhotoBlob?: Blob;
   plate: string;
   plateSource?: 'local_ocr' | 'gemini_ai' | 'manual';
   rawOcrText?: string;

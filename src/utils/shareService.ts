@@ -143,6 +143,7 @@ export function generateWhatsAppMessage(data: FormattedVehicleMessageData): stri
       if (hasValue(data.plate)) lines.push(`*Placa:* ${cleanPlate}`);
       if (hasValue(data.driverName)) lines.push(`*Condutor:* ${toUpper(data.driverName)}`);
       if (hasValue(data.origin)) lines.push(`*Origem:* ${toUpper(data.origin)}`);
+      if (hasValue(data.destination)) lines.push(`*Destino:* ${toUpper(data.destination)}`);
       if (hasValue(data.km)) lines.push(`*KM:* ${toUpper(data.km).replace(/\s*KM/i, '')} KM`);
       if (hasValue(data.fuel)) lines.push(`*Combustível:* ${fuelDisplay}`);
       if (data.hasSpareKey !== undefined) {
@@ -151,9 +152,14 @@ export function generateWhatsAppMessage(data: FormattedVehicleMessageData): stri
       if (hasValue(data.fleetType)) {
         lines.push(`*Tipo de Veículo:* ${toUpper(data.fleetType)}`);
       }
-      if (data.entrySubtype) {
+      if (data.entrySubtype && data.entrySubtype !== 'bolsao_40' && data.entrySubtype !== 'remocao_adesivos') {
         const subtypeLabel = getEntrySubtypeLabel(data.entrySubtype);
-        if (subtypeLabel) lines.push(`*Local:* ${subtypeLabel}`);
+        if (subtypeLabel) lines.push(`*Ocorrência:* ${subtypeLabel}`);
+        if ((data.entrySubtype === 'retorno' || data.entrySubtype === 'recusa') && hasValue(data.entryReason)) {
+          lines.push(`*Motivo do ${subtypeLabel}:* ${toUpper(data.entryReason)}`);
+        }
+      } else if (data.entrySubtype === 'retorno' || data.entrySubtype === 'recusa') {
+        const subtypeLabel = getEntrySubtypeLabel(data.entrySubtype);
         if ((data.entrySubtype === 'retorno' || data.entrySubtype === 'recusa') && hasValue(data.entryReason)) {
           lines.push(`*Motivo do ${subtypeLabel}:* ${toUpper(data.entryReason)}`);
         }

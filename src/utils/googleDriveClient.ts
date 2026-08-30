@@ -350,33 +350,95 @@ export async function appendRecordToGoogleSheets(
 
 /**
  * Template de Script do Google Apps Script para copiar e colar na planilha
- * Estrutura oficial com 11 colunas fiéis:
- * DATA | HORA | CONDUTOR | PLACA | ORIGEM | DESTINO | KM (ODÔMETRO) | NÍVEL DO COMBUSTÍVEL | LITROS ABASTECIDOS | TIPO DE COMBUSTÍVEL | OBSERVAÇÕES
+ * Estrutura personalizada por aba (sem informações desnecessárias):
+ * - Entrada (12 colunas): Data, Hora, Placa, Condutor, KM odômetro, Nível Combustível, Origem, Destino, Chave reserva, Tipo veículo, Observação, Operador
+ * - Saída (10 colunas): Data, Hora, Placa, Condutor, KM odômetro, Nível Combustível, Destino, Chave reserva, Observação, Operador
+ * - 51 Qualidade (8 colunas): Data, Hora, Placa, Condutor, KM odômetro, Nível Combustível, Destino, Operador
+ * - Combustível (8 colunas): Data, Hora, Placa, KM odômetro, Nível Combustível, Condutor, Destino, Operador
+ * - Fila PDC (6 colunas): Data, Hora, Placa, Nível Combustível, Observação, Operador
  */
 export const GOOGLE_APPS_SCRIPT_TEMPLATE = `// ============================================================================
-// SCRIPT DE GRAVAÇÃO AUTOMÁTICA EM 11 COLUNAS FIÉIS - CMDIT CONTROLE DE PÁTIO
+// SCRIPT DE GRAVAÇÃO AUTOMÁTICA PERSONALIZADA POR ABA - CMDIT CONTROLE DE PÁTIO
 // ============================================================================
 // 1. Abra sua Planilha Google > Menu superior "Extensões" > "Apps Script"
 // 2. Apague tudo o que estiver lá, cole este código completo e salve (Ctrl+S)
-// 3. Clique em "Implantar" > "Nova implantação"
+// 3. Clique em "Implantar" > "Nova implantação" (ou "Gerenciar implantações" > Editar > "Nova versão")
 // 4. Tipo: "Aplicativo da Web"
 // 5. Executar como: "Eu" | Quem pode acessar: "Qualquer pessoa"
 // 6. Clique em "Implantar", copie a URL gerada e cole no Painel Master do app
 // ============================================================================
 
-var STANDARD_HEADERS = [
-  "DATA",
-  "HORA",
-  "OPERADOR (AUDITORIA)",
-  "PLACA",
-  "CONDUTOR",
-  "KM (ODÔMETRO)",
-  "NÍVEL DO COMBUSTÍVEL",
-  "LITROS ABASTECIDOS",
-  "TIPO DE COMBUSTÍVEL",
-  "DESTINO",
-  "OBSERVAÇÕES"
-];
+var TAB_CONFIGS = {
+  entrada: {
+    tabName: "📥 Entrada",
+    headers: [
+      "DATA",
+      "HORA",
+      "PLACA",
+      "CONDUTOR",
+      "KM (ODÔMETRO)",
+      "NÍVEL DO COMBUSTÍVEL",
+      "ORIGEM",
+      "DESTINO",
+      "CHAVE RESERVA",
+      "TIPO DE VEÍCULO",
+      "OBSERVAÇÃO",
+      "OPERADOR DO REGISTRO"
+    ]
+  },
+  saida: {
+    tabName: "📤 Saída",
+    headers: [
+      "DATA",
+      "HORA",
+      "PLACA",
+      "CONDUTOR",
+      "KM (ODÔMETRO)",
+      "NÍVEL DO COMBUSTÍVEL",
+      "DESTINO",
+      "CHAVE RESERVA",
+      "OBSERVAÇÃO",
+      "OPERADOR DO REGISTRO"
+    ]
+  },
+  qualidade: {
+    tabName: "🔍 Qualidade 51",
+    headers: [
+      "DATA",
+      "HORA",
+      "PLACA",
+      "CONDUTOR",
+      "CARACTERÍSTICA DO VEÍCULO",
+      "NÍVEL DO COMBUSTÍVEL",
+      "DESTINO",
+      "OPERADOR DO REGISTRO"
+    ]
+  },
+  combustivel: {
+    tabName: "⛽ Combustível",
+    headers: [
+      "DATA",
+      "HORA",
+      "PLACA",
+      "KM (ODÔMETRO)",
+      "NÍVEL DO COMBUSTÍVEL",
+      "CONDUTOR",
+      "DESTINO",
+      "OPERADOR DO REGISTRO"
+    ]
+  },
+  pdc: {
+    tabName: "📋 Fila PDC",
+    headers: [
+      "DATA",
+      "HORA",
+      "PLACA",
+      "NÍVEL DO COMBUSTÍVEL",
+      "OBSERVAÇÃO",
+      "OPERADOR DO REGISTRO"
+    ]
+  }
+};
 
 function doPost(e) {
   try {
@@ -384,23 +446,21 @@ function doPost(e) {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var op = String(data.operationType || data.operationCategory || '').toLowerCase().trim();
     
-    // Identificar a aba correta
-    var tabName = "📥 Entrada";
+    // Identificar a aba correta e sua configuração de colunas
     var tabCategory = "entrada";
-    
     if (op === "saida" || op === "saída" || op.indexOf("said") !== -1) {
-      tabName = "📤 Saída";
       tabCategory = "saida";
     } else if (op === "abastecimento" || op === "combustivel" || op === "combustível" || op.indexOf("abastec") !== -1 || op.indexOf("combust") !== -1) {
-      tabName = "⛽ Combustível";
-      tabCategory = "abastecimento";
+      tabCategory = "combustivel";
     } else if (op === "qualidade_51" || op === "qualidade51" || op === "qualidade" || op.indexOf("51") !== -1 || op.indexOf("qualidade") !== -1) {
-      tabName = "🔍 Qualidade 51";
       tabCategory = "qualidade";
     } else if (op === "pdc" || op.indexOf("pdc") !== -1 || op.indexOf("fila") !== -1) {
-      tabName = "📋 Fila PDC";
       tabCategory = "pdc";
     }
+
+    var activeConfig = TAB_CONFIGS[tabCategory] || TAB_CONFIGS.entrada;
+    var tabName = activeConfig.tabName;
+    var expectedHeaders = activeConfig.headers;
 
     // Busca inteligente da aba
     var sheet = null;
@@ -411,7 +471,7 @@ function doPost(e) {
         sheet = allSheets[i];
         tabName = allSheets[i].getName();
         break;
-      } else if (tabCategory === "abastecimento" && (sName.indexOf("abastec") !== -1 || sName.indexOf("combust") !== -1 || sName.indexOf("posto") !== -1)) {
+      } else if (tabCategory === "combustivel" && (sName.indexOf("abastec") !== -1 || sName.indexOf("combust") !== -1 || sName.indexOf("posto") !== -1)) {
         sheet = allSheets[i];
         tabName = allSheets[i].getName();
         break;
@@ -430,7 +490,7 @@ function doPost(e) {
       }
     }
     
-    // Se a aba não existir, cria a aba com os 11 cabeçalhos oficiais
+    // Se a aba não existir, cria a aba com os cabeçalhos específicos desta operação
     if (!sheet) {
       if (allSheets.length === 1 && allSheets[0].getLastRow() === 0 && allSheets[0].getName().match(/^(Planilha1|Sheet1|Página1)$/i)) {
         sheet = allSheets[0];
@@ -438,8 +498,8 @@ function doPost(e) {
       } else {
         sheet = ss.insertSheet(tabName);
       }
-      sheet.appendRow(STANDARD_HEADERS);
-      var headerRange = sheet.getRange(1, 1, 1, STANDARD_HEADERS.length);
+      sheet.appendRow(expectedHeaders);
+      var headerRange = sheet.getRange(1, 1, 1, expectedHeaders.length);
       headerRange.setFontWeight("bold");
       headerRange.setBackground("#0f172a");
       headerRange.setFontColor("#ffffff");
@@ -454,156 +514,169 @@ function doPost(e) {
     var formatFuelLevel = function(f) {
       if (!f) return "-";
       var clean = String(f).trim();
-      if (clean === "1/8" || clean === "1/8 (Reserva)") return "1/8 (Reserva)";
+      if (clean === "1/8" || clean === "1/8 (Reserva)") return "1/8 (RESERVA)";
       if (clean === "2/8" || clean === "2/8 (1/4)") return "2/8 (1/4)";
       if (clean === "3/8") return "3/8";
       if (clean === "4/8" || clean === "4/8 (1/2)") return "4/8 (1/2)";
       if (clean === "5/8") return "5/8";
       if (clean === "6/8" || clean === "6/8 (3/4)") return "6/8 (3/4)";
       if (clean === "7/8") return "7/8";
-      if (clean === "8/8" || clean === "8/8 (Cheio)" || clean === "8/8 • Cheio" || clean === "Tanque Cheio") return "8/8 (Cheio)";
-      return clean;
+      if (clean === "8/8" || clean === "8/8 (Cheio)" || clean === "8/8 • Cheio" || clean === "Tanque Cheio") return "8/8 (CHEIO)";
+      return String(clean).toUpperCase();
     };
 
-    var isAbastecimento = (tabCategory === "abastecimento");
+    // Extração do Nome do Operador (apenas o nome, sem login)
+    var extractCleanOperatorName = function(rawOp, rawLogin) {
+      var opStr = String(rawOp || rawLogin || "OPERADOR").trim();
+      opStr = opStr.replace(/\\(.*?\\)/g, '').replace(/\\[.*?\\]/g, '').trim();
+      if (opStr.indexOf("@") !== -1) {
+        opStr = opStr.split("@")[0].replace(/[._-]/g, ' ');
+      }
+      return opStr ? opStr.toUpperCase() : "OPERADOR";
+    };
 
-    // Extração fiel dos dados em LETRAS MAIÚSCULAS
-    var operador = String(data.operatorName || data.operador || "OPERADOR").toUpperCase().trim();
+    // Extração dos campos normalizados
+    var operador = extractCleanOperatorName(data.operatorName || data.operador, data.username);
     var condutor = String(data.driverName || data.condutor || data.motorista || "-").toUpperCase().trim();
     var placa = String(data.plate || data.placa || "").toUpperCase().trim();
     var origem = String(data.origin || data.origem || (tabCategory === "entrada" ? "PÁTIO PRINCIPAL" : "-")).toUpperCase().trim();
-    var destino = String(data.destination || data.destino || (tabCategory === "pdc" ? "FILA PDC (LAVAGEM/OFICINA)" : "-")).toUpperCase().trim();
-    var km = data.km ? (String(data.km).replace(/\s*km/i, '').toUpperCase().trim() + " KM") : (data.odometro ? (String(data.odometro).replace(/\s*km/i, '').toUpperCase().trim() + " KM") : "-");
-    var nivelCombustivel = String(formatFuelLevel(data.nivelCombustivel || data.fuel || data.combustivel)).toUpperCase().trim();
-    var litrosAbastecidos = data.litrosAbastecidos
-      ? (String(data.litrosAbastecidos).replace(/\s*l/i, '').toUpperCase().trim() + " L")
-      : (data.liters ? (String(data.liters).replace(/\s*l/i, '').toUpperCase().trim() + " L") : (data.litros ? (String(data.litros).replace(/\s*l/i, '').toUpperCase().trim() + " L") : "-"));
-    var tipoCombustivel = String(data.tipoCombustivel || data.fuelType || (isAbastecimento ? "DIESEL S10" : "-")).toUpperCase().trim();
+    var destino = String(data.destination || data.destino || (tabCategory === "pdc" ? "FILA PDC (LAVAGEM/OFICINA)" : (tabCategory === "qualidade" ? (data.location ? ("PÁTIO " + data.location) : "P1") : "-"))).toUpperCase().trim();
+    var km = data.km ? (String(data.km).replace(/\\s*km/i, '').toUpperCase().trim() + " KM") : (data.odometro ? (String(data.odometro).replace(/\\s*km/i, '').toUpperCase().trim() + " KM") : "-");
+    var nivelCombustivel = formatFuelLevel(data.nivelCombustivel || data.fuel || data.combustivel);
     
-    var extras = [];
-    if (data.hasSpareKey !== undefined && data.hasSpareKey !== null) {
-      extras.push("CHAVE RESERVA: " + (data.hasSpareKey ? "SIM" : "NÃO"));
+    // Chave Reserva
+    var chaveReserva = "-";
+    if (data.hasSpareKey === true || String(data.hasSpareKey).toLowerCase() === "true" || String(data.chaveReserva).toUpperCase() === "SIM") {
+      chaveReserva = "SIM";
+    } else if (data.hasSpareKey === false || String(data.hasSpareKey).toLowerCase() === "false" || String(data.chaveReserva).toUpperCase() === "NÃO") {
+      chaveReserva = "NÃO";
     }
-    if (data.fleetType) extras.push("FROTA: " + String(data.fleetType).toUpperCase().trim());
-    if (data.entrySubtype) extras.push("SUBTIPO: " + String(data.entrySubtype).toUpperCase().trim());
-    if (data.entryReason) extras.push("MOTIVO: " + String(data.entryReason).toUpperCase().trim());
-    if (data.characteristic) extras.push("CARACTERÍSTICA: " + String(data.characteristic).toUpperCase().trim());
-    if (data.location) extras.push("LOCAL/POSTE: " + String(data.location).toUpperCase().trim());
-    if (origem && origem !== "-" && origem !== "PÁTIO PRINCIPAL") extras.push("ORIGEM: " + origem);
-    
-    var observacoes = data.notes || data.description || data.observacoes || "";
-    if (extras.length > 0) {
-      var extraStr = "[" + extras.join(" | ") + "]";
-      observacoes = observacoes ? (extraStr + " " + observacoes) : extraStr;
-    }
-    if (!observacoes) observacoes = "-";
-    observacoes = String(observacoes).toUpperCase().trim();
-    
-    var standardRow = [
-      dateStr,             // 1. DATA (Col A)
-      timeStr,             // 2. HORA (Col B)
-      operador,            // 3. OPERADOR (AUDITORIA) (Col C)
-      placa,               // 4. PLACA (Col D)
-      condutor,            // 5. CONDUTOR (Col E)
-      km,                  // 6. KM (ODÔMETRO) (Col F)
-      nivelCombustivel,    // 7. NÍVEL DO COMBUSTÍVEL (Col G)
-      litrosAbastecidos,   // 8. LITROS ABASTECIDOS (Col H)
-      tipoCombustivel,     // 9. TIPO DE COMBUSTÍVEL (Col I)
-      destino,             // 10. DESTINO (Col J)
-      observacoes          // 11. OBSERVAÇÕES (Col K)
-    ];
-    
-    // Inspeção de cabeçalhos existentes na linha 1
-    var lastCol = Math.max(sheet.getLastColumn(), 1);
-    var rawHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0] || [];
-    var hasHeaders = false;
-    for (var h = 0; h < rawHeaders.length; h++) {
-      if (String(rawHeaders[h] || '').trim() !== '') {
-        hasHeaders = true;
-        break;
-      }
-    }
-    
-    if (!hasHeaders) {
-      sheet.appendRow(STANDARD_HEADERS);
-      var hr = sheet.getRange(1, 1, 1, STANDARD_HEADERS.length);
-      hr.setFontWeight("bold");
-      hr.setBackground("#0f172a");
-      hr.setFontColor("#ffffff");
-      
-      // Inserção no topo (Linha 2, logo abaixo dos cabeçalhos - modo Pilha)
-      sheet.insertRowAfter(1);
-      var rRange = sheet.getRange(2, 1, 1, standardRow.length);
-      rRange.setValues([standardRow]);
-      rRange.setFontWeight("normal");
-      rRange.setBackground(null);
-      rRange.setFontColor("#000000");
+
+    // Tipo de Veículo (GF, RAC, OUTROS)
+    var tipoVeiculo = String(data.fleetType || data.tipoVeiculo || data.tipo || "GF").toUpperCase().trim();
+
+    // Característica do Veículo com Emojis (🟣 DT, 🟠 REVENDA, 🟢 CONSUMIDOR, ⚪ OUTROS)
+    var rawChar = data.characteristic || data.caracteristica || data.tipoCaracteristica || "-";
+    var caracteristica = String(rawChar).trim();
+    if (caracteristica && caracteristica !== "-") {
+      var charUpper = caracteristica.toUpperCase();
+      if (charUpper.indexOf("DT") !== -1) caracteristica = "🟣 DT";
+      else if (charUpper.indexOf("REVENDA") !== -1) caracteristica = "🟠 REVENDA";
+      else if (charUpper.indexOf("CONSUMIDOR") !== -1) caracteristica = "🟢 CONSUMIDOR";
+      else if (charUpper.indexOf("OUTROS") !== -1) caracteristica = "⚪ OUTROS";
     } else {
-      var normalizedHeaders = [];
-      for (var hi = 0; hi < rawHeaders.length; hi++) {
-        var nh = String(rawHeaders[hi] || '').toLowerCase()
-          .replace(/[áàãâä]/g, 'a')
-          .replace(/[éèêë]/g, 'e')
-          .replace(/[íìîï]/g, 'i')
-          .replace(/[óòõôö]/g, 'o')
-          .replace(/[úùûü]/g, 'u')
-          .replace(/[ç]/g, 'c')
-          .trim();
-        normalizedHeaders.push(nh);
-      }
-
-      var mappedRow = [];
-      for (var c = 0; c < normalizedHeaders.length; c++) {
-        var hdr = normalizedHeaders[c];
-        if (hdr.indexOf("data") !== -1 || hdr === "dt" || hdr.indexOf("date") !== -1 || hdr === "dia") {
-          mappedRow.push(dateStr);
-        } else if (hdr.indexOf("hora") !== -1 || hdr === "hr" || hdr.indexOf("horario") !== -1 || hdr.indexOf("time") !== -1) {
-          mappedRow.push(timeStr);
-        } else if (hdr.indexOf("operad") !== -1 || hdr.indexOf("audit") !== -1) {
-          mappedRow.push(operador);
-        } else if (hdr.indexOf("plac") !== -1 || hdr.indexOf("veic") !== -1 || hdr.indexOf("plate") !== -1) {
-          mappedRow.push(placa);
-        } else if ((hdr.indexOf("condut") !== -1 || hdr.indexOf("motor") !== -1 || hdr.indexOf("driver") !== -1) && hdr.indexOf("operad") === -1) {
-          mappedRow.push(condutor);
-        } else if (hdr.indexOf("km") !== -1 || hdr.indexOf("odomet") !== -1 || hdr.indexOf("hodomet") !== -1 || hdr.indexOf("quilomet") !== -1) {
-          mappedRow.push(km);
-        } else if (hdr.indexOf("nivel") !== -1 || hdr.indexOf("marcad") !== -1 || hdr.indexOf("tanque") !== -1 || hdr.indexOf("ponteiro") !== -1 || ((hdr.indexOf("combust") !== -1 || hdr === "comb") && hdr.indexOf("tipo") === -1 && hdr.indexOf("litr") === -1 && hdr.indexOf("abastec") === -1 && hdr.indexOf("prod") === -1)) {
-          // Coluna: NÍVEL DO COMBUSTÍVEL (1/8 até 8/8)
-          mappedRow.push(nivelCombustivel);
-        } else if (hdr.indexOf("litr") !== -1 || hdr.indexOf("volume") !== -1 || hdr.indexOf("qtd") !== -1 || (hdr.indexOf("abastec") !== -1 && hdr.indexOf("posto") === -1 && hdr.indexOf("dest") === -1)) {
-          // Coluna: LITROS ABASTECIDOS (ex: 120.5 L ou -)
-          mappedRow.push(litrosAbastecidos);
-        } else if (hdr.indexOf("tipo") !== -1 || hdr.indexOf("produto") !== -1 || hdr === "combustivel tipo" || hdr === "combustivel_tipo") {
-          // Coluna: TIPO DE COMBUSTÍVEL (ex: DIESEL S10, GASOLINA, ou -)
-          mappedRow.push(tipoCombustivel);
-        } else if (hdr.indexOf("dest") !== -1 || hdr.indexOf("para") !== -1 || hdr.indexOf("setor") !== -1 || hdr.indexOf("localidade") !== -1) {
-          mappedRow.push(destino);
-        } else if (hdr.indexOf("orig") !== -1 || hdr.indexOf("proced") !== -1 || hdr === "de") {
-          mappedRow.push(origem);
-        } else if (hdr.indexOf("obs") !== -1 || hdr.indexOf("nota") !== -1 || hdr.indexOf("detalh") !== -1 || hdr.indexOf("motivo") !== -1 || hdr.indexOf("descri") !== -1) {
-          mappedRow.push(observacoes);
-        } else if (c < standardRow.length) {
-          mappedRow.push(standardRow[c]);
-        } else {
-          mappedRow.push("");
-        }
-      }
-
-      // Inserção no topo da tabela (Linha 2, logo abaixo dos cabeçalhos na Linha 1) - Formato Pilha (LIFO / Último registro no topo)
-      sheet.insertRowAfter(1);
-      var newRange = sheet.getRange(2, 1, 1, mappedRow.length);
-      newRange.setValues([mappedRow]);
-      newRange.setFontWeight("normal");
-      newRange.setBackground(null);
-      newRange.setFontColor("#000000");
+      caracteristica = "-";
     }
-    
+
+    // Observações (incluindo status da foto do documento do veículo quando presente)
+    var observacoes = data.notes || data.observacao || data.observacoes || data.description || "";
+    observacoes = String(observacoes).replace(/\\r?\\n/g, ' - ').trim();
+
+    var hasDoc = data.hasDocumentPhoto === true || String(data.hasDocumentPhoto).toLowerCase() === "true" || !!data.documentPhotoUrl;
+    if (hasDoc) {
+      if (observacoes && observacoes !== "-") {
+        observacoes = observacoes + " [DOC VEÍCULO: FOTO REGISTRADA]";
+      } else {
+        observacoes = "[DOC VEÍCULO: FOTO REGISTRADA]";
+      }
+    }
+    if (!observacoes) {
+      observacoes = "-";
+    }
+    observacoes = observacoes.toUpperCase().trim();
+
+    // Montagem exata da linha conforme a aba solicitada pelo usuário
+    var customRow = [];
+    if (tabCategory === "entrada") {
+      // 12 Colunas: Data, Hora, Placa, Condutor, KM odômetro, Nivel do Combustivel, Origem, Destino, Chave reserva, Tipo de veiculo, Observação, Operador
+      customRow = [
+        dateStr,          // Col A: Data
+        timeStr,          // Col B: Hora
+        placa,            // Col C: Placa
+        condutor,         // Col D: Condutor
+        km,               // Col E: KM odômetro
+        nivelCombustivel, // Col F: Nivel do Combustivel
+        origem,           // Col G: Origem
+        destino,          // Col H: Destino
+        chaveReserva,     // Col I: Chave reserva
+        tipoVeiculo,      // Col J: Tipo de veiculo (REC, GF, LQV, outros)
+        observacoes,      // Col K: Observação
+        operador          // Col L: Operador do registro
+      ];
+    } else if (tabCategory === "saida") {
+      // 10 Colunas: Data, Hora, Placa, Condutor, KM odômetro, Nivel do Combustivel, Destino, Chave reserva, Observação, Operador
+      customRow = [
+        dateStr,          // Col A: Data
+        timeStr,          // Col B: Hora
+        placa,            // Col C: Placa
+        condutor,         // Col D: Condutor
+        km,               // Col E: KM odômetro
+        nivelCombustivel, // Col F: Nivel do Combustivel
+        destino,          // Col G: Destino
+        chaveReserva,     // Col H: Chave reserva
+        observacoes,      // Col I: Observação
+        operador          // Col J: Operador do registro
+      ];
+    } else if (tabCategory === "qualidade") {
+      // 8 Colunas: Data, Hora, Placa, Condutor, Característica do Veículo, Nivel do Combustivel, Destino, Operador
+      customRow = [
+        dateStr,          // Col A: Data
+        timeStr,          // Col B: Hora
+        placa,            // Col C: Placa
+        condutor,         // Col D: Condutor
+        caracteristica,   // Col E: Característica do Veículo (CONSUMIDOR, REVENDA, DT, OUTROS)
+        nivelCombustivel, // Col F: Nivel do Combustivel
+        destino,          // Col G: Destino (P1, P2, P3, ADM, R1, outros)
+        operador          // Col H: Operador do registro
+      ];
+    } else if (tabCategory === "combustivel") {
+      // 8 Colunas: Data, Hora, Placa, KM odômetro, Nivel do Combustivel, Condutor, Destino, Operador
+      customRow = [
+        dateStr,          // Col A: Data
+        timeStr,          // Col B: Hora
+        placa,            // Col C: Placa
+        km,               // Col D: KM odômetro
+        nivelCombustivel, // Col E: Nivel do Combustivel
+        condutor,         // Col F: Condutor
+        destino,          // Col G: Destino
+        operador          // Col H: Operador do registro
+      ];
+    } else if (tabCategory === "pdc") {
+      // 6 Colunas: Data, Hora, Placa, Nivel do combustivel, Observação, Operador
+      customRow = [
+        dateStr,          // Col A: Data
+        timeStr,          // Col B: Hora
+        placa,            // Col C: Placa
+        nivelCombustivel, // Col D: Nivel do combustivel
+        observacoes,      // Col E: Observação
+        operador          // Col F: Operador do registro
+      ];
+    }
+
+    // Inserção no topo (Linha 2, logo abaixo do cabeçalho na Linha 1 - Pilha / LIFO)
+    sheet.insertRowAfter(1);
+    var targetRange = sheet.getRange(2, 1, 1, customRow.length);
+    targetRange.setValues([customRow]);
+    targetRange.setFontWeight("normal");
+    targetRange.setBackground(null);
+    targetRange.setFontColor("#000000");
+
+    // Formatar cabeçalho se necessário
+    var headerCheck = sheet.getRange(1, 1, 1, expectedHeaders.length);
+    if (headerCheck.getValues()[0][0] !== expectedHeaders[0]) {
+      headerCheck.setValues([expectedHeaders]);
+      headerCheck.setFontWeight("bold");
+      headerCheck.setBackground("#0f172a");
+      headerCheck.setFontColor("#ffffff");
+    }
+
     return ContentService.createTextOutput(JSON.stringify({
       success: true,
       tabName: tabName,
       tabCategory: tabCategory,
       plate: placa,
-      message: "Registro gravado fielmente nas 11 colunas da planilha."
+      columnsCount: customRow.length,
+      message: "Registro gravado com sucesso na aba " + tabName + " (" + customRow.length + " colunas)."
     })).setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
     return ContentService.createTextOutput(JSON.stringify({
@@ -670,7 +743,8 @@ function doGet(e) {
       error: err.toString()
     })).setMimeType(ContentService.MimeType.JSON);
   }
-}`;
+}
+`;
 
 
 /**

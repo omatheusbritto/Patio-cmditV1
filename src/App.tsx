@@ -88,6 +88,7 @@ export default function App() {
   const [fleetType, setFleetType] = useState<VehicleFleetType | undefined>(undefined);
   const [entrySubtype, setEntrySubtype] = useState<EntrySubtype | undefined>(undefined);
   const [entryReason, setEntryReason] = useState<string>('');
+  const [documentPhotoUrl, setDocumentPhotoUrl] = useState<string>('');
 
   // Fueling specifics
   const [dashboardPhotoUrl, setDashboardPhotoUrl] = useState<string>('');
@@ -163,6 +164,7 @@ export default function App() {
     setFleetType(undefined);
     setEntrySubtype(undefined);
     setEntryReason('');
+    setDocumentPhotoUrl('');
 
     setDashboardPhotoUrl('');
     setLiters('');
@@ -315,6 +317,7 @@ export default function App() {
     fleetType?: VehicleFleetType;
     entrySubtype?: EntrySubtype;
     entryReason?: string;
+    documentPhotoUrl?: string;
   }) => {
     setDriverName(details.driverName);
     if (details.origin) setOrigin(details.origin);
@@ -324,6 +327,7 @@ export default function App() {
     setFleetType(details.fleetType);
     setEntrySubtype(details.entrySubtype);
     setEntryReason(details.entryReason || '');
+    if (details.documentPhotoUrl !== undefined) setDocumentPhotoUrl(details.documentPhotoUrl);
     setCurrentStep('fuel');
   };
 
@@ -367,6 +371,7 @@ export default function App() {
   const handleSaveToHistory = async (recordData: {
     photoDataUrl: string;
     dashboardPhotoUrl?: string;
+    documentPhotoUrl?: string;
     plate: string;
     operationType: OperationType;
     fuel: FuelLevel;
@@ -590,6 +595,7 @@ export default function App() {
                 initialFleetType={fleetType}
                 initialEntrySubtype={entrySubtype}
                 initialEntryReason={entryReason}
+                initialDocumentPhotoUrl={documentPhotoUrl}
                 onUpdatePlate={(newPlate) => setPlate(newPlate)}
                 onSubmit={handleSubmitOperationDetails}
                 onBack={() => setCurrentStep('operation_select')}
@@ -664,6 +670,7 @@ export default function App() {
               <ReviewAndShare
                 photoDataUrl={photoDataUrl}
                 dashboardPhotoUrl={dashboardPhotoUrl}
+                documentPhotoUrl={documentPhotoUrl}
                 plate={plate}
                 operationType={operationType}
                 fuel={fuel}

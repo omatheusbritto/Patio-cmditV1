@@ -343,51 +343,77 @@ async function startServer() {
         }
       };
 
-      const isAbastecimento = normalizedCategory === 'abastecimento';
+      // Clean operator extraction (name only, no login)
+      const extractCleanOperator = (rawName?: string, rawUser?: string) => {
+        let op = String(rawName || rawUser || 'Operador').trim();
+        op = op.replace(/\(.*?\)/g, '').replace(/\[.*?\]/g, '').trim();
+        if (op.includes('@')) {
+          op = op.split('@')[0].replace(/[._-]/g, ' ');
+        }
+        return op || 'Operador';
+      };
 
-      // Extração fiel dos 11 dados para payload do webhook e planilhas
-      const condutor = record.driverName || record.condutor || record.operatorName || '-';
+      const cleanOperator = extractCleanOperator(record.operatorName, record.username);
+      const condutor = record.driverName || record.condutor || '-';
       const placa = (record.plate || record.placa || '').toUpperCase().trim();
       const origem = record.origin || record.origem || (normalizedCategory === 'entrada' ? 'Pátio Principal' : '-');
-      const destino = record.destination || record.destino || (normalizedCategory === 'pdc' ? 'Fila PDC (Lavagem/Oficina)' : '-');
+      const destino = record.destination || record.destino || (normalizedCategory === 'pdc' ? 'Fila PDC (Lavagem/Oficina)' : (normalizedCategory === 'entrada' ? 'Bolsão 40' : '-'));
       const km = record.km ? `${String(record.km).replace(/\s*km/i, '')} km` : (record.odometro || '-');
       const nivelCombustivel = formatFuel(record.fuel || record.nivelCombustivel || record.combustivel);
-      const litrosAbastecidos = record.liters
-        ? `${String(record.liters).replace(/\s*l/i, '')} L`
-        : (record.litros ? `${String(record.litros).replace(/\s*l/i, '')} L` : (isAbastecimento ? '-' : '-'));
-      const tipoCombustivel = record.fuelType || record.tipoCombustivel || (isAbastecimento ? 'DIESEL S10' : '-');
-      
-      const extras: string[] = [];
-      if (record.hasSpareKey !== undefined && record.hasSpareKey !== null) {
-        extras.push(`Chave Reserva: ${record.hasSpareKey ? 'SIM' : 'NÃO'}`);
-      }
-      if (record.fleetType) extras.push(`Frota: ${record.fleetType}`);
-      if (record.entrySubtype) extras.push(`Subtipo: ${record.entrySubtype}`);
-      if (record.entryReason) extras.push(`Motivo: ${record.entryReason}`);
-      if (record.characteristic) extras.push(`Característica: ${record.characteristic}`);
-      if (record.location) extras.push(`Local/Poste: ${record.location}`);
-      if (record.operatorName && record.operatorName !== condutor) extras.push(`Operador: ${record.operatorName}`);
+      const tipoVeiculo = String(record.fleetType || record.tipoVeiculo || record.tipo || 'GF').toUpperCase().trim();
+      const chaveReserva = record.hasSpareKey === true ? 'SIM' : (record.hasSpareKey === false ? 'NÃO' : '-');
+      let observacoes = record.notes || record.description || record.observacao || record.observacoes || '';
+      observacoes = String(observacoes).replace(/\r?\n/g, ' - ').trim();
 
-      let observacoes = record.notes || record.description || record.observacoes || '';
-      if (extras.length > 0) {
-        const extraStr = `[${extras.join(' | ')}]`;
-        observacoes = observacoes ? `${extraStr} ${observacoes}` : extraStr;
+      const hasDoc = record.hasDocumentPhoto === true || String(record.hasDocumentPhoto).toLowerCase() === 'true' || !!record.documentPhotoUrl;
+      if (hasDoc) {
+        if (observacoes && observacoes !== '-') {
+          observacoes = `${observacoes} [DOC VEÍCULO: FOTO REGISTRADA]`;
+        } else {
+          observacoes = '[DOC VEÍCULO: FOTO REGISTRADA]';
+        }
       }
-      if (!observacoes) observacoes = '-';
+      if (!observacoes) {
+        observacoes = '-';
+      }
+      observacoes = observacoes.toUpperCase().trim();
+
+      const rawChar = record.characteristic || record.caracteristica || record.tipoCaracteristica || '-';
+      let caracteristica = String(rawChar).trim();
+      if (caracteristica && caracteristica !== '-') {
+        const charUpper = caracteristica.toUpperCase();
+        if (charUpper.includes('DT')) caracteristica = '🟣 DT';
+        else if (charUpper.includes('REVENDA')) caracteristica = '🟠 REVENDA';
+        else if (charUpper.includes('CONSUMIDOR')) caracteristica = '🟢 CONSUMIDOR';
+        else if (charUpper.includes('OUTROS')) caracteristica = '⚪ OUTROS';
+      } else {
+        caracteristica = '-';
+      }
 
       const enrichedRecord = {
         ...record,
         operationCategory: normalizedCategory,
         targetTabName: expectedTabName,
+        operador: cleanOperator,
+        operatorName: cleanOperator,
         condutor,
+        caracteristica,
+        characteristic: caracteristica,
         placa,
         origem,
         destino,
+        destination: destino,
         km,
+        odometro: km,
         nivelCombustivel,
-        litrosAbastecidos,
-        tipoCombustivel,
+        fuel: nivelCombustivel,
+        tipoVeiculo,
+        fleetType: tipoVeiculo,
+        chaveReserva,
+        hasSpareKey: record.hasSpareKey,
+        observacao: observacoes,
         observacoes,
+        notes: observacoes,
       };
 
       // Method 1: Google Apps Script Webhook (Instant, 100% Free, NO GOOGLE LOGIN on any phone)
@@ -496,31 +522,28 @@ async function startServer() {
       };
 
       let samplePayload: any = {
-        plate: 'TESTE-01',
-        placa: 'TESTE-01',
+        plate: 'ABC-1234',
+        placa: 'ABC-1234',
         operationType: op,
         fuel: '8/8 (Cheio)',
-        nivelCombustivel: '8/8 (Cheio)',
-        combustivel: '8/8 (Cheio)',
-        operatorName: 'Auditor Teste CMDIT',
-        operador: 'Auditor Teste CMDIT',
+        nivelCombustivel: '8/8 (CHEIO)',
+        operatorName: 'Carlos Silva',
+        operador: 'Carlos Silva',
         origin: 'Pátio Principal',
         origem: 'Pátio Principal',
-        driverName: 'Motorista Teste',
-        condutor: 'Motorista Teste',
+        driverName: 'João Condutor',
+        condutor: 'João Condutor',
         hasSpareKey: true,
-        fleetType: 'FROTA PRÓPRIA',
-        notes: 'Registro de teste automático',
-        observacoes: 'Registro de teste automático',
+        chaveReserva: 'SIM',
+        fleetType: 'GF',
+        tipoVeiculo: 'GF',
+        notes: 'Registro de teste de integração',
+        observacao: 'Registro de teste de integração',
+        observacoes: 'Registro de teste de integração',
         km: '89400 km',
         odometro: '89400 km',
-        liters: '-',
-        litros: '-',
-        litrosAbastecidos: '-',
-        fuelType: '-',
-        tipoCombustivel: '-',
-        destination: 'Operação Interna',
-        destino: 'Operação Interna',
+        destination: 'Bolsão 40',
+        destino: 'Bolsão 40',
       };
 
       if (op === 'saida' || op === 'saída') {
@@ -532,30 +555,32 @@ async function startServer() {
         samplePayload.odometro = '45210 km';
         samplePayload.fuel = '7/8';
         samplePayload.nivelCombustivel = '7/8';
-        samplePayload.combustivel = '7/8';
+        samplePayload.hasSpareKey = false;
+        samplePayload.chaveReserva = 'NÃO';
+        samplePayload.observacoes = 'Saída autorizada';
       } else if (op === 'abastecimento' || op === 'combustivel') {
-        opCategory = 'abastecimento';
+        opCategory = 'combustivel';
         targetTabName = '⛽ Combustível';
-        samplePayload.destination = 'Posto de Abastecimento';
-        samplePayload.destino = 'Posto de Abastecimento';
+        samplePayload.destination = 'Posto Interno';
+        samplePayload.destino = 'Posto Interno';
         samplePayload.fuel = '8/8 (Cheio)';
-        samplePayload.nivelCombustivel = '8/8 (Cheio)';
-        samplePayload.combustivel = '8/8 (Cheio)';
-        samplePayload.fuelType = 'DIESEL S10';
-        samplePayload.tipoCombustivel = 'DIESEL S10';
-        samplePayload.liters = '120.5 L';
-        samplePayload.litros = '120.5 L';
-        samplePayload.litrosAbastecidos = '120.5 L';
+        samplePayload.nivelCombustivel = '8/8 (CHEIO)';
         samplePayload.km = '89400 km';
         samplePayload.odometro = '89400 km';
+        samplePayload.condutor = 'João Condutor';
       } else if (op === 'qualidade_51' || op === 'qualidade') {
         opCategory = 'qualidade';
         targetTabName = '🔍 Qualidade 51';
+        samplePayload.destination = 'P2';
+        samplePayload.destino = 'P2';
         samplePayload.location = 'P2';
-        samplePayload.characteristic = 'Revisado';
+        samplePayload.characteristic = '🟢 CONSUMIDOR';
+        samplePayload.caracteristica = 'CONSUMIDOR';
         samplePayload.fuel = '6/8 (3/4)';
         samplePayload.nivelCombustivel = '6/8 (3/4)';
-        samplePayload.combustivel = '6/8 (3/4)';
+        samplePayload.km = '-';
+        samplePayload.odometro = '-';
+        samplePayload.condutor = 'Marcos Vistoriador';
       } else if (op === 'pdc') {
         opCategory = 'pdc';
         targetTabName = '📋 Fila PDC';
@@ -563,7 +588,7 @@ async function startServer() {
         samplePayload.destino = 'Fila PDC (Lavagem/Oficina)';
         samplePayload.fuel = '4/8 (1/2)';
         samplePayload.nivelCombustivel = '4/8 (1/2)';
-        samplePayload.combustivel = '4/8 (1/2)';
+        samplePayload.observacoes = 'Aguardando lavagem geral';
       }
 
       samplePayload.operationCategory = opCategory;
