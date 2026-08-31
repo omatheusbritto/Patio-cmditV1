@@ -4,7 +4,7 @@ export type VehicleCharacteristic = '🟣 DT' | '🟠 REVENDA' | '🟢 CONSUMIDO
 
 export type LocationCode = 'P1' | 'P2' | 'P3' | 'R1' | 'ADM' | 'PDC';
 
-export type QualityLocationCode = 'P1' | 'P2' | 'P3' | 'R1';
+export type QualityLocationCode = 'P1' | 'P2' | 'P3' | 'R1' | 'ADM';
 
 export type OperationType = 'entrada' | 'saida' | 'abastecimento' | 'pdc' | 'qualidade_51';
 
@@ -107,7 +107,16 @@ export interface OcrResult {
   isValid: boolean;
 }
 
-export type UserRole = 'master' | 'operador' | 'vistoriador' | 'motorista';
+export type UserRole =
+  | 'master'
+  | 'patio'
+  | 'qualidade_51'
+  | 'pdc'
+  | 'combustivel'
+  | 'entrada_saida'
+  | 'operador'
+  | 'vistoriador'
+  | 'motorista';
 
 export interface UserAccount {
   id: string;
@@ -128,5 +137,100 @@ export interface AuthSession {
     role: UserRole;
   };
   loginTimestamp: number;
-  expiresAt: number; // 8 horas após login
+  expiresAt: number; // 9 horas após login
+}
+
+/**
+ * Retorna a lista de operações permitidas para cada perfil de operador
+ */
+export function getAllowedOperationsForRole(role?: UserRole): OperationType[] {
+  switch (role) {
+    case 'master':
+    case 'patio':
+    case 'operador':
+      return ['entrada', 'saida', 'abastecimento', 'pdc', 'qualidade_51'];
+    case 'qualidade_51':
+    case 'vistoriador':
+      return ['qualidade_51'];
+    case 'pdc':
+      return ['pdc'];
+    case 'combustivel':
+      return ['abastecimento'];
+    case 'entrada_saida':
+    case 'motorista':
+      return ['entrada', 'saida'];
+    default:
+      return ['entrada', 'saida', 'abastecimento', 'pdc', 'qualidade_51'];
+  }
+}
+
+/**
+ * Retorna o título legível da função/cargo
+ */
+export function getRoleDisplayName(role?: UserRole): string {
+  switch (role) {
+    case 'master':
+      return 'Administrador Master';
+    case 'patio':
+    case 'operador':
+      return 'Operador do Pátio';
+    case 'qualidade_51':
+    case 'vistoriador':
+      return 'Operador 51 Qualidade';
+    case 'pdc':
+      return 'Operador da Fila PDC';
+    case 'combustivel':
+      return 'Operador do Combustível';
+    case 'entrada_saida':
+    case 'motorista':
+      return 'Operador de Entrada e Saída';
+    default:
+      return 'Operador de Pátio';
+  }
+}
+
+/**
+ * Retorna a cor e estilo do badge da função
+ */
+export function getRoleBadgeStyle(role?: UserRole): { label: string; badgeClass: string } {
+  switch (role) {
+    case 'master':
+      return {
+        label: 'Master Total',
+        badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+      };
+    case 'patio':
+    case 'operador':
+      return {
+        label: 'Operador Geral do Pátio',
+        badgeClass: 'bg-blue-100 text-blue-800 border-blue-300',
+      };
+    case 'qualidade_51':
+    case 'vistoriador':
+      return {
+        label: '51 Qualidade (P1-P3, R1, ADM)',
+        badgeClass: 'bg-purple-100 text-purple-800 border-purple-300',
+      };
+    case 'pdc':
+      return {
+        label: 'Fila PDC',
+        badgeClass: 'bg-amber-100 text-amber-800 border-amber-300',
+      };
+    case 'combustivel':
+      return {
+        label: 'Combustível / Abastecimento',
+        badgeClass: 'bg-cyan-100 text-cyan-800 border-cyan-300',
+      };
+    case 'entrada_saida':
+    case 'motorista':
+      return {
+        label: 'Entrada e Saída',
+        badgeClass: 'bg-teal-100 text-teal-800 border-teal-300',
+      };
+    default:
+      return {
+        label: 'Operador',
+        badgeClass: 'bg-neutral-100 text-neutral-800 border-neutral-300',
+      };
+  }
 }

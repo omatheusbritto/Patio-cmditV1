@@ -11,6 +11,9 @@ import {
   VehicleFleetType,
   VehicleRecord,
   VehicleStatus,
+  getAllowedOperationsForRole,
+  getRoleBadgeStyle,
+  getRoleDisplayName,
 } from './types';
 import { sanitizeRawText } from './utils/plateNormalizer';
 import { smartRecognizePlate, recognizePlateWithGemini } from './utils/geminiPlateService';
@@ -439,19 +442,29 @@ export default function App() {
         />
       )}
 
-      {/* Barra Superior Corporativa com Usuário Logado, Contador de Sessão (9h) e Painel Master */}
+      {/* Barra Superior Corporativa com Usuário Logado, Cargo/Função, Contador de Sessão (9h) e Painel Master */}
       {authSession && (
         <div className="bg-neutral-900 text-white px-3 py-1.5 text-xs flex items-center justify-between border-b border-neutral-800 shrink-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <div className="flex items-center gap-1.5">
               <div className="w-5 h-5 rounded-full bg-emerald-600 flex items-center justify-center text-[10px] font-black text-white">
                 {authSession.user.name.charAt(0).toUpperCase()}
               </div>
-              <span className="font-bold text-neutral-200 truncate max-w-[130px] sm:max-w-[200px]">
+              <span className="font-bold text-neutral-200 truncate max-w-[110px] sm:max-w-[180px]">
                 {authSession.user.name}
               </span>
             </div>
-            <span className="text-[10px] bg-neutral-800/90 text-neutral-300 px-2 py-0.5 rounded-md flex items-center gap-1 font-medium border border-neutral-700/50" title="Tempo restante da sessão de 9 horas">
+            
+            {/* Badge da Função */}
+            <span
+              className={`text-[9px] font-black px-1.5 py-0.5 rounded border uppercase shrink-0 ${
+                getRoleBadgeStyle(authSession.user.role).badgeClass
+              }`}
+            >
+              {getRoleBadgeStyle(authSession.user.role).label}
+            </span>
+
+            <span className="text-[10px] bg-neutral-800/90 text-neutral-300 px-2 py-0.5 rounded-md hidden sm:flex items-center gap-1 font-medium border border-neutral-700/50" title="Tempo restante da sessão de 9 horas">
               <Clock className="w-3 h-3 text-emerald-400" />
               <span>{sessionTimeText || '9h restante'}</span>
             </span>
@@ -580,6 +593,7 @@ export default function App() {
                 onSelectOperation={handleSelectOperation}
                 onBack={() => setCurrentStep('plate_confirm')}
                 onUpdatePlate={(newPlate) => setPlate(newPlate)}
+                userRole={authSession?.user.role}
               />
             )}
 

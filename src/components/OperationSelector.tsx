@@ -1,5 +1,11 @@
 import React, { useState } from 'react';
-import { OperationType } from '../types';
+import {
+  OperationType,
+  UserRole,
+  getAllowedOperationsForRole,
+  getRoleBadgeStyle,
+  getRoleDisplayName,
+} from '../types';
 import {
   LogIn,
   LogOut,
@@ -11,9 +17,11 @@ import {
   Sparkles,
   Check,
   Edit2,
+  Lock,
 } from 'lucide-react';
 import { QuickPlateEditModal } from './QuickPlateEditModal';
 import { formatPlateForDisplay } from '../utils/plateNormalizer';
+import { getCurrentSession } from '../utils/authService';
 
 interface OperationSelectorProps {
   plate: string;
@@ -21,6 +29,7 @@ interface OperationSelectorProps {
   onSelectOperation: (operation: OperationType) => void;
   onBack: () => void;
   onUpdatePlate?: (newPlate: string) => void;
+  userRole?: UserRole;
 }
 
 interface OperationOption {
@@ -78,7 +87,7 @@ const OPERATIONS: OperationOption[] = [
     title: 'Fila PDC',
     badge: 'Manutenção & Preparação',
     badgeColor: 'bg-amber-100 text-amber-800 border-amber-300',
-    description: 'Direcionamento e preparação do veículo para manutenções preventivas, corretivas e serviços técnicos',
+    description: 'Direcionamento e preparação do veículo para manutenções preventivas, corretivas e lavagem',
     fieldsText: 'Placa • Nível de Combustível',
     icon: Wrench,
     accentColor: 'text-amber-700',
@@ -88,10 +97,10 @@ const OPERATIONS: OperationOption[] = [
   {
     id: 'qualidade_51',
     title: '51 (Qualidade)',
-    badge: 'Inspeção & Setores',
+    badge: 'Bolsão 51 ➔ P1, P2, P3, R1, ADM',
     badgeColor: 'bg-indigo-100 text-indigo-800 border-indigo-300',
-    description: 'Vistoria de qualidade e endereçamento nos postes/rua',
-    fieldsText: 'Placa • Local (P1, P2, P3, R1) • Combustível • Característica',
+    description: 'Vistoria e encaminhamento do Bolsão 51 para os setores destinados (P1, P2, P3, R1 e ADM)',
+    fieldsText: 'Placa • Local (P1, P2, P3, R1, ADM) • Combustível • Característica',
     icon: ShieldCheck,
     accentColor: 'text-indigo-700',
     borderColor: 'hover:border-indigo-500',
@@ -105,8 +114,17 @@ export const OperationSelector: React.FC<OperationSelectorProps> = ({
   onSelectOperation,
   onBack,
   onUpdatePlate,
+  userRole,
 }) => {
   const [isEditPlateOpen, setIsEditPlateOpen] = useState<boolean>(false);
+
+  // Determina o cargo/função do usuário atual
+  const activeRole = userRole || getCurrentSession()?.user.role || 'patio';
+  const allowedOps = getAllowedOperationsForRole(activeRole);
+  const roleBadge = getRoleBadgeStyle(activeRole);
+  const roleTitle加快 = getRoleDisplayName(activeRole);
+
+  const visibleOperations = OPERATIONS.filter((op) => allowedOps.includes(op.id));
 
   return (
     <div className="flex flex-col gap-3.5 max-w-md mx-auto w-full pb-10">
@@ -130,19 +148,30 @@ export const OperationSelector: React.FC<OperationSelectorProps> = ({
           </button>
         </div>
 
-        <h2 className="text-xl font-black text-neutral-900 leading-tight">
-          Selecione a Operação
-        </h2>
-        <p className="text-xs text-neutral-500 mt-0.5">
-          Escolha a finalidade do registro deste veículo
-        </p>
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h2 className="text-xl font-black text-neutral-900 leading-tight">
+              Selecione a Operação
+            </h2>
+            <p className="text-xs text-neutral-500 mt-0.5">
+              {visibleOperations.length === 1
+                ? 'Operação autorizada para o seu perfil'
+                : 'Escolha a finalidade do registro deste veículo'}
+            </p>
+          </div>
+          {activeRole !== 'master' && (
+            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md border shrink-0 ${roleBadge.badgeClass}`}>
+              {roleBadge.label}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Operation Cards */}
       <div className="flex flex-col gap-2.5">
-        {OPERATIONS.map((op) => {
+        {visibleOperations.map((op) => {
           const Icon = op.icon;
-          const isSelected = selectedOperation === op.id;
+          const isSelectede = selectedOperation === op.id;
 
           return (
             <button
@@ -150,14 +179,14 @@ export const OperationSelector: React.FC<OperationSelectorProps> = ({
               type="button"
               onClick={() => onSelectOperation(op.id)}
               className={`w-full p-4 rounded-2xl border text-left transition active:scale-[0.98] shadow-sm flex flex-col gap-2 relative bg-white ${
-                isSelected ? op.selectedBg : `border-neutral-200 ${op.borderColor} hover:bg-neutral-50`
+                isSelectede ? op.selectedBg : `border-neutral-200 ${op.borderColor} hover:bg-neutral-50`
               }`}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <div
                     className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold ${
-                      isSelected
+                      isSelectede
                         ? 'bg-neutral-900 text-white shadow-sm'
                         : 'bg-neutral-100 text-neutral-800'
                     }`}
@@ -180,7 +209,7 @@ export const OperationSelector: React.FC<OperationSelectorProps> = ({
                   >
                     {op.badge}
                   </span>
-                  {isSelected && (
+                  {isSelectede && (
                     <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-sm">
                       <Check className="w-3.5 h-3.5" />
                     </div>

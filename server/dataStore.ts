@@ -2,7 +2,16 @@ import fs from 'fs';
 import path from 'path';
 import { getPgPool, getDbPool } from './db';
 
-export type UserRole = 'master' | 'operador' | 'vistoriador' | 'motorista';
+export type UserRole =
+  | 'master'
+  | 'patio'
+  | 'qualidade_51'
+  | 'pdc'
+  | 'combustivel'
+  | 'entrada_saida'
+  | 'operador'
+  | 'vistoriador'
+  | 'motorista';
 
 export interface UserAccount {
   id: string;

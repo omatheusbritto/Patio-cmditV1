@@ -48,6 +48,13 @@ const QUALITY_LOCATION_OPTIONS: {
     tag: 'Pista / Rua',
     desc: 'Corredor e vagas da Rua 1',
   },
+  {
+    code: 'ADM',
+    name: 'ADM - Administrativo',
+    subname: 'Administração',
+    tag: 'Área ADM',
+    desc: 'Vagas do Prédio / Área Administrativa',
+  },
 ];
 
 export const QualityLocationSelector: React.FC<QualityLocationSelectorProps> = ({

@@ -18,7 +18,7 @@ import {
   toggleUserStatus,
   deleteUser,
 } from '../utils/authService';
-import { UserAccount, UserRole } from '../types';
+import { UserAccount, UserRole, getRoleBadgeStyle, getRoleDisplayName } from '../types';
 
 interface UserManagementModalProps {
   onClose: () => void;
@@ -34,7 +34,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
   const [newUsername, setNewUsername] = useState('');
   const [newName, setNewName] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [newRole, setNewRole] = useState<UserRole>('operador');
+  const [newRole, setNewRole] = useState<UserRole>('patio');
   const [formMsg, setFormMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -217,6 +217,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   className="bg-neutral-50 border border-neutral-300 rounded-xl px-3 py-2 text-xs font-medium text-neutral-900 focus:bg-white focus:border-emerald-600 outline-none"
+                  required
                 />
               </div>
 
@@ -231,6 +232,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                   onChange={(e) => setNewUsername(e.target.value)}
                   className="bg-neutral-50 border border-neutral-300 rounded-xl px-3 py-2 text-xs font-medium text-neutral-900 focus:bg-white focus:border-emerald-600 outline-none"
                   autoCapitalize="none"
+                  required
                 />
               </div>
 
@@ -242,29 +244,36 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   className="bg-neutral-50 border border-neutral-300 rounded-xl px-3 py-2 text-xs font-medium text-neutral-900 focus:bg-white focus:border-emerald-600 outline-none"
+                  required
                 />
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-neutral-700">Função / Perfil:</label>
+                <label className="text-xs font-bold text-neutral-700">Função / Perfil de Acesso:</label>
                 <select
                   value={newRole}
                   onChange={(e) => setNewRole(e.target.value as UserRole)}
                   className="bg-neutral-50 border border-neutral-300 rounded-xl px-3 py-2 text-xs font-bold text-neutral-900 focus:bg-white focus:border-emerald-600 outline-none"
                 >
-                  <option value="operador">Operador de Pátio</option>
-                  <option value="vistoriador">Vistoriador Qualidade 51</option>
-                  <option value="motorista">Motorista / Transporte</option>
-                  <option value="master">Administrador Master</option>
+                  <option value="patio">Operador do Pátio (Todas as 5 operações do pátio)</option>
+                  <option value="entrada_saida">Operador de Entrada e Saída (Apenas Entrada e Saída)</option>
+                  <option value="combustivel">Operador do Combustível (Apenas Abastecimento)</option>
+                  <option value="pdc">Operador da Fila PDC (Apenas Fila PDC)</option>
+                  <option value="qualidade_51">Operador 51 Qualidade (Bolsão 51 ➔ P1, P2, P3, R1, ADM)</option>
+                  <option value="master">Administrador Master (Acesso total + Gestão de Usuários e Planilhas)</option>
                 </select>
+                <p className="text-[10px] text-neutral-500 mt-0.5">
+                  O operador só terá acesso aos botões e telas autorizados para seu perfil.
+                </p>
               </div>
 
               <button
                 type="submit"
-                className="mt-3 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center justify-center gap-2 shadow-md transition cursor-pointer"
+                disabled={isSubmitting}
+                className="mt-3 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center justify-center gap-2 shadow-md transition cursor-pointer disabled:opacity-50"
               >
                 <UserPlus className="w-4 h-4" />
-                <span>Salvar e Cadastrar</span>
+                <span>{isSubmitting ? 'Cadastrando...' : 'Salvar e Cadastrar'}</span>
               </button>
             </form>
           ) : (
@@ -283,109 +292,112 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
 
               {/* Users List */}
               <div className="flex flex-col gap-2">
-                {filteredUsers.map((user) => (
-                  <div
-                    key={user.id}
-                    className={`p-3 rounded-2xl border flex flex-col gap-2 transition ${
-                      user.isActive === false
-                        ? 'bg-neutral-100 border-neutral-300 opacity-60'
-                        : 'bg-white border-neutral-200 shadow-xs'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <div
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs ${
-                            user.role === 'master'
-                              ? 'bg-emerald-700 text-white'
-                              : 'bg-neutral-200 text-neutral-700'
-                          }`}
-                        >
-                          {user.name.charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-black text-neutral-900 leading-tight">
-                              {user.name}
-                            </span>
-                            {user.role === 'master' && (
-                              <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.2 rounded uppercase">
-                                Master
+                {filteredUsers.map((user) => {
+                  const roleStyle = getRoleBadgeStyle(user.role);
+                  const roleTitle = getRoleDisplayName(user.role);
+
+                  return (
+                    <div
+                      key={user.id}
+                      className={`p-3 rounded-2xl border flex flex-col gap-2 transition ${
+                        user.isActive === false
+                          ? 'bg-neutral-100 border-neutral-300 opacity-60'
+                          : 'bg-white border-neutral-200 shadow-xs'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs ${
+                              user.role === 'master'
+                                ? 'bg-emerald-700 text-white'
+                                : 'bg-neutral-200 text-neutral-700'
+                            }`}
+                          >
+                            {user.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs font-black text-neutral-900 leading-tight">
+                                {user.name}
                               </span>
-                            )}
+                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase ${roleStyle.badgeClass}`}>
+                                {roleStyle.label}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 text-[10px] text-neutral-500 mt-0.5">
+                              <span>Login: <strong className="text-neutral-700 font-mono">{user.username}</strong></span>
+                              <span>•</span>
+                              <span>{roleTitle}</span>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2 text-[10px] text-neutral-500">
-                            <span>Usuário: <strong className="text-neutral-700">{user.username}</strong></span>
-                            <span>•</span>
-                            <span>{user.role}</span>
-                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setResettingUserId(resettingUserId === user.id ? null : user.id);
+                              setResetNewPassword('');
+                            }}
+                            className="p-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                            title="Resetar Senha"
+                          >
+                            <KeyRound className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline text-[10px]">Senha</span>
+                          </button>
+
+                          {user.role !== 'master' && user.username.toLowerCase() !== 'mastercmdit' && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleStatus(user.id)}
+                                className={`p-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                                  user.isActive === false
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-amber-100 text-amber-800'
+                                }`}
+                                title={user.isActive === false ? 'Desbloquear' : 'Bloquear'}
+                              >
+                                {user.isActive === false ? 'Ativar' : 'Bloquear'}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteUser(user)}
+                                className="p-1.5 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 transition cursor-pointer"
+                                title="Excluir Usuário"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
 
-                      {/* Actions */}
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setResettingUserId(resettingUserId === user.id ? null : user.id);
-                            setResetNewPassword('');
-                          }}
-                          className="p-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-                          title="Resetar Senha"
-                        >
-                          <KeyRound className="w-3.5 h-3.5" />
-                          <span className="hidden sm:inline text-[10px]">Senha</span>
-                        </button>
-
-                        {user.role !== 'master' && user.username.toLowerCase() !== 'mastercmdit' && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => handleToggleStatus(user.id)}
-                              className={`p-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                                user.isActive === false
-                                  ? 'bg-emerald-100 text-emerald-800'
-                                  : 'bg-amber-100 text-amber-800'
-                              }`}
-                              title={user.isActive === false ? 'Desbloquear' : 'Bloquear'}
-                            >
-                              {user.isActive === false ? 'Ativar' : 'Bloquear'}
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteUser(user)}
-                              className="p-1.5 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 transition cursor-pointer"
-                              title="Excluir Usuário"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </>
-                        )}
-                      </div>
+                      {/* Reset Password Form Inline */}
+                      {resettingUserId === user.id && (
+                        <div className="p-2.5 bg-neutral-50 border border-neutral-200 rounded-xl flex items-center gap-2 mt-1">
+                          <input
+                            type="text"
+                            placeholder="Digite a nova senha..."
+                            value={resetNewPassword}
+                            onChange={(e) => setResetNewPassword(e.target.value)}
+                            className="flex-1 bg-white border border-neutral-300 rounded-lg px-2.5 py-1 text-xs focus:outline-emerald-600"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleResetPassword(user.id)}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded-lg text-xs font-bold shadow-xs cursor-pointer"
+                          >
+                            Salvar Nova Senha
+                          </button>
+                        </div>
+                      )}
                     </div>
-
-                    {/* Reset Password Form Inline */}
-                    {resettingUserId === user.id && (
-                      <div className="p-2.5 bg-neutral-50 border border-neutral-200 rounded-xl flex items-center gap-2 mt-1">
-                        <input
-                          type="text"
-                          placeholder="Digite a nova senha..."
-                          value={resetNewPassword}
-                          onChange={(e) => setResetNewPassword(e.target.value)}
-                          className="flex-1 bg-white border border-neutral-300 rounded-lg px-2.5 py-1 text-xs focus:outline-emerald-600"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleResetPassword(user.id)}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded-lg text-xs font-bold shadow-xs cursor-pointer"
-                        >
-                          Salvar Nova Senha
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
