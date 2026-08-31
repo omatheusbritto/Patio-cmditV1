@@ -9,18 +9,30 @@ import {
   appendVehicleRecordToSheet,
   initializeAllSpreadsheetTabs,
 } from './server/googleSheetsService';
+import { initDatabase, getActiveDbType } from './server/db';
 import {
+  loadServerUsersAsync,
   loadServerUsers,
+  createServerUserAsync,
   createServerUser,
+  resetServerUserPasswordAsync,
   resetServerUserPassword,
+  toggleServerUserStatusAsync,
   toggleServerUserStatus,
+  deleteServerUserAsync,
   deleteServerUser,
+  authenticateServerUserAsync,
   authenticateServerUser,
+  loadServerRecordsAsync,
   loadServerRecords,
+  appendOrUpdateServerRecordAsync,
   appendOrUpdateServerRecord,
+  deleteServerRecordAsync,
   deleteServerRecord,
   clearServerRecords,
+  loadServerSettingsAsync,
   loadServerSettings,
+  saveServerSettingsAsync,
   saveServerSettings,
 } from './server/dataStore';
 
@@ -86,6 +98,11 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Initialize PostgreSQL / MySQL / JSON Database
+  await initDatabase().catch((err) =>
+    console.warn('Database initialization note:', err.message)
+  );
+
   // Support large base64 image uploads from camera
   app.use(express.json({ limit: '35mb' }));
   app.use(express.urlencoded({ extended: true, limit: '35mb' }));
@@ -94,6 +111,7 @@ async function startServer() {
   app.get('/api/health', (req: Request, res: Response) => {
     res.json({
       status: 'ok',
+      database: getActiveDbType(),
       engine: 'High-Speed Python 3.10 & Gemini 3.5 Flash Vision Engine',
       latencyTarget: '<500ms',
       serverTime: new Date().toISOString(),
@@ -103,21 +121,22 @@ async function startServer() {
   // --------------------------------------------------------------------------
   // USER MANAGEMENT & MULTI-DEVICE AUTHENTICATION (Centralized Store)
   // --------------------------------------------------------------------------
-  app.get('/api/users', (req: Request, res: Response) => {
+  app.get('/api/users', async (req: Request, res: Response) => {
     try {
-      const users = loadServerUsers();
+      const users = await loadServerUsersAsync();
       res.json({ success: true, users });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }
   });
 
-  app.post('/api/users', (req: Request, res: Response) => {
+  app.post('/api/users', async (req: Request, res: Response) => {
     try {
       const { username, name, password, role } = req.body;
-      const result = createServerUser(username, name, password, role);
+      const result = await createServerUserAsync(username, name, password, role);
       if (result.success) {
-        res.json({ success: true, user: result.user, users: loadServerUsers() });
+        const users = await loadServerUsersAsync();
+        res.json({ success: true, user: result.user, users });
       } else {
         res.status(400).json(result);
       }
@@ -126,12 +145,13 @@ async function startServer() {
     }
   });
 
-  app.post('/api/users/reset-password', (req: Request, res: Response) => {
+  app.post('/api/users/reset-password', async (req: Request, res: Response) => {
     try {
       const { userId, newPassword } = req.body;
-      const result = resetServerUserPassword(userId, newPassword);
+      const result = await resetServerUserPasswordAsync(userId, newPassword);
       if (result.success) {
-        res.json({ success: true, users: loadServerUsers() });
+        const users = await loadServerUsersAsync();
+        res.json({ success: true, users });
       } else {
         res.status(400).json(result);
       }
@@ -140,12 +160,13 @@ async function startServer() {
     }
   });
 
-  app.post('/api/users/toggle-status', (req: Request, res: Response) => {
+  app.post('/api/users/toggle-status', async (req: Request, res: Response) => {
     try {
       const { userId } = req.body;
-      const result = toggleServerUserStatus(userId);
+      const result = await toggleServerUserStatusAsync(userId);
       if (result.success) {
-        res.json({ success: true, isActive: result.isActive, users: loadServerUsers() });
+        const users = await loadServerUsersAsync();
+        res.json({ success: true, isActive: result.isActive, users });
       } else {
         res.status(400).json(result);
       }
@@ -154,12 +175,13 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/users/:id', (req: Request, res: Response) => {
+  app.delete('/api/users/:id', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const result = deleteServerUser(id);
+      const result = await deleteServerUserAsync(id);
       if (result.success) {
-        res.json({ success: true, users: loadServerUsers() });
+        const users = await loadServerUsersAsync();
+        res.json({ success: true, users });
       } else {
         res.status(400).json(result);
       }
@@ -168,7 +190,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/auth/login', (req: Request, res: Response) => {
+  app.post('/api/auth/login', async (req: Request, res: Response) => {
     try {
       const { username, password } = req.body;
       if (!username || !password) {
@@ -179,7 +201,7 @@ async function startServer() {
         return;
       }
 
-      const result = authenticateServerUser(username, password);
+      const result = await authenticateServerUserAsync(username, password);
       if (!result.success || !result.user) {
         res.status(401).json({
           success: false,
@@ -201,10 +223,11 @@ async function startServer() {
         expiresAt: now + SESSION_DURATION_MS,
       };
 
+      const users = await loadServerUsersAsync();
       res.json({
         success: true,
         session,
-        users: loadServerUsers(),
+        users,
       });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
@@ -214,33 +237,33 @@ async function startServer() {
   // --------------------------------------------------------------------------
   // SHARED VEHICLE RECORDS API (MULTI-DEVICE PATIO SYNC)
   // --------------------------------------------------------------------------
-  app.get('/api/records', (req: Request, res: Response) => {
+  app.get('/api/records', async (req: Request, res: Response) => {
     try {
-      const records = loadServerRecords();
+      const records = await loadServerRecordsAsync();
       res.json({ success: true, records });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }
   });
 
-  app.post('/api/records', (req: Request, res: Response) => {
+  app.post('/api/records', async (req: Request, res: Response) => {
     try {
       const record = req.body;
       if (!record || !record.id) {
         res.status(400).json({ success: false, error: 'Registro inválido.' });
         return;
       }
-      const updatedList = appendOrUpdateServerRecord(record);
+      const updatedList = await appendOrUpdateServerRecordAsync(record);
       res.json({ success: true, records: updatedList });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }
   });
 
-  app.delete('/api/records/:id', (req: Request, res: Response) => {
+  app.delete('/api/records/:id', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const updatedList = deleteServerRecord(id);
+      const updatedList = await deleteServerRecordAsync(id);
       res.json({ success: true, records: updatedList });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
@@ -259,19 +282,19 @@ async function startServer() {
   // --------------------------------------------------------------------------
   // GLOBAL SHEETS CONFIGURATION & SETTINGS (Shared across all phones/devices)
   // --------------------------------------------------------------------------
-  app.get('/api/settings/sheets', (req: Request, res: Response) => {
+  app.get('/api/settings/sheets', async (req: Request, res: Response) => {
     try {
-      const settings = loadServerSettings();
+      const settings = await loadServerSettingsAsync();
       res.json({ success: true, settings });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }
   });
 
-  app.post('/api/settings/sheets', (req: Request, res: Response) => {
+  app.post('/api/settings/sheets', async (req: Request, res: Response) => {
     try {
       const { sheetsWebhookUrl, spreadsheetId, spreadsheetUrl, autoSync } = req.body;
-      const updated = saveServerSettings({
+      const updated = await saveServerSettingsAsync({
         sheetsWebhookUrl: sheetsWebhookUrl !== undefined ? sheetsWebhookUrl : undefined,
         spreadsheetId: spreadsheetId !== undefined ? spreadsheetId : undefined,
         spreadsheetUrl: spreadsheetUrl !== undefined ? spreadsheetUrl : undefined,
@@ -293,7 +316,7 @@ async function startServer() {
         return;
       }
 
-      const settings = loadServerSettings();
+      const settings = await loadServerSettingsAsync();
       const targetWebhookUrl = webhookUrl || settings.sheetsWebhookUrl;
 
       // Normalize operationType and category for webhook
@@ -1388,7 +1411,7 @@ REGRAS ESTRITAS DE ZERO ALUCINAÇÃO:
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { middlewareMode: true, allowedHosts: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
