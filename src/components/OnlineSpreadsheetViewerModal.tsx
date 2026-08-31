@@ -82,8 +82,9 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
     tabs: Record<string, { name: string; headers: string[]; rows: any[] }>;
   } | null>(null);
 
-  const currentSpreadsheetId = config.spreadsheetId || DEFAULT_SPREADSHEET_ID;
+  const currentSpreadsheetId = onlineData?.spreadsheetId || config.spreadsheetId || DEFAULT_SPREADSHEET_ID;
   const currentSpreadsheetUrl =
+    onlineData?.spreadsheetUrl ||
     config.spreadsheetUrl ||
     (currentSpreadsheetId
       ? `https://docs.google.com/spreadsheets/d/${currentSpreadsheetId}/edit`
@@ -136,6 +137,13 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
       }
 
       if (data && data.success && data.tabs && Object.keys(data.tabs).length > 0) {
+        if (data.spreadsheetUrl || data.spreadsheetId) {
+          saveDriveConfig({
+            spreadsheetUrl: data.spreadsheetUrl || undefined,
+            spreadsheetId: data.spreadsheetId || undefined,
+            spreadsheetTitle: data.spreadsheetTitle || undefined,
+          });
+        }
         setOnlineData(data);
         setDataSource(data.source || 'server_synced_store');
         setLastUpdated(data.updatedAt || new Date().toLocaleTimeString('pt-BR'));

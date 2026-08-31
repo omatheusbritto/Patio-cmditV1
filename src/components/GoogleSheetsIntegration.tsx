@@ -20,6 +20,7 @@ import {
   GOOGLE_APPS_SCRIPT_TEMPLATE,
   DEFAULT_SPREADSHEET_ID,
   DEFAULT_SPREADSHEET_URL,
+  getOfficialSpreadsheetUrl,
 } from '../utils/googleDriveClient';
 import { getCurrentSession } from '../utils/authService';
 
@@ -46,6 +47,7 @@ export const GoogleSheetsIntegration: React.FC<GoogleSheetsIntegrationProps> = (
 
   const session = getCurrentSession();
   const isMaster = session?.user.role === 'master' || session?.user.username.toLowerCase() === 'mastercmdit';
+  const officialSpreadsheetUrl = getOfficialSpreadsheetUrl() || config.spreadsheetUrl;
 
   useEffect(() => {
     fetchServerDriveConfig().then((serverCfg) => {
@@ -420,15 +422,22 @@ export const GoogleSheetsIntegration: React.FC<GoogleSheetsIntegrationProps> = (
 
       {/* Spreadsheet Links and Actions */}
       <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-neutral-100">
-        <a
-          href={config.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${config.spreadsheetId || DEFAULT_SPREADSHEET_ID}/edit`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1.5 hover:underline"
-        >
-          <ExternalLink className="w-3.5 h-3.5" />
-          <span>Abrir Planilha Oficial no Google Drive</span>
-        </a>
+        {officialSpreadsheetUrl ? (
+          <a
+            href={officialSpreadsheetUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1.5 hover:underline"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            <span>Abrir Planilha Oficial no Google Drive ({config.spreadsheetTitle || 'CMDIT'})</span>
+          </a>
+        ) : (
+          <span className="text-xs font-medium text-neutral-400 flex items-center gap-1.5">
+            <ExternalLink className="w-3.5 h-3.5 text-neutral-400" />
+            <span>Insira o Webhook para vincular e abrir a Planilha Oficial</span>
+          </span>
+        )}
 
         <div className="flex items-center gap-2">
           <button
@@ -438,7 +447,7 @@ export const GoogleSheetsIntegration: React.FC<GoogleSheetsIntegrationProps> = (
             title="Copiar código para o Google Apps Script"
           >
             <Code2 className="w-3.5 h-3.5" />
-            <span>{copiedScript ? 'Código Copiado!' : 'Copiar Script Oficial (5 Abas + Usuários)'}</span>
+            <span>{copiedScript ? 'Código Copiado!' : 'Copiar Script Oficial (Planilha Única + Usuários)'}</span>
           </button>
 
           {hasWebhook && (

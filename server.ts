@@ -547,10 +547,21 @@ async function startServer() {
             webhookData = { success: webhookResp.ok };
           }
 
+          if (webhookData.spreadsheetUrl || webhookData.spreadsheetId) {
+            saveServerSettingsAsync({
+              spreadsheetUrl: webhookData.spreadsheetUrl || undefined,
+              spreadsheetId: webhookData.spreadsheetId || undefined,
+              spreadsheetTitle: webhookData.spreadsheetTitle || undefined,
+            }).catch(() => {});
+          }
+
           res.json({
             success: true,
             method: 'webhook',
             tabName: webhookData.tabName || expectedTabName,
+            spreadsheetUrl: webhookData.spreadsheetUrl,
+            spreadsheetId: webhookData.spreadsheetId,
+            spreadsheetTitle: webhookData.spreadsheetTitle,
             message: 'Registro gravado com sucesso na planilha via Webhook.',
           });
           return;
@@ -739,11 +750,22 @@ async function startServer() {
         return;
       }
 
+      if (resData.spreadsheetUrl || resData.spreadsheetId) {
+        saveServerSettingsAsync({
+          spreadsheetUrl: resData.spreadsheetUrl || undefined,
+          spreadsheetId: resData.spreadsheetId || undefined,
+          spreadsheetTitle: resData.spreadsheetTitle || undefined,
+        }).catch(() => {});
+      }
+
       res.json({
         success: true,
         status: testResp.status,
         data: resData,
         tabName: resData.tabName || targetTabName,
+        spreadsheetUrl: resData.spreadsheetUrl,
+        spreadsheetId: resData.spreadsheetId,
+        spreadsheetTitle: resData.spreadsheetTitle,
         message: `Linha de teste gravada com sucesso na aba ${resData.tabName || targetTabName}!`,
       });
     } catch (err: any) {

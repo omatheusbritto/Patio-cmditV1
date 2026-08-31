@@ -13,6 +13,7 @@ export interface GoogleDriveConfig {
   webhookUrl: string | null;
   spreadsheetId: string | null;
   spreadsheetUrl: string | null;
+  spreadsheetTitle?: string | null;
   userEmail: string | null;
   autoSync: boolean;
 }
@@ -37,6 +38,42 @@ provider.setCustomParameters({
 // In-memory token cache
 let cachedAccessToken: string | null = null;
 let isSigningIn = false;
+
+// Helper to extract Google Spreadsheet ID from any URL or raw ID
+export function extractSpreadsheetId(input: string | null | undefined): string | null {
+  if (!input) return null;
+  const str = input.trim();
+  if (!str) return null;
+
+  // Match /spreadsheets/d/{ID}/ or /file/d/{ID}/ or ?id={ID}
+  const match = str.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]{20,})/i) ||
+                str.match(/\/file\/d\/([a-zA-Z0-9-_]{20,})/i) ||
+                str.match(/[?&]id=([a-zA-Z0-9-_]{20,})/i) ||
+                str.match(/\/open\?id=([a-zA-Z0-9-_]{20,})/i);
+  if (match && match[1]) {
+    return match[1];
+  }
+
+  // If it is a raw ID string without slashes
+  if (/^[a-zA-Z0-9-_]{25,60}$/.test(str)) {
+    return str;
+  }
+
+  return null;
+}
+
+// Helper to normalize any spreadsheet input into a full valid URL
+export function normalizeSpreadsheetUrl(urlOrId: string | null | undefined): string | null {
+  if (!urlOrId) return null;
+  const id = extractSpreadsheetId(urlOrId);
+  if (id) {
+    return `https://docs.google.com/spreadsheets/d/${id}/edit`;
+  }
+  if (urlOrId.startsWith('http://') || urlOrId.startsWith('https://')) {
+    return urlOrId.trim();
+  }
+  return null;
+}
 
 // Initialize auth state listener
 export const initAuth = (
@@ -115,8 +152,8 @@ export function clearGoogleToken() {
   }
 }
 
-export const DEFAULT_SPREADSHEET_ID = '1c9pfD6quOeMQLdTZEmR-QcQu-cZzvi68SyT6jZJWgnI';
-export const DEFAULT_SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1c9pfD6quOeMQLdTZEmR-QcQu-cZzvi68SyT6jZJWgnI/edit';
+export const DEFAULT_SPREADSHEET_ID = '';
+export const DEFAULT_SPREADSHEET_URL = '';
 
 /**
  * Get stored Google Drive config (local cache)
@@ -126,10 +163,13 @@ export function getStoredDriveConfig(): GoogleDriveConfig {
     const raw = localStorage.getItem(STORAGE_KEYS.CONFIG);
     if (raw) {
       const parsed = JSON.parse(raw);
+      const sId = parsed.spreadsheetId || extractSpreadsheetId(parsed.spreadsheetUrl);
+      const sUrl = parsed.spreadsheetUrl || (sId ? `https://docs.google.com/spreadsheets/d/${sId}/edit` : null);
       return {
         webhookUrl: parsed.webhookUrl || parsed.sheetsWebhookUrl || null,
-        spreadsheetId: parsed.spreadsheetId || DEFAULT_SPREADSHEET_ID,
-        spreadsheetUrl: parsed.spreadsheetUrl || DEFAULT_SPREADSHEET_URL,
+        spreadsheetId: sId || null,
+        spreadsheetUrl: sUrl || null,
+        spreadsheetTitle: parsed.spreadsheetTitle || 'Planilha Oficial CMDIT',
         userEmail: parsed.userEmail || null,
         autoSync: parsed.autoSync !== false,
       };
@@ -139,11 +179,22 @@ export function getStoredDriveConfig(): GoogleDriveConfig {
   }
   return {
     webhookUrl: null,
-    spreadsheetId: DEFAULT_SPREADSHEET_ID,
-    spreadsheetUrl: DEFAULT_SPREADSHEET_URL,
+    spreadsheetId: null,
+    spreadsheetUrl: null,
+    spreadsheetTitle: 'Planilha Oficial CMDIT',
     userEmail: null,
     autoSync: true,
   };
+}
+
+/**
+ * Get the exact official Google Spreadsheet URL to open
+ */
+export function getOfficialSpreadsheetUrl(): string | null {
+  const config = getStoredDriveConfig();
+  if (config.spreadsheetUrl) return config.spreadsheetUrl;
+  if (config.spreadsheetId) return `https://docs.google.com/spreadsheets/d/${config.spreadsheetId}/edit`;
+  return null;
 }
 
 /**
@@ -156,11 +207,14 @@ export async function fetchServerDriveConfig(): Promise<GoogleDriveConfig> {
       const data = await res.json();
       if (data.success && data.settings) {
         const current = getStoredDriveConfig();
+        const serverUrl = data.settings.spreadsheetUrl || (data.settings.spreadsheetId ? `https://docs.google.com/spreadsheets/d/${data.settings.spreadsheetId}/edit` : null);
+        const serverId = data.settings.spreadsheetId || extractSpreadsheetId(serverUrl);
         const updated: GoogleDriveConfig = {
           ...current,
           webhookUrl: data.settings.sheetsWebhookUrl || current.webhookUrl || null,
-          spreadsheetId: data.settings.spreadsheetId || current.spreadsheetId || DEFAULT_SPREADSHEET_ID,
-          spreadsheetUrl: data.settings.spreadsheetUrl || current.spreadsheetUrl || DEFAULT_SPREADSHEET_URL,
+          spreadsheetId: serverId || current.spreadsheetId || null,
+          spreadsheetUrl: serverUrl || current.spreadsheetUrl || null,
+          spreadsheetTitle: data.settings.spreadsheetTitle || current.spreadsheetTitle || 'Planilha Oficial CMDIT',
           autoSync: data.settings.autoSync !== undefined ? data.settings.autoSync : current.autoSync,
         };
         localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(updated));
@@ -178,7 +232,27 @@ export async function fetchServerDriveConfig(): Promise<GoogleDriveConfig> {
  */
 export function saveDriveConfig(config: Partial<GoogleDriveConfig>): GoogleDriveConfig {
   const current = getStoredDriveConfig();
-  const updated: GoogleDriveConfig = { ...current, ...config };
+  
+  // Normalize spreadsheetId and spreadsheetUrl
+  let sUrl = config.spreadsheetUrl !== undefined ? config.spreadsheetUrl : current.spreadsheetUrl;
+  let sId = config.spreadsheetId !== undefined ? config.spreadsheetId : current.spreadsheetId;
+
+  if (sUrl) {
+    const extractedId = extractSpreadsheetId(sUrl);
+    if (extractedId) {
+      sId = extractedId;
+      sUrl = `https://docs.google.com/spreadsheets/d/${extractedId}/edit`;
+    }
+  } else if (sId) {
+    sUrl = `https://docs.google.com/spreadsheets/d/${sId}/edit`;
+  }
+
+  const updated: GoogleDriveConfig = {
+    ...current,
+    ...config,
+    spreadsheetId: sId || null,
+    spreadsheetUrl: sUrl || null,
+  };
   
   try {
     localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(updated));
@@ -186,7 +260,7 @@ export function saveDriveConfig(config: Partial<GoogleDriveConfig>): GoogleDrive
     console.warn('Error saving drive config locally:', err);
   }
 
-  // Push to server for global synchronization
+  // Push to server for global synchronization across all devices
   fetch('/api/settings/sheets', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -194,6 +268,7 @@ export function saveDriveConfig(config: Partial<GoogleDriveConfig>): GoogleDrive
       sheetsWebhookUrl: updated.webhookUrl,
       spreadsheetId: updated.spreadsheetId,
       spreadsheetUrl: updated.spreadsheetUrl,
+      spreadsheetTitle: updated.spreadsheetTitle,
       autoSync: updated.autoSync,
     }),
   }).catch((err) => console.warn('Could not sync settings to server:', err));
@@ -207,7 +282,7 @@ export function saveDriveConfig(config: Partial<GoogleDriveConfig>): GoogleDrive
 export async function testWebhookUrl(
   webhookUrl: string,
   operationType: string = 'entrada'
-): Promise<{ success: boolean; message: string; tabName?: string }> {
+): Promise<{ success: boolean; message: string; tabName?: string; spreadsheetUrl?: string; spreadsheetId?: string; spreadsheetTitle?: string }> {
   const res = await fetch('/api/sheets/test-webhook', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -217,10 +292,23 @@ export async function testWebhookUrl(
   if (!res.ok || !data.success) {
     throw new Error(data.error || 'Falha ao testar comunicação com a planilha.');
   }
+
+  if (data.spreadsheetUrl || data.spreadsheetId) {
+    saveDriveConfig({
+      spreadsheetUrl: data.spreadsheetUrl,
+      spreadsheetId: data.spreadsheetId,
+      spreadsheetTitle: data.spreadsheetTitle,
+      webhookUrl,
+    });
+  }
+
   return {
     success: true,
     message: data.message || 'Webhook conectado com sucesso!',
     tabName: data.tabName,
+    spreadsheetUrl: data.spreadsheetUrl,
+    spreadsheetId: data.spreadsheetId,
+    spreadsheetTitle: data.spreadsheetTitle,
   };
 }
 
@@ -309,7 +397,7 @@ export async function appendRecordToGoogleSheets(
   spreadsheetIdOrRecord: string | any,
   recordPayload?: any,
   accessToken?: string
-): Promise<{ success: boolean; tabName: string; method?: string; message?: string }> {
+): Promise<{ success: boolean; tabName: string; method?: string; message?: string; spreadsheetUrl?: string; spreadsheetId?: string }> {
   let record = recordPayload;
   let spreadsheetId: string | undefined = undefined;
 
@@ -340,27 +428,38 @@ export async function appendRecordToGoogleSheets(
     throw new Error(data.error || 'Falha ao gravar na planilha.');
   }
 
+  if (data.spreadsheetUrl || data.spreadsheetId) {
+    saveDriveConfig({
+      spreadsheetUrl: data.spreadsheetUrl,
+      spreadsheetId: data.spreadsheetId,
+      spreadsheetTitle: data.spreadsheetTitle,
+    });
+  }
+
   return {
     success: true,
     tabName: data.tabName || 'Planilha',
     method: data.method,
     message: data.message,
+    spreadsheetUrl: data.spreadsheetUrl,
+    spreadsheetId: data.spreadsheetId,
   };
 }
 
 /**
  * Template de Script do Google Apps Script para copiar e colar na planilha
- * Estrutura personalizada por aba (sem informações desnecessárias):
- * - Entrada (12 colunas): Data, Hora, Placa, Condutor, KM odômetro, Nível Combustível, Origem, Destino, Chave reserva, Tipo veículo, Observação, Operador
- * - Saída (10 colunas): Data, Hora, Placa, Condutor, KM odômetro, Nível Combustível, Destino, Chave reserva, Observação, Operador
- * - 51 Qualidade (8 colunas): Data, Hora, Placa, Condutor, KM odômetro, Nível Combustível, Destino, Operador
- * - Combustível (8 colunas): Data, Hora, Placa, KM odômetro, Nível Combustível, Condutor, Destino, Operador
- * - Fila PDC (6 colunas): Data, Hora, Placa, Nível Combustível, Observação, Operador
+ * Consolidação completa: Todas as 6 abas na MESMA planilha oficial única:
+ * - 📥 Entrada (12 colunas): Data, Hora, Placa, Condutor, KM odômetro, Nível Combustível, Origem, Destino, Chave reserva, Tipo veículo, Observação, Operador
+ * - 📤 Saída (10 colunas): Data, Hora, Placa, Condutor, KM odômetro, Nível Combustível, Destino, Chave reserva, Observação, Operador
+ * - 🔍 Qualidade 51 (8 colunas): Data, Hora, Placa, Condutor, Característica do Veículo, Nível Combustível, Destino, Operador
+ * - ⛽ Combustível (8 colunas): Data, Hora, Placa, KM odômetro, Nível Combustível, Condutor, Destino, Operador
+ * - 📋 Fila PDC (6 colunas): Data, Hora, Placa, Nível Combustível, Observação, Operador
+ * - 👥 USUARIOS_CMDIT (7 colunas): Data de Cadastro, Matrícula / Usuário, Nome Completo, Função / Cargo, Senha, Status, Último Acesso
  */
 export const GOOGLE_APPS_SCRIPT_TEMPLATE = `// ============================================================================
-// SCRIPT DE GRAVAÇÃO AUTOMÁTICA PERSONALIZADA POR ABA - CMDIT CONTROLE DE PÁTIO
+// SCRIPT DE GRAVAÇÃO AUTOMÁTICA OFICIAL UNIFICADA - CMDIT CONTROLE DE PÁTIO
 // ============================================================================
-// 1. Abra sua Planilha Google > Menu superior "Extensões" > "Apps Script"
+// 1. Abra sua Planilha Google Oficial > Menu superior "Extensões" > "Apps Script"
 // 2. Apague tudo o que estiver lá, cole este código completo e salve (Ctrl+S)
 // 3. Clique em "Implantar" > "Nova implantação" (ou "Gerenciar implantações" > Editar > "Nova versão")
 // 4. Tipo: "Aplicativo da Web"
@@ -457,9 +556,63 @@ function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
     var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sUrl = ss.getUrl();
+    var sId = ss.getId();
+    var sTitle = ss.getName();
 
     // ------------------------------------------------------------------------
-    // 1. GESTÃO E SINCRONIZAÇÃO DE USUÁRIOS (Aba USUARIOS_CMDIT)
+    // 0. AÇÃO: TESTE / INICIALIZAR TODAS AS 6 ABAS OFICIAIS NA MESMA PLANILHA
+    // ------------------------------------------------------------------------
+    if (data.action === 'init_all_tabs' || data.action === 'test') {
+      var tabKeys = Object.keys(TAB_CONFIGS);
+      for (var t = 0; t < tabKeys.length; t++) {
+        var cfg = TAB_CONFIGS[tabKeys[t]];
+        var existing = null;
+        for (var s = 0; s < ss.getSheets().length; s++) {
+          var curName = ss.getSheets()[s].getName().toLowerCase();
+          if (curName.indexOf(tabKeys[t]) !== -1 || curName === cfg.tabName.toLowerCase()) {
+            existing = ss.getSheets()[s];
+            break;
+          }
+        }
+        if (!existing) {
+          existing = ss.insertSheet(cfg.tabName);
+          existing.appendRow(cfg.headers);
+          var hRange = existing.getRange(1, 1, 1, cfg.headers.length);
+          hRange.setFontWeight("bold");
+          hRange.setBackground("#0f172a");
+          hRange.setFontColor("#ffffff");
+        }
+      }
+
+      // Garante a aba de Usuários
+      var uExists = false;
+      for (var u = 0; u < ss.getSheets().length; u++) {
+        if (ss.getSheets()[u].getName().toUpperCase().indexOf("USUARIOS") !== -1) {
+          uExists = true;
+          break;
+        }
+      }
+      if (!uExists) {
+        var uNew = ss.insertSheet(TAB_USUARIOS.tabName);
+        uNew.appendRow(TAB_USUARIOS.headers);
+        var uHRange = uNew.getRange(1, 1, 1, TAB_USUARIOS.headers.length);
+        uHRange.setFontWeight("bold");
+        uHRange.setBackground("#0f172a");
+        uHRange.setFontColor("#ffffff");
+      }
+
+      return ContentService.createTextOutput(JSON.stringify({
+        success: true,
+        spreadsheetUrl: sUrl,
+        spreadsheetId: sId,
+        spreadsheetTitle: sTitle,
+        message: "Conexão oficial estabelecida com sucesso! Planilha: " + sTitle
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ------------------------------------------------------------------------
+    // 1. GESTÃO E SINCRONIZAÇÃO DE USUÁRIOS (Aba USUARIOS_CMDIT na mesma planilha)
     // ------------------------------------------------------------------------
     var isUserAction = data.action === 'save_user' || data.action === 'sync_user' ||
                        data.action === 'delete_user' || data.action === 'sync_all_users' ||
@@ -497,7 +650,6 @@ function doPost(e) {
         var uPassword = String(targetUser.password || "").trim();
         var uStatus = targetUser.isActive === false || String(targetUser.isActive).toLowerCase() === "false" ? "BLOQUEADO" : "ATIVO";
 
-        // Mapeamento amigável de cargo
         var roleLabels = {
           master: "👑 Administrador Master",
           patio: "📋 Operador do Pátio",
@@ -522,15 +674,16 @@ function doPost(e) {
         var rowValues = [dateU, uUsername, uName, uRoleLabel, uPassword, uStatus, "-"];
 
         if (userRowIndex !== -1) {
-          // Atualiza a linha existente
           uSheet.getRange(userRowIndex, 1, 1, rowValues.length).setValues([rowValues]);
         } else {
-          // Insere nova linha
           uSheet.appendRow(rowValues);
         }
 
         return ContentService.createTextOutput(JSON.stringify({
           success: true,
+          spreadsheetUrl: sUrl,
+          spreadsheetId: sId,
+          spreadsheetTitle: sTitle,
           action: "save_user",
           username: uUsername,
           tabName: uSheet.getName(),
@@ -554,6 +707,9 @@ function doPost(e) {
         }
         return ContentService.createTextOutput(JSON.stringify({
           success: true,
+          spreadsheetUrl: sUrl,
+          spreadsheetId: sId,
+          spreadsheetTitle: sTitle,
           action: "delete_user",
           username: delUsername,
           message: "Usuário excluído da aba " + uSheet.getName() + "."
@@ -601,6 +757,9 @@ function doPost(e) {
 
         return ContentService.createTextOutput(JSON.stringify({
           success: true,
+          spreadsheetUrl: sUrl,
+          spreadsheetId: sId,
+          spreadsheetTitle: sTitle,
           action: "sync_all_users",
           totalUsers: newRows.length,
           tabName: uSheet.getName(),
@@ -614,7 +773,6 @@ function doPost(e) {
     // ------------------------------------------------------------------------
     var op = String(data.operationType || data.operationCategory || '').toLowerCase().trim();
     
-    // Identificar a aba correta e sua configuração de colunas
     var tabCategory = "entrada";
     if (op === "saida" || op === "saída" || op.indexOf("said") !== -1) {
       tabCategory = "saida";
@@ -658,7 +816,7 @@ function doPost(e) {
       }
     }
     
-    // Se a aba não existir, cria a aba com os cabeçalhos específicos desta operação
+    // Se a aba não existir, cria a aba com os cabeçalhos específicos
     if (!sheet) {
       if (allSheets.length === 1 && allSheets[0].getLastRow() === 0 && allSheets[0].getName().match(/^(Planilha1|Sheet1|Página1)$/i)) {
         sheet = allSheets[0];
@@ -678,7 +836,7 @@ function doPost(e) {
     var dateStr = Utilities.formatDate(now, "America/Sao_Paulo", "dd/MM/yyyy");
     var timeStr = Utilities.formatDate(now, "America/Sao_Paulo", "HH:mm:ss");
     
-    // Função para formatar o nível do combustível de 1/8 até 8/8
+    // Função para formatar o nível do combustível
     var formatFuelLevel = function(f) {
       if (!f) return "-";
       var clean = String(f).trim();
@@ -693,7 +851,6 @@ function doPost(e) {
       return String(clean).toUpperCase();
     };
 
-    // Extração do Nome do Operador (apenas o nome, sem login)
     var extractCleanOperatorName = function(rawOp, rawLogin) {
       var opStr = String(rawOp || rawLogin || "OPERADOR").trim();
       opStr = opStr.replace(/\\(.*?\\)/g, '').replace(/\\[.*?\\]/g, '').trim();
@@ -703,7 +860,6 @@ function doPost(e) {
       return opStr ? opStr.toUpperCase() : "OPERADOR";
     };
 
-    // Extração dos campos normalizados
     var operador = extractCleanOperatorName(data.operatorName || data.operador, data.username);
     var condutor = String(data.driverName || data.condutor || data.motorista || "-").toUpperCase().trim();
     var placa = String(data.plate || data.placa || "").toUpperCase().trim();
@@ -712,7 +868,6 @@ function doPost(e) {
     var km = data.km ? (String(data.km).replace(/\\s*km/i, '').toUpperCase().trim() + " KM") : (data.odometro ? (String(data.odometro).replace(/\\s*km/i, '').toUpperCase().trim() + " KM") : "-");
     var nivelCombustivel = formatFuelLevel(data.nivelCombustivel || data.fuel || data.combustivel);
     
-    // Chave Reserva
     var chaveReserva = "-";
     if (data.hasSpareKey === true || String(data.hasSpareKey).toLowerCase() === "true" || String(data.chaveReserva).toUpperCase() === "SIM") {
       chaveReserva = "SIM";
@@ -720,10 +875,8 @@ function doPost(e) {
       chaveReserva = "NÃO";
     }
 
-    // Tipo de Veículo (GF, RAC, OUTROS)
     var tipoVeiculo = String(data.fleetType || data.tipoVeiculo || data.tipo || "GF").toUpperCase().trim();
 
-    // Característica do Veículo com Emojis (🟣 DT, 🟠 REVENDA, 🟢 CONSUMIDOR, ⚪ OUTROS)
     var rawChar = data.characteristic || data.caracteristica || data.tipoCaracteristica || "-";
     var caracteristica = String(rawChar).trim();
     if (caracteristica && caracteristica !== "-") {
@@ -736,7 +889,6 @@ function doPost(e) {
       caracteristica = "-";
     }
 
-    // Observações (incluindo status da foto do documento do veículo quando presente)
     var observacoes = data.notes || data.observacao || data.observacoes || data.description || "";
     observacoes = String(observacoes).replace(/\\r?\\n/g, ' - ').trim();
 
@@ -753,10 +905,8 @@ function doPost(e) {
     }
     observacoes = observacoes.toUpperCase().trim();
 
-    // Montagem exata da linha conforme a aba solicitada pelo usuário
     var customRow = [];
     if (tabCategory === "entrada") {
-      // 12 Colunas: Data, Hora, Placa, Condutor, KM odômetro, Nivel do Combustivel, Origem, Destino, Chave reserva, Tipo de veiculo, Observação, Operador
       customRow = [
         dateStr,          // Col A: Data
         timeStr,          // Col B: Hora
@@ -767,12 +917,11 @@ function doPost(e) {
         origem,           // Col G: Origem
         destino,          // Col H: Destino
         chaveReserva,     // Col I: Chave reserva
-        tipoVeiculo,      // Col J: Tipo de veiculo (REC, GF, LQV, outros)
+        tipoVeiculo,      // Col J: Tipo de veiculo
         observacoes,      // Col K: Observação
         operador          // Col L: Operador do registro
       ];
     } else if (tabCategory === "saida") {
-      // 10 Colunas: Data, Hora, Placa, Condutor, KM odômetro, Nivel do Combustivel, Destino, Chave reserva, Observação, Operador
       customRow = [
         dateStr,          // Col A: Data
         timeStr,          // Col B: Hora
@@ -786,19 +935,17 @@ function doPost(e) {
         operador          // Col J: Operador do registro
       ];
     } else if (tabCategory === "qualidade") {
-      // 8 Colunas: Data, Hora, Placa, Condutor, Característica do Veículo, Nivel do Combustivel, Destino, Operador
       customRow = [
         dateStr,          // Col A: Data
         timeStr,          // Col B: Hora
         placa,            // Col C: Placa
         condutor,         // Col D: Condutor
-        caracteristica,   // Col E: Característica do Veículo (CONSUMIDOR, REVENDA, DT, OUTROS)
+        caracteristica,   // Col E: Característica do Veículo
         nivelCombustivel, // Col F: Nivel do Combustivel
         destino,          // Col G: Destino (P1, P2, P3, ADM, R1, outros)
         operador          // Col H: Operador do registro
       ];
     } else if (tabCategory === "combustivel") {
-      // 8 Colunas: Data, Hora, Placa, KM odômetro, Nivel do Combustivel, Condutor, Destino, Operador
       customRow = [
         dateStr,          // Col A: Data
         timeStr,          // Col B: Hora
@@ -810,7 +957,6 @@ function doPost(e) {
         operador          // Col H: Operador do registro
       ];
     } else if (tabCategory === "pdc") {
-      // 6 Colunas: Data, Hora, Placa, Nivel do combustivel, Observação, Operador
       customRow = [
         dateStr,          // Col A: Data
         timeStr,          // Col B: Hora
@@ -821,7 +967,7 @@ function doPost(e) {
       ];
     }
 
-    // Inserção no topo (Linha 2, logo abaixo do cabeçalho na Linha 1 - Pilha / LIFO)
+    // Inserção no topo (Linha 2, logo abaixo do cabeçalho na Linha 1)
     sheet.insertRowAfter(1);
     var targetRange = sheet.getRange(2, 1, 1, customRow.length);
     targetRange.setValues([customRow]);
@@ -840,6 +986,9 @@ function doPost(e) {
 
     return ContentService.createTextOutput(JSON.stringify({
       success: true,
+      spreadsheetUrl: sUrl,
+      spreadsheetId: sId,
+      spreadsheetTitle: sTitle,
       tabName: tabName,
       tabCategory: tabCategory,
       plate: placa,
@@ -860,6 +1009,8 @@ function doGet(e) {
     var allSheets = ss.getSheets();
     var result = {
       success: true,
+      spreadsheetUrl: ss.getUrl(),
+      spreadsheetId: ss.getId(),
       spreadsheetTitle: ss.getName(),
       updatedAt: Utilities.formatDate(new Date(), "America/Sao_Paulo", "dd/MM/yyyy HH:mm:ss"),
       tabs: {}

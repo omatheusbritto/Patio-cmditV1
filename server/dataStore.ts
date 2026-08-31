@@ -33,14 +33,16 @@ export interface AppSettings {
   sheetsWebhookUrl?: string | null;
   spreadsheetId?: string | null;
   spreadsheetUrl?: string | null;
+  spreadsheetTitle?: string | null;
   autoSync?: boolean;
   lastUpdated?: string;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
   sheetsWebhookUrl: null,
-  spreadsheetId: '1c9pfD6quOeMQLdTZEmR-QcQu-cZzvi68SyT6jZJWgnI',
-  spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/1c9pfD6quOeMQLdTZEmR-QcQu-cZzvi68SyT6jZJWgnI/edit',
+  spreadsheetId: null,
+  spreadsheetUrl: null,
+  spreadsheetTitle: 'Planilha Oficial CMDIT',
   autoSync: true,
 };
 
