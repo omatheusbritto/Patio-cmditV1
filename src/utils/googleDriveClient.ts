@@ -440,10 +440,178 @@ var TAB_CONFIGS = {
   }
 };
 
+var TAB_USUARIOS = {
+  tabName: "USUARIOS_CMDIT",
+  headers: [
+    "DATA DE CADASTRO",
+    "MATRÍCULA / USUÁRIO",
+    "NOME COMPLETO",
+    "FUNÇÃO / CARGO",
+    "SENHA",
+    "STATUS",
+    "ÚLTIMO ACESSO"
+  ]
+};
+
 function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
     var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    // ------------------------------------------------------------------------
+    // 1. GESTÃO E SINCRONIZAÇÃO DE USUÁRIOS (Aba USUARIOS_CMDIT)
+    // ------------------------------------------------------------------------
+    var isUserAction = data.action === 'save_user' || data.action === 'sync_user' ||
+                       data.action === 'delete_user' || data.action === 'sync_all_users' ||
+                       data.action === 'get_users' || data.type === 'user';
+
+    if (isUserAction) {
+      var uSheet = null;
+      var allSheets = ss.getSheets();
+      for (var s = 0; s < allSheets.length; s++) {
+        var sheetNameUpper = allSheets[s].getName().toUpperCase();
+        if (sheetNameUpper.indexOf("USUARIOS") !== -1 || sheetNameUpper.indexOf("USUÁRIOS") !== -1) {
+          uSheet = allSheets[s];
+          break;
+        }
+      }
+
+      if (!uSheet) {
+        uSheet = ss.insertSheet(TAB_USUARIOS.tabName);
+        uSheet.appendRow(TAB_USUARIOS.headers);
+        var uHeaderRange = uSheet.getRange(1, 1, 1, TAB_USUARIOS.headers.length);
+        uHeaderRange.setFontWeight("bold");
+        uHeaderRange.setBackground("#0f172a");
+        uHeaderRange.setFontColor("#ffffff");
+      }
+
+      var nowU = new Date();
+      var dateU = Utilities.formatDate(nowU, "America/Sao_Paulo", "dd/MM/yyyy HH:mm:ss");
+
+      // A. Ação: Salvar / Atualizar Usuário Individual
+      if (data.action === 'save_user' || data.action === 'sync_user' || data.user) {
+        var targetUser = data.user || data;
+        var uUsername = String(targetUser.username || "").toLowerCase().trim();
+        var uName = String(targetUser.name || "").trim();
+        var uRole = String(targetUser.role || "patio").trim();
+        var uPassword = String(targetUser.password || "").trim();
+        var uStatus = targetUser.isActive === false || String(targetUser.isActive).toLowerCase() === "false" ? "BLOQUEADO" : "ATIVO";
+
+        // Mapeamento amigável de cargo
+        var roleLabels = {
+          master: "👑 Administrador Master",
+          patio: "📋 Operador do Pátio",
+          qualidade_51: "🔍 Operador 51 Qualidade",
+          pdc: "📋 Operador Fila PDC",
+          combustivel: "⛽ Operador Combustível",
+          entrada_saida: "🚪 Operador Entrada/Saída",
+          vistoriador: "🔍 Vistoriador",
+          motorista: "🚗 Motorista"
+        };
+        var uRoleLabel = roleLabels[uRole] || uRole.toUpperCase();
+
+        var uData = uSheet.getDataRange().getValues();
+        var userRowIndex = -1;
+        for (var r = 1; r < uData.length; r++) {
+          if (String(uData[r][1]).toLowerCase().trim() === uUsername) {
+            userRowIndex = r + 1;
+            break;
+          }
+        }
+
+        var rowValues = [dateU, uUsername, uName, uRoleLabel, uPassword, uStatus, "-"];
+
+        if (userRowIndex !== -1) {
+          // Atualiza a linha existente
+          uSheet.getRange(userRowIndex, 1, 1, rowValues.length).setValues([rowValues]);
+        } else {
+          // Insere nova linha
+          uSheet.appendRow(rowValues);
+        }
+
+        return ContentService.createTextOutput(JSON.stringify({
+          success: true,
+          action: "save_user",
+          username: uUsername,
+          tabName: uSheet.getName(),
+          message: "Usuário " + uName + " (" + uUsername + ") gravado com sucesso na aba " + uSheet.getName() + "!"
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+
+      // B. Ação: Excluir Usuário
+      if (data.action === 'delete_user') {
+        var delUsername = String(data.username || "").toLowerCase().trim();
+        var uDataDel = uSheet.getDataRange().getValues();
+        var foundRow = -1;
+        for (var d = 1; d < uDataDel.length; d++) {
+          if (String(uDataDel[d][1]).toLowerCase().trim() === delUsername) {
+            foundRow = d + 1;
+            break;
+          }
+        }
+        if (foundRow !== -1) {
+          uSheet.deleteRow(foundRow);
+        }
+        return ContentService.createTextOutput(JSON.stringify({
+          success: true,
+          action: "delete_user",
+          username: delUsername,
+          message: "Usuário excluído da aba " + uSheet.getName() + "."
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+
+      // C. Ação: Sincronizar Todos os Usuários de uma vez
+      if (data.action === 'sync_all_users' && Array.isArray(data.users)) {
+        var usersList = data.users;
+        var lastRow = uSheet.getLastRow();
+        if (lastRow > 1) {
+          uSheet.deleteRows(2, lastRow - 1);
+        }
+
+        var roleMap = {
+          master: "👑 Administrador Master",
+          patio: "📋 Operador do Pátio",
+          qualidade_51: "🔍 Operador 51 Qualidade",
+          pdc: "📋 Operador Fila PDC",
+          combustivel: "⛽ Operador Combustível",
+          entrada_saida: "🚪 Operador Entrada/Saída",
+          vistoriador: "🔍 Vistoriador",
+          motorista: "🚗 Motorista"
+        };
+
+        var newRows = [];
+        for (var uIdx = 0; uIdx < usersList.length; uIdx++) {
+          var u = usersList[uIdx];
+          var roleName = roleMap[u.role] || String(u.role || "").toUpperCase();
+          var status = u.isActive === false ? "BLOQUEADO" : "ATIVO";
+          newRows.push([
+            u.createdAt ? Utilities.formatDate(new Date(u.createdAt), "America/Sao_Paulo", "dd/MM/yyyy HH:mm:ss") : dateU,
+            String(u.username || "").toLowerCase().trim(),
+            String(u.name || "").trim(),
+            roleName,
+            String(u.password || "").trim(),
+            status,
+            "-"
+          ]);
+        }
+
+        if (newRows.length > 0) {
+          uSheet.getRange(2, 1, newRows.length, TAB_USUARIOS.headers.length).setValues(newRows);
+        }
+
+        return ContentService.createTextOutput(JSON.stringify({
+          success: true,
+          action: "sync_all_users",
+          totalUsers: newRows.length,
+          tabName: uSheet.getName(),
+          message: "Todos os " + newRows.length + " usuários foram sincronizados na aba " + uSheet.getName() + "!"
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
+    // ------------------------------------------------------------------------
+    // 2. GRAVAÇÃO DE REGISTRO VEICULAR NAS 5 ABAS OFICIAIS
+    // ------------------------------------------------------------------------
     var op = String(data.operationType || data.operationCategory || '').toLowerCase().trim();
     
     // Identificar a aba correta e sua configuração de colunas
@@ -540,7 +708,7 @@ function doPost(e) {
     var condutor = String(data.driverName || data.condutor || data.motorista || "-").toUpperCase().trim();
     var placa = String(data.plate || data.placa || "").toUpperCase().trim();
     var origem = String(data.origin || data.origem || (tabCategory === "entrada" ? "PÁTIO PRINCIPAL" : "-")).toUpperCase().trim();
-    var destino = String(data.destination || data.destino || (tabCategory === "pdc" ? "FILA PDC (LAVAGEM/OFICINA)" : (tabCategory === "qualidade" ? (data.location ? ("PÁTIO " + data.location) : "P1") : "-"))).toUpperCase().trim();
+    var destino = String(data.destination || data.destino || (tabCategory === "pdc" ? "FILA PDC (LAVAGEM/OFICINA)" : (tabCategory === "qualidade" ? (data.location || "P1") : "-"))).toUpperCase().trim();
     var km = data.km ? (String(data.km).replace(/\\s*km/i, '').toUpperCase().trim() + " KM") : (data.odometro ? (String(data.odometro).replace(/\\s*km/i, '').toUpperCase().trim() + " KM") : "-");
     var nivelCombustivel = formatFuelLevel(data.nivelCombustivel || data.fuel || data.combustivel);
     
@@ -750,30 +918,51 @@ function doGet(e) {
 /**
  * Initialize all 4 official tabs in the linked Google Sheet
  */
-export async function initSpreadsheetTabs(
-  spreadsheetId: string,
-  accessToken: string
-): Promise<{ success: boolean; tabs: string[] }> {
-  const resp = await fetch('/api/sheets/init-tabs', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify({
-      spreadsheetId,
-    }),
-  });
+export async function syncAllUsersToSheet(
+  users?: any[]
+): Promise<{ success: boolean; message?: string; totalUsers?: number; error?: string }> {
+  try {
+    const config = getStoredDriveConfig();
+    const webhookUrl = config.webhookUrl;
 
-  const data = await resp.json();
-  if (!resp.ok || !data.success) {
-    throw new Error(data.error || 'Falha ao estruturar abas da planilha.');
+    const resp = await fetch('/api/users/sync-sheet', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        webhookUrl: webhookUrl || undefined,
+        users: users || undefined,
+      }),
+    });
+
+    const data = await resp.json();
+    return data;
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Falha ao sincronizar usuários com a planilha.' };
   }
-
-  return {
-    success: true,
-    tabs: data.tabs,
-  };
 }
+
+export async function syncSingleUserToSheet(
+  user: any
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    const config = getStoredDriveConfig();
+    const webhookUrl = config.webhookUrl;
+
+    const resp = await fetch('/api/users/sync-single', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        webhookUrl: webhookUrl || undefined,
+        user,
+      }),
+    });
+
+    const data = await resp.json();
+    return data;
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Falha ao sincronizar usuário com a planilha.' };
+  }
+}
+
 
 

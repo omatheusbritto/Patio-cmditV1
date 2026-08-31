@@ -9,6 +9,8 @@ import {
   X,
   AlertCircle,
   Search,
+  FileSpreadsheet,
+  RefreshCw,
 } from 'lucide-react';
 import {
   getAllUsers,
@@ -18,6 +20,7 @@ import {
   toggleUserStatus,
   deleteUser,
 } from '../utils/authService';
+import { syncAllUsersToSheet } from '../utils/googleDriveClient';
 import { UserAccount, UserRole, getRoleBadgeStyle, getRoleDisplayName } from '../types';
 
 interface UserManagementModalProps {
@@ -29,6 +32,8 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');
+  const [isSyncingSheet, setIsSyncingSheet] = useState(false);
+  const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
 
   // Form State para Novo Usuário
   const [newUsername, setNewUsername] = useState('');
@@ -58,6 +63,24 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
     loadUsers();
   }, []);
 
+  const handleSyncWithSpreadsheet = async () => {
+    setIsSyncingSheet(true);
+    setSyncStatusMsg(null);
+    try {
+      const res = await syncAllUsersToSheet(users);
+      if (res.success) {
+        setSyncStatusMsg(`✅ ${users.length} usuários sincronizados na aba USUARIOS_CMDIT!`);
+      } else {
+        setSyncStatusMsg(`⚠️ ${res.error || 'Verifique se a URL do Webhook da planilha está configurada no Painel Master.'}`);
+      }
+    } catch (err: any) {
+      setSyncStatusMsg('⚠️ Falha na comunicação com o Webhook.');
+    } finally {
+      setIsSyncingSheet(false);
+      setTimeout(() => setSyncStatusMsg(null), 5000);
+    }
+  };
+
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormMsg(null);
@@ -67,15 +90,17 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
       const res = await createNewUser(newUsername, newName, newPassword, newRole);
       setIsSubmitting(false);
       if (res.success) {
-        setFormMsg({ text: 'Operador cadastrado com sucesso!', type: 'success' });
+        setFormMsg({ text: 'Operador cadastrado e sincronizado na aba USUARIOS_CMDIT!', type: 'success' });
         setNewUsername('');
         setNewName('');
         setNewPassword('');
         await loadUsers();
+        // Sincroniza em background
+        syncAllUsersToSheet();
         setTimeout(() => {
           setActiveTab('list');
           setFormMsg(null);
-        }, 1000);
+        }, 1200);
       } else {
         setFormMsg({ text: res.error || 'Erro ao cadastrar.', type: 'error' });
       }
@@ -278,6 +303,38 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
             </form>
           ) : (
             <div className="flex flex-col gap-3">
+              {/* Google Sheets Sync Banner */}
+              <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-2xl flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-700 shrink-0" />
+                    <div>
+                      <h4 className="text-xs font-black text-emerald-900 leading-tight">
+                        Banco Vitalício: Aba USUARIOS_CMDIT
+                      </h4>
+                      <p className="text-[10px] text-emerald-700">
+                        Todos os operadores são salvos diretamente na sua planilha (sem limite de 90 dias).
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSyncWithSpreadsheet}
+                    disabled={isSyncingSheet}
+                    className="px-2.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[11px] flex items-center gap-1.5 shrink-0 shadow-xs transition cursor-pointer disabled:opacity-50"
+                    title="Forçar envio de todos os operadores para a aba USUARIOS_CMDIT"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isSyncingSheet ? 'animate-spin' : ''}`} />
+                    <span>{isSyncingSheet ? 'Gravando...' : 'Sincronizar Planilha'}</span>
+                  </button>
+                </div>
+                {syncStatusMsg && (
+                  <div className="text-[10px] font-bold text-neutral-800 bg-white/90 p-2 rounded-lg border border-emerald-200">
+                    {syncStatusMsg}
+                  </div>
+                )}
+              </div>
+
               {/* Search Bar */}
               <div className="relative">
                 <Search className="w-4 h-4 absolute left-3 top-3 text-neutral-400" />

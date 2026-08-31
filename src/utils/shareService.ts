@@ -52,7 +52,8 @@ export interface FormattedVehicleMessageData {
 
 export function getLocationMeaning(loc?: string): string {
   if (!loc) return '';
-  switch (loc.toUpperCase()) {
+  const u = loc.toUpperCase().trim();
+  switch (u) {
     case 'P1':
       return 'P1 (POSTE 1)';
     case 'P2':
@@ -65,8 +66,10 @@ export function getLocationMeaning(loc?: string): string {
       return 'PDC (PÁTIO DESEMBARQUE / CARGA)';
     case 'ADM':
       return 'ADM (ADMINISTRAÇÃO)';
+    case 'OUTROS':
+      return 'OUTROS';
     default:
-      return loc.toUpperCase();
+      return u;
   }
 }
 
@@ -199,7 +202,9 @@ export function generateWhatsAppMessage(data: FormattedVehicleMessageData): stri
 
     case 'qualidade_51':
       if (hasValue(data.plate)) lines.push(`*Placa:* ${cleanPlate}`);
-      if (hasValue(data.location)) lines.push(`*Local:* ${getLocationMeaning(data.location)}`);
+      if (hasValue(data.location) || hasValue(data.destination)) {
+        lines.push(`*Destino:* ${getLocationMeaning(data.destination || data.location)}`);
+      }
       if (hasValue(data.characteristic)) lines.push(`*Característica:* ${toUpper(data.characteristic)}`);
       if (hasValue(data.fuel)) lines.push(`*Combustível:* ${fuelDisplay}`);
       break;

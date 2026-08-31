@@ -2,9 +2,9 @@ export type FuelLevel = '1/8' | '2/8' | '3/8' | '4/8' | '5/8' | '6/8' | '7/8' | 
 
 export type VehicleCharacteristic = '🟣 DT' | '🟠 REVENDA' | '🟢 CONSUMIDOR' | '⚪ OUTROS';
 
-export type LocationCode = 'P1' | 'P2' | 'P3' | 'R1' | 'ADM' | 'PDC';
+export type LocationCode = 'P1' | 'P2' | 'P3' | 'R1' | 'ADM' | 'PDC' | 'OUTROS' | string;
 
-export type QualityLocationCode = 'P1' | 'P2' | 'P3' | 'R1' | 'ADM';
+export type QualityLocationCode = 'P1' | 'P2' | 'P3' | 'R1' | 'ADM' | 'OUTROS' | string;
 
 export type OperationType = 'entrada' | 'saida' | 'abastecimento' | 'pdc' | 'qualidade_51';
 

@@ -118,8 +118,45 @@ async function startServer() {
     });
   });
 
+  // Helper to sync user modifications to the Google Spreadsheet USUARIOS_CMDIT tab in real-time
+  async function syncUserToGoogleSheetWebhook(
+    action: 'save_user' | 'delete_user' | 'sync_all_users',
+    payload: any,
+    customWebhookUrl?: string
+  ) {
+    try {
+      const settings = await loadServerSettingsAsync();
+      const webhookUrl = customWebhookUrl || settings.sheetsWebhookUrl;
+      if (!webhookUrl || !webhookUrl.startsWith('http')) {
+        return { success: false, reason: 'No webhook configured' };
+      }
+
+      const bodyData = {
+        action,
+        ...payload,
+        timestamp: new Date().toISOString(),
+      };
+
+      const resp = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bodyData),
+        redirect: 'follow',
+      });
+
+      if (resp.ok) {
+        const data = await resp.json().catch(() => ({ success: true }));
+        return { success: true, data };
+      }
+      return { success: false, status: resp.status };
+    } catch (err: any) {
+      console.warn('syncUserToGoogleSheetWebhook error:', err.message);
+      return { success: false, error: err.message };
+    }
+  }
+
   // --------------------------------------------------------------------------
-  // USER MANAGEMENT & MULTI-DEVICE AUTHENTICATION (Centralized Store)
+  // USER MANAGEMENT & MULTI-DEVICE AUTHENTICATION (Centralized Store + Google Sheet Sync)
   // --------------------------------------------------------------------------
   app.get('/api/users', async (req: Request, res: Response) => {
     try {
@@ -134,8 +171,10 @@ async function startServer() {
     try {
       const { username, name, password, role } = req.body;
       const result = await createServerUserAsync(username, name, password, role);
-      if (result.success) {
+      if (result.success && result.user) {
         const users = await loadServerUsersAsync();
+        // Sincroniza em segundo plano diretamente com a planilha na aba USUARIOS_CMDIT
+        syncUserToGoogleSheetWebhook('save_user', { user: result.user }).catch(() => {});
         res.json({ success: true, user: result.user, users });
       } else {
         res.status(400).json(result);
@@ -151,6 +190,10 @@ async function startServer() {
       const result = await resetServerUserPasswordAsync(userId, newPassword);
       if (result.success) {
         const users = await loadServerUsersAsync();
+        const updatedUser = users.find((u) => u.id === userId);
+        if (updatedUser) {
+          syncUserToGoogleSheetWebhook('save_user', { user: updatedUser }).catch(() => {});
+        }
         res.json({ success: true, users });
       } else {
         res.status(400).json(result);
@@ -166,6 +209,10 @@ async function startServer() {
       const result = await toggleServerUserStatusAsync(userId);
       if (result.success) {
         const users = await loadServerUsersAsync();
+        const updatedUser = users.find((u) => u.id === userId);
+        if (updatedUser) {
+          syncUserToGoogleSheetWebhook('save_user', { user: updatedUser }).catch(() => {});
+        }
         res.json({ success: true, isActive: result.isActive, users });
       } else {
         res.status(400).json(result);
@@ -178,13 +225,56 @@ async function startServer() {
   app.delete('/api/users/:id', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
+      const allUsersBefore = await loadServerUsersAsync();
+      const userToDelete = allUsersBefore.find((u) => u.id === id);
+
       const result = await deleteServerUserAsync(id);
       if (result.success) {
         const users = await loadServerUsersAsync();
+        if (userToDelete) {
+          syncUserToGoogleSheetWebhook('delete_user', { username: userToDelete.username }).catch(() => {});
+        }
         res.json({ success: true, users });
       } else {
         res.status(400).json(result);
       }
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // API Route: Sincronizar todos os usuários com a planilha (Aba USUARIOS_CMDIT)
+  app.post('/api/users/sync-sheet', async (req: Request, res: Response) => {
+    try {
+      const { webhookUrl, users: requestedUsers } = req.body;
+      const usersToSync = Array.isArray(requestedUsers) && requestedUsers.length > 0
+        ? requestedUsers
+        : await loadServerUsersAsync();
+
+      const syncResult = await syncUserToGoogleSheetWebhook('sync_all_users', { users: usersToSync }, webhookUrl);
+      res.json({
+        success: syncResult.success,
+        totalUsers: usersToSync.length,
+        result: syncResult,
+        message: syncResult.success
+          ? `${usersToSync.length} usuários sincronizados na aba USUARIOS_CMDIT da planilha!`
+          : 'Planilha atualizada localmente. Para gravar no Google Sheets, certifique-se de salvar a URL do Webhook.',
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // API Route: Sincronizar um único usuário com a planilha
+  app.post('/api/users/sync-single', async (req: Request, res: Response) => {
+    try {
+      const { webhookUrl, user } = req.body;
+      if (!user || !user.username) {
+        res.status(400).json({ success: false, error: 'Dados do usuário ausentes.' });
+        return;
+      }
+      const syncResult = await syncUserToGoogleSheetWebhook('save_user', { user }, webhookUrl);
+      res.json(syncResult);
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }

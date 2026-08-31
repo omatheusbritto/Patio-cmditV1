@@ -545,8 +545,8 @@ export async function appendVehicleRecordToSheet(
   let destino = record.destination || '-';
   if (record.operationType === 'pdc') {
     destino = record.destination || 'FILA PDC (LAVAGEM / OFICINA)';
-  } else if (record.operationType === 'qualidade_51' && record.location) {
-    destino = `PÁTIO ${record.location}`;
+  } else if (record.operationType === 'qualidade_51') {
+    destino = record.destination || record.location || 'P1';
   }
   destino = String(destino).toUpperCase().trim();
 

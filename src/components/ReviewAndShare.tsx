@@ -819,7 +819,7 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
             <div className="flex flex-col gap-2 p-3 rounded-xl bg-indigo-50/60 border border-indigo-200">
               <div className="flex items-center justify-between pb-1.5 border-b border-indigo-200/60">
                 <span className="text-[10px] font-bold text-indigo-800 uppercase">
-                  Local & Característica (51 Qualidade)
+                  Destino & Característica (51 Qualidade)
                 </span>
                 {onEditLocation && (
                   <button
@@ -835,7 +835,7 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
 
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
-                  <span className="text-[10px] text-neutral-500 block">Localização:</span>
+                  <span className="text-[10px] text-neutral-500 block">Destino:</span>
                   <span className="font-black text-indigo-950 font-mono text-sm">
                     {getLocationMeaning(location || undefined) || 'P1 (Poste 1)'}
                   </span>

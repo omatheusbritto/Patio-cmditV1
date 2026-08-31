@@ -345,14 +345,14 @@ export const GoogleSheetsIntegration: React.FC<GoogleSheetsIntegrationProps> = (
           <span className="text-[10px] font-black text-neutral-500 uppercase tracking-wider">
             Testar Gravação em Cada Aba:
           </span>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
             <button
               type="button"
               disabled={isTesting}
               onClick={() => handleTestWebhook('entrada')}
               className="bg-white hover:bg-emerald-50 border border-neutral-200 hover:border-emerald-300 text-neutral-800 hover:text-emerald-700 py-1.5 px-2 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 transition cursor-pointer disabled:opacity-50 active:scale-95"
             >
-              <span>📥 Testar Entrada</span>
+              <span>📥 Entrada</span>
             </button>
             <button
               type="button"
@@ -360,7 +360,7 @@ export const GoogleSheetsIntegration: React.FC<GoogleSheetsIntegrationProps> = (
               onClick={() => handleTestWebhook('saida')}
               className="bg-white hover:bg-rose-50 border border-neutral-200 hover:border-rose-300 text-neutral-800 hover:text-rose-700 py-1.5 px-2 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 transition cursor-pointer disabled:opacity-50 active:scale-95"
             >
-              <span>📤 Testar Saída</span>
+              <span>📤 Saída</span>
             </button>
             <button
               type="button"
@@ -368,7 +368,7 @@ export const GoogleSheetsIntegration: React.FC<GoogleSheetsIntegrationProps> = (
               onClick={() => handleTestWebhook('abastecimento')}
               className="bg-white hover:bg-sky-50 border border-neutral-200 hover:border-sky-300 text-neutral-800 hover:text-sky-700 py-1.5 px-2 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 transition cursor-pointer disabled:opacity-50 active:scale-95"
             >
-              <span>⛽ Testar Abastec.</span>
+              <span>⛽ Abastec.</span>
             </button>
             <button
               type="button"
@@ -376,7 +376,43 @@ export const GoogleSheetsIntegration: React.FC<GoogleSheetsIntegrationProps> = (
               onClick={() => handleTestWebhook('qualidade_51')}
               className="bg-white hover:bg-purple-50 border border-neutral-200 hover:border-purple-300 text-neutral-800 hover:text-purple-700 py-1.5 px-2 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 transition cursor-pointer disabled:opacity-50 active:scale-95"
             >
-              <span>🔍 Testar Qualidade</span>
+              <span>🔍 Qualidade</span>
+            </button>
+            <button
+              type="button"
+              disabled={isTesting}
+              onClick={async () => {
+                const urlToTest = webhookInput.trim() || config.webhookUrl;
+                if (!urlToTest) {
+                  setStatusMsg({
+                    text: 'Cole a URL do Webhook do Google Apps Script antes de testar.',
+                    type: 'error',
+                  });
+                  return;
+                }
+                setIsTesting(true);
+                setStatusMsg({ text: 'Sincronizando usuários na aba USUARIOS_CMDIT...', type: 'info' });
+                try {
+                  const res = await fetch('/api/users/sync-sheet', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ webhookUrl: urlToTest }),
+                  });
+                  const data = await res.json();
+                  if (data.success) {
+                    setStatusMsg({ text: '🎉 Sucesso! Usuários sincronizados na aba USUARIOS_CMDIT da Planilha!', type: 'success' });
+                  } else {
+                    setStatusMsg({ text: data.message || 'Erro ao sincronizar usuários.', type: 'error' });
+                  }
+                } catch (err: any) {
+                  setStatusMsg({ text: err.message || 'Falha na requisição.', type: 'error' });
+                } finally {
+                  setIsTesting(false);
+                }
+              }}
+              className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 py-1.5 px-2 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 transition cursor-pointer disabled:opacity-50 active:scale-95 col-span-2 sm:col-span-1"
+            >
+              <span>👥 Usuários</span>
             </button>
           </div>
         </div>
@@ -402,7 +438,7 @@ export const GoogleSheetsIntegration: React.FC<GoogleSheetsIntegrationProps> = (
             title="Copiar código para o Google Apps Script"
           >
             <Code2 className="w-3.5 h-3.5" />
-            <span>{copiedScript ? 'Código Copiado!' : 'Copiar Script 5 Abas'}</span>
+            <span>{copiedScript ? 'Código Copiado!' : 'Copiar Script Oficial (5 Abas + Usuários)'}</span>
           </button>
 
           {hasWebhook && (
