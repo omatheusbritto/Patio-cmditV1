@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import { QuickPlateEditModal } from './QuickPlateEditModal';
 import { formatPlateForDisplay } from '../utils/plateNormalizer';
-import { stampDateTimeOnCanvas, stampDateTimeOnDataUrl } from '../utils/imageOptimizer';
+import { stampDateTimeOnCanvas, stampDateTimeOnDataUrl, compressAndStampImage } from '../utils/imageOptimizer';
 
 interface OperationDetailsFormProps {
   operationType: 'entrada' | 'saida';
@@ -159,22 +159,18 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
     if (!file) return;
     setIsProcessingDocPhoto(true);
     try {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const rawDataUrl = e.target?.result as string;
-        if (rawDataUrl) {
-          try {
-            const stamped = await stampDateTimeOnDataUrl(rawDataUrl);
-            setDocumentPhotoUrl(stamped);
-          } catch {
-            setDocumentPhotoUrl(rawDataUrl);
-          }
-        }
-        setIsProcessingDocPhoto(false);
-      };
-      reader.onerror = () => setIsProcessingDocPhoto(false);
-      reader.readAsDataURL(file);
-    } catch {
+      const optimizedUrl = await compressAndStampImage(file, {
+        maxDimension: 1280,
+        quality: 0.85,
+        stampDate: true,
+      });
+
+      if (optimizedUrl) {
+        setDocumentPhotoUrl(optimizedUrl);
+      }
+    } catch (err) {
+      console.warn('Erro ao processar foto do documento:', err);
+    } finally {
       setIsProcessingDocPhoto(false);
     }
   };
@@ -780,6 +776,7 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
           onChange={(e) => {
             const f = e.target.files?.[0];
             if (f) handleFileSelected(f);
+            e.target.value = '';
           }}
         />
         <input
@@ -790,10 +787,17 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
           onChange={(e) => {
             const f = e.target.files?.[0];
             if (f) handleFileSelected(f);
+            e.target.value = '';
           }}
         />
 
-        {documentPhotoUrl ? (
+        {isProcessingDocPhoto ? (
+          <div className="py-6 px-4 rounded-xl border border-emerald-300 bg-emerald-50/70 flex flex-col items-center justify-center gap-2 text-center animate-pulse">
+            <div className="w-7 h-7 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+            <span className="text-xs font-black text-emerald-900">Otimizando Foto do Documento...</span>
+            <span className="text-[10px] text-emerald-700">Compactando com alta resolução e carimbo de data</span>
+          </div>
+        ) : documentPhotoUrl ? (
           <div className="flex flex-col gap-2 p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-900">

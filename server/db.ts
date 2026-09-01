@@ -126,6 +126,25 @@ export async function initDatabase(): Promise<{ active: boolean; type: 'postgres
           );
         `);
 
+        // Create access_logs table for access tracking (Login / Logout / Expirado)
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS access_logs (
+            id VARCHAR(100) PRIMARY KEY,
+            timestamp VARCHAR(50) NOT NULL,
+            date_formatted VARCHAR(50) NULL,
+            event VARCHAR(20) NOT NULL,
+            username VARCHAR(100) NOT NULL,
+            full_name VARCHAR(150) NOT NULL,
+            role VARCHAR(50) NOT NULL,
+            whatsapp VARCHAR(50) NULL,
+            ip VARCHAR(50) NULL,
+            user_agent TEXT NULL,
+            device_type VARCHAR(50) NULL,
+            details TEXT NULL,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+        `);
+
         // Create app_settings table for Google Sheets & global configs
         await client.query(`
           CREATE TABLE IF NOT EXISTS app_settings (
@@ -193,6 +212,24 @@ export async function initDatabase(): Promise<{ active: boolean; type: 'postgres
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             raw_data JSON NULL
+          )
+        `);
+
+        await conn.query(`
+          CREATE TABLE IF NOT EXISTS access_logs (
+            id VARCHAR(100) PRIMARY KEY,
+            timestamp VARCHAR(50) NOT NULL,
+            date_formatted VARCHAR(50) NULL,
+            event VARCHAR(20) NOT NULL,
+            username VARCHAR(100) NOT NULL,
+            full_name VARCHAR(150) NOT NULL,
+            role VARCHAR(50) NOT NULL,
+            whatsapp VARCHAR(50) NULL,
+            ip VARCHAR(50) NULL,
+            user_agent TEXT NULL,
+            device_type VARCHAR(50) NULL,
+            details TEXT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           )
         `);
 

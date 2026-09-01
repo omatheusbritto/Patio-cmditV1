@@ -15,6 +15,8 @@ import {
   Lock,
   Unlock,
   Shield,
+  Phone,
+  MessageCircle,
 } from 'lucide-react';
 import {
   getAllUsers,
@@ -23,6 +25,7 @@ import {
   resetUserPassword,
   toggleUserStatus,
   deleteUser,
+  restoreUsersFromSheetClient,
 } from '../utils/authService';
 import {
   syncAllUsersToSheet,
@@ -48,6 +51,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
   // Form State para Novo Usuário
   const [newUsername, setNewUsername] = useState('');
   const [newName, setNewName] = useState('');
+  const [newWhatsapp, setNewWhatsapp] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState<UserRole>('patio');
   const [formMsg, setFormMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -104,13 +108,38 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
     }
   };
 
+  const handleRestoreFromSpreadsheet = async () => {
+    setIsSyncingSheet(true);
+    setSyncStatusMsg({ text: '📥 Restaurando operadores da aba USUARIOS_CMDIT da planilha oficial...', type: 'info' });
+    try {
+      const res = await restoreUsersFromSheetClient();
+      if (res.success) {
+        setSyncStatusMsg({
+          text: `🎉 Sucesso! ${res.totalRestored || res.users?.length || 0} operadores sincronizados e ativos no sistema!`,
+          type: 'success',
+        });
+        await loadData();
+      } else {
+        setSyncStatusMsg({
+          text: `⚠️ ${res.error || 'Nenhum operador encontrado na planilha para restaurar.'}`,
+          type: 'error',
+        });
+      }
+    } catch (err: any) {
+      setSyncStatusMsg({ text: `⚠️ Falha ao restaurar: ${err.message}`, type: 'error' });
+    } finally {
+      setIsSyncingSheet(false);
+      setTimeout(() => setSyncStatusMsg(null), 6000);
+    }
+  };
+
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormMsg(null);
     setIsSubmitting(true);
 
     try {
-      const res = await createNewUser(newUsername, newName, newPassword, newRole);
+      const res = await createNewUser(newUsername, newName, newPassword, newRole, newWhatsapp);
       setIsSubmitting(false);
       if (res.success) {
         setFormMsg({
@@ -119,6 +148,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
         });
         setNewUsername('');
         setNewName('');
+        setNewWhatsapp('');
         setNewPassword('');
         await loadData();
         // Sincroniza em background com a planilha única
@@ -181,6 +211,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
     (u) =>
       u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       u.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (u.whatsapp && u.whatsapp.toLowerCase().includes(searchTerm.toLowerCase())) ||
       getRoleDisplayName(u.role).toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -351,6 +382,26 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                 </div>
 
                 <div className="flex flex-col gap-1">
+                  <label className="text-xs font-black text-neutral-700 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                      Número de WhatsApp do Operador:
+                    </span>
+                    <span className="text-[10px] text-neutral-400 font-semibold">(Opcional)</span>
+                  </label>
+                  <input
+                    type="tel"
+                    placeholder="Ex: (11) 98765-4321"
+                    value={newWhatsapp}
+                    onChange={(e) => setNewWhatsapp(e.target.value)}
+                    className="bg-neutral-50 border border-neutral-300 rounded-xl px-3 py-2 text-xs font-medium text-neutral-900 focus:bg-white focus:border-emerald-600 outline-none transition"
+                  />
+                  <p className="text-[10px] text-neutral-500 mt-0.5">
+                    Não obrigatório. Se informado, será gravado na planilha oficial para contato direto.
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-1">
                   <label className="text-xs font-black text-neutral-700">Função / Perfil de Acesso:</label>
                   <select
                     value={newRole}
@@ -382,7 +433,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
           ) : (
             <div className="flex flex-col gap-3">
               {/* Top Sync & Search Bar */}
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                 <div className="relative flex-1">
                   <Search className="w-4 h-4 absolute left-3 top-2.5 text-neutral-400" />
                   <input
@@ -394,16 +445,29 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                   />
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleSyncWithSpreadsheet}
-                  disabled={isSyncingSheet}
-                  className="px-3 py-2 rounded-xl bg-white border border-neutral-200 hover:border-emerald-500 text-neutral-700 hover:text-emerald-700 font-bold text-xs flex items-center gap-1.5 shrink-0 shadow-2xs transition cursor-pointer disabled:opacity-50"
-                  title="Sincronizar todos os operadores agora com a planilha oficial"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingSheet ? 'animate-spin text-emerald-600' : ''}`} />
-                  <span className="hidden sm:inline">Sincronizar Planilha</span>
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleRestoreFromSpreadsheet}
+                    disabled={isSyncingSheet}
+                    className="px-2.5 py-2 rounded-xl bg-emerald-50 border border-emerald-300 hover:bg-emerald-100 text-emerald-800 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer disabled:opacity-50"
+                    title="Restaurar lista de operadores diretamente da aba USUARIOS_CMDIT do Google Sheets"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isSyncingSheet ? 'animate-spin text-emerald-700' : 'text-emerald-700'}`} />
+                    <span>📥 Restaurar da Planilha</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSyncWithSpreadsheet}
+                    disabled={isSyncingSheet}
+                    className="px-2.5 py-2 rounded-xl bg-white border border-neutral-200 hover:border-emerald-500 text-neutral-700 hover:text-emerald-700 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer disabled:opacity-50"
+                    title="Sincronizar todos os operadores agora com a planilha oficial"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isSyncingSheet ? 'animate-spin text-emerald-600' : ''}`} />
+                    <span className="hidden sm:inline">Gravar Planilha</span>
+                  </button>
+                </div>
               </div>
 
               {/* Status Message */}
@@ -480,6 +544,22 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                                 <span>Login: <strong className="text-neutral-800 font-mono font-bold">{user.username}</strong></span>
                                 <span>•</span>
                                 <span>{roleTitle}</span>
+                                {user.whatsapp && user.whatsapp !== '-' && (
+                                  <>
+                                    <span>•</span>
+                                    <a
+                                      href={`https://wa.me/55${user.whatsapp.replace(/\D/g, '')}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 text-[10px] text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-1.5 py-0.5 rounded font-bold transition"
+                                      title="Abrir conversa no WhatsApp"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <MessageCircle className="w-2.5 h-2.5 text-emerald-600" />
+                                      <span>{user.whatsapp}</span>
+                                    </a>
+                                  </>
+                                )}
                               </div>
                             </div>
                           </div>

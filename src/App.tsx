@@ -48,6 +48,7 @@ import { LoginModal } from './components/LoginModal';
 import { UserManagementModal } from './components/UserManagementModal';
 import { MyShiftHistoryModal } from './components/MyShiftHistoryModal';
 import { OnlineSpreadsheetViewerModal } from './components/OnlineSpreadsheetViewerModal';
+import { AccessLogsTab } from './components/AccessLogsTab';
 import {
   getCurrentSession,
   logoutUser,
@@ -557,6 +558,7 @@ export default function App() {
                 onStartRegistration={() => handleStartRegistration()}
                 onOpenPatio={() => setActiveTab('patio')}
                 onOpenHistory={() => setActiveTab('history')}
+                onOpenLogs={() => setActiveTab('logs')}
                 onOpenSpreadsheetOnline={() => setIsSpreadsheetModalOpen(true)}
                 metrics={patioMetrics}
               />
@@ -752,6 +754,14 @@ export default function App() {
             onDeleteRecord={handleDeleteVehicleRecord}
             onClearHistory={handleClearAllRecords}
             onOpenSpreadsheetOnline={() => setIsSpreadsheetModalOpen(true)}
+          />
+        )}
+
+        {/* Tab 4: Tratamento de Logs de Acesso */}
+        {activeTab === 'logs' && (
+          <AccessLogsTab
+            currentSession={authSession}
+            onOpenSpreadsheetModal={() => setIsSpreadsheetModalOpen(true)}
           />
         )}
       </main>

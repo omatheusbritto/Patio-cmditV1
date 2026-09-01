@@ -23,6 +23,7 @@ interface HomeScreenProps {
   onStartRegistration: () => void;
   onOpenPatio: () => void;
   onOpenHistory: () => void;
+  onOpenLogs?: () => void;
   onOpenSpreadsheetOnline?: () => void;
   metrics: PatioMetrics;
 }
@@ -31,6 +32,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onStartRegistration,
   onOpenPatio,
   onOpenHistory,
+  onOpenLogs,
   onOpenSpreadsheetOnline,
   metrics,
 }) => {

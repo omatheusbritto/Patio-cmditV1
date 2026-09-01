@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Camera, Image as ImageIcon, RefreshCw, Zap, ZapOff, Sparkles, AlertCircle } from 'lucide-react';
-import { stampDateTimeOnCanvas, stampDateTimeOnDataUrl } from '../utils/imageOptimizer';
+import { stampDateTimeOnCanvas, stampDateTimeOnDataUrl, compressAndStampImage } from '../utils/imageOptimizer';
 
 interface CameraViewProps {
   onPhotoCaptured: (dataUrl: string) => void;
@@ -123,21 +123,27 @@ export const CameraView: React.FC<CameraViewProps> = ({ onPhotoCaptured, onCance
   };
 
   // Handle native file input / camera fallback
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = '';
 
-    const reader = new FileReader();
-    reader.onload = async () => {
-      if (typeof reader.result === 'string') {
-        if (stream) {
-          stream.getTracks().forEach((t) => t.stop());
-        }
-        const stampedUrl = await stampDateTimeOnDataUrl(reader.result, new Date());
+    if (stream) {
+      stream.getTracks().forEach((t) => t.stop());
+    }
+
+    try {
+      const stampedUrl = await compressAndStampImage(file, {
+        maxDimension: 1280,
+        quality: 0.88,
+        stampDate: true,
+      });
+      if (stampedUrl) {
         onPhotoCaptured(stampedUrl);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.warn('Erro ao processar imagem da câmera/arquivo:', err);
+    }
   };
 
   // Pre-made sample photo generator for testing without real car nearby (supports angled, off-center, old, and mercosul plates)

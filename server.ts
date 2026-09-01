@@ -34,6 +34,12 @@ import {
   loadServerSettings,
   saveServerSettingsAsync,
   saveServerSettings,
+  restoreUsersFromSpreadsheetAsync,
+  loadServerLogsAsync,
+  loadServerLogs,
+  appendServerLogAsync,
+  clearServerLogsAsync,
+  restoreLogsFromSpreadsheetAsync,
 } from './server/dataStore';
 
 dotenv.config();
@@ -42,10 +48,9 @@ const rootDir = process.cwd();
 
 // Priority order for ultra-fast, high-accuracy recognition
 const FAST_VISION_MODELS = [
-  'gemini-3.5-flash',
-  'gemini-3.6-flash',
-  'gemini-3.7-flash',
+  'gemini-2.5-flash',
   'gemini-flash-latest',
+  'gemini-2.5-flash-lite',
 ];
 
 /**
@@ -155,6 +160,39 @@ async function startServer() {
     }
   }
 
+  // Helper to sync access log events (Login / Logout) to Google Spreadsheet LOGS_ACESSO tab in real-time
+  async function syncLogToGoogleSheetWebhook(logEntry: any, customWebhookUrl?: string) {
+    try {
+      const settings = await loadServerSettingsAsync();
+      const webhookUrl = customWebhookUrl || settings.sheetsWebhookUrl;
+      if (!webhookUrl || !webhookUrl.startsWith('http')) {
+        return { success: false, reason: 'No webhook configured' };
+      }
+
+      const bodyData = {
+        action: 'log_access',
+        log: logEntry,
+        timestamp: new Date().toISOString(),
+      };
+
+      const resp = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bodyData),
+        redirect: 'follow',
+      });
+
+      if (resp.ok) {
+        const data = await resp.json().catch(() => ({ success: true }));
+        return { success: true, data };
+      }
+      return { success: false, status: resp.status };
+    } catch (err: any) {
+      console.warn('syncLogToGoogleSheetWebhook error:', err.message);
+      return { success: false, error: err.message };
+    }
+  }
+
   // --------------------------------------------------------------------------
   // USER MANAGEMENT & MULTI-DEVICE AUTHENTICATION (Centralized Store + Google Sheet Sync)
   // --------------------------------------------------------------------------
@@ -169,8 +207,8 @@ async function startServer() {
 
   app.post('/api/users', async (req: Request, res: Response) => {
     try {
-      const { username, name, password, role } = req.body;
-      const result = await createServerUserAsync(username, name, password, role);
+      const { username, name, password, role, whatsapp } = req.body;
+      const result = await createServerUserAsync(username, name, password, role, whatsapp);
       if (result.success && result.user) {
         const users = await loadServerUsersAsync();
         // Sincroniza em segundo plano diretamente com a planilha na aba USUARIOS_CMDIT
@@ -273,6 +311,10 @@ async function startServer() {
         res.status(400).json({ success: false, error: 'Dados do usuário ausentes.' });
         return;
       }
+      // If user provided, ensure it's also saved in server's local store & DB
+      if (user.username && user.name) {
+        await createServerUserAsync(user.username, user.name, user.password || '123456', user.role || 'operador', user.whatsapp).catch(() => {});
+      }
       const syncResult = await syncUserToGoogleSheetWebhook('save_user', { user }, webhookUrl);
       res.json(syncResult);
     } catch (err: any) {
@@ -280,9 +322,20 @@ async function startServer() {
     }
   });
 
+  // API Route: Restaurar operadores diretamente da aba USUARIOS_CMDIT do Google Sheets
+  app.all('/api/users/restore-from-sheet', async (req: Request, res: Response) => {
+    try {
+      const webhookUrl = req.body?.webhookUrl || (req.query?.webhookUrl as string) || undefined;
+      const result = await restoreUsersFromSpreadsheetAsync(webhookUrl);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   app.post('/api/auth/login', async (req: Request, res: Response) => {
     try {
-      const { username, password } = req.body;
+      const { username, password, userAgent, ip } = req.body;
       if (!username || !password) {
         res.status(400).json({
           success: false,
@@ -313,12 +366,122 @@ async function startServer() {
         expiresAt: now + SESSION_DURATION_MS,
       };
 
+      const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket.remoteAddress || ip || 'Local';
+      const clientAgent = userAgent || (req.headers['user-agent'] as string) || 'Navegador Web';
+      const isMobile = /mobile|android|iphone|ipad|ipod/i.test(clientAgent);
+
+      // Automatically register access log
+      appendServerLogAsync({
+        event: 'LOGIN',
+        username: result.user.username,
+        name: result.user.name,
+        role: result.user.role,
+        whatsapp: result.user.whatsapp,
+        ip: clientIp,
+        userAgent: clientAgent,
+        deviceType: isMobile ? 'mobile' : 'desktop',
+        details: 'Login efetuado com sucesso (Sessão 9h iniciada)',
+      }).then((createdLog) => {
+        syncLogToGoogleSheetWebhook(createdLog).catch(() => {});
+      }).catch((err) => console.warn('Error recording login log:', err.message));
+
       const users = await loadServerUsersAsync();
       res.json({
         success: true,
         session,
         users,
       });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post('/api/auth/logout', async (req: Request, res: Response) => {
+    try {
+      const { username, name, role, whatsapp, userAgent, ip, reason } = req.body;
+      if (username) {
+        const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket.remoteAddress || ip || 'Local';
+        const clientAgent = userAgent || (req.headers['user-agent'] as string) || 'Navegador Web';
+        const isMobile = /mobile|android|iphone|ipad|ipod/i.test(clientAgent);
+
+        const createdLog = await appendServerLogAsync({
+          event: 'LOGOUT',
+          username,
+          name,
+          role,
+          whatsapp,
+          ip: clientIp,
+          userAgent: clientAgent,
+          deviceType: isMobile ? 'mobile' : 'desktop',
+          details: reason || 'Sessão finalizada pelo operador (Logout manual)',
+        });
+        syncLogToGoogleSheetWebhook(createdLog).catch(() => {});
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // --------------------------------------------------------------------------
+  // ACCESS & AUDIT LOGS API (RASTREAMENTO DE LOGIN / LOGOUT / PLANILHA)
+  // --------------------------------------------------------------------------
+  app.get('/api/logs', async (req: Request, res: Response) => {
+    try {
+      const logs = await loadServerLogsAsync();
+      res.json({ success: true, logs });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post('/api/logs', async (req: Request, res: Response) => {
+    try {
+      const { event, username, name, role, whatsapp, userAgent, ip, details } = req.body;
+      if (!username) {
+        res.status(400).json({ success: false, error: 'Matrícula/Usuário é obrigatório para o log.' });
+        return;
+      }
+
+      const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket.remoteAddress || ip || 'Local';
+      const clientAgent = userAgent || (req.headers['user-agent'] as string) || 'Navegador Web';
+      const isMobile = /mobile|android|iphone|ipad|ipod/i.test(clientAgent);
+
+      const createdLog = await appendServerLogAsync({
+        event: event || 'LOGIN',
+        username,
+        name,
+        role,
+        whatsapp,
+        ip: clientIp,
+        userAgent: clientAgent,
+        deviceType: isMobile ? 'mobile' : 'desktop',
+        details,
+      });
+
+      // Synchronize with Google Spreadsheet tab LOGS_ACESSO
+      syncLogToGoogleSheetWebhook(createdLog).catch(() => {});
+
+      res.json({ success: true, log: createdLog });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post('/api/logs/restore-from-sheet', async (req: Request, res: Response) => {
+    try {
+      const webhookUrl = req.body?.webhookUrl || (req.query?.webhookUrl as string) || undefined;
+      const result = await restoreLogsFromSpreadsheetAsync(webhookUrl);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.delete('/api/logs', async (req: Request, res: Response) => {
+    try {
+      await clearServerLogsAsync();
+      res.json({ success: true, message: 'Histórico de logs limpo com sucesso.' });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }

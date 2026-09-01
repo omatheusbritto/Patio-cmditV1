@@ -278,8 +278,10 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
       const result: ShareResult = await shareToWhatsApp({
         photoDataUrl,
         dashboardPhotoDataUrl: dashboardPhotoUrl,
+        documentPhotoDataUrl: documentPhotoUrl,
         description: messageText,
         plate: cleanPlate,
+        operationType,
       });
 
       if (result.success) {
@@ -316,20 +318,23 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
   // Download image helper
   const handleDownloadPhoto = () => {
     const timestamp = Date.now();
+    const secondPhotoUrl = documentPhotoUrl || dashboardPhotoUrl;
+    const isDoc = Boolean(documentPhotoUrl);
+
     const link1 = document.createElement('a');
     link1.href = photoDataUrl;
-    link1.download = dashboardPhotoUrl
+    link1.download = secondPhotoUrl
       ? `1_placa_${cleanPlate}_${timestamp}.jpg`
       : `registro_${cleanPlate}_${timestamp}.jpg`;
     document.body.appendChild(link1);
     link1.click();
     document.body.removeChild(link1);
 
-    if (dashboardPhotoUrl) {
+    if (secondPhotoUrl) {
       setTimeout(() => {
         const link2 = document.createElement('a');
-        link2.href = dashboardPhotoUrl;
-        link2.download = `2_painel_${cleanPlate}_${timestamp}.jpg`;
+        link2.href = secondPhotoUrl;
+        link2.download = `2_${isDoc ? 'documento' : 'painel'}_${cleanPlate}_${timestamp}.jpg`;
         document.body.appendChild(link2);
         link2.click();
         document.body.removeChild(link2);
@@ -398,13 +403,13 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
 
       {/* Main Review Card */}
       <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
-        {/* Photo Container - Supports Single Photo or Dual Photo (Plate + Dashboard) */}
-        {dashboardPhotoUrl ? (
+        {/* Photo Container - Supports Single Photo or Dual Photo (Plate + Document / Dashboard) */}
+        {(dashboardPhotoUrl || documentPhotoUrl) ? (
           <div className="p-3 bg-neutral-950 flex flex-col gap-2">
             <div className="flex items-center justify-between px-1">
               <span className="text-[10px] font-black text-cyan-400 uppercase tracking-wider flex items-center gap-1">
                 <Camera className="w-3.5 h-3.5" />
-                2 Fotos Registradas
+                2 Fotos Registradas ({documentPhotoUrl ? 'Placa + Documento CRLV' : 'Placa + Painel'})
               </span>
               <div className="bg-white/95 backdrop-blur-sm px-2.5 py-0.5 rounded-lg border border-neutral-300 flex items-center gap-1.5">
                 <span className="text-[9px] font-bold text-neutral-500 uppercase">Placa:</span>
@@ -447,23 +452,27 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
                 )}
               </div>
 
-              {/* Photo 2: Dashboard */}
+              {/* Photo 2: Document CRLV or Dashboard */}
               <div className="relative aspect-video rounded-xl overflow-hidden border border-cyan-800/80 bg-neutral-900 group">
                 <img
-                  src={dashboardPhotoUrl}
-                  alt="Painel"
+                  src={documentPhotoUrl || dashboardPhotoUrl}
+                  alt={documentPhotoUrl ? 'Documento CRLV' : 'Painel'}
                   className="w-full h-full object-cover"
                   referrerPolicy="no-referrer"
                 />
-                <span className="absolute bottom-1 left-1 text-[9px] font-bold bg-cyan-950/90 text-cyan-300 px-1.5 py-0.5 rounded border border-cyan-500/30">
-                  2. Painel
+                <span className={`absolute bottom-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                  documentPhotoUrl 
+                    ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/30' 
+                    : 'bg-cyan-950/90 text-cyan-300 border-cyan-500/30'
+                }`}>
+                  {documentPhotoUrl ? '2. Documento (CRLV)' : '2. Painel'}
                 </span>
                 {onRetakeDashboardPhoto && (
                   <button
                     type="button"
                     onClick={onRetakeDashboardPhoto}
                     className="absolute top-1 right-1 p-1 bg-cyan-950/80 text-cyan-300 rounded hover:bg-cyan-900 text-[10px] flex items-center gap-0.5"
-                    title="Refazer foto do painel"
+                    title="Refazer foto"
                   >
                     <RotateCcw className="w-3 h-3" />
                   </button>

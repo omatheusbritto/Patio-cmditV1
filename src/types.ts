@@ -14,7 +14,24 @@ export type VehicleFleetType = 'GF' | 'RAC' | 'OUTROS' | string;
 
 export type VehicleStatus = 'parked' | 'released';
 
-export type NavTab = 'register' | 'patio' | 'history';
+export type NavTab = 'register' | 'patio' | 'history' | 'logs';
+
+export type LogEventType = 'LOGIN' | 'LOGOUT' | 'EXPIRADO';
+
+export interface AccessLog {
+  id: string;
+  timestamp: string; // ISO string
+  dateFormatted?: string; // dd/MM/yyyy HH:mm:ss
+  event: LogEventType;
+  username: string;
+  name: string;
+  role: UserRole;
+  whatsapp?: string;
+  ip?: string;
+  userAgent?: string;
+  deviceType?: 'mobile' | 'desktop' | 'tablet' | 'outro';
+  details?: string;
+}
 
 export type Step =
   | 'home'
@@ -123,6 +140,7 @@ export interface UserAccount {
   username: string; // Matrícula ou nome de usuário
   name: string;
   role: UserRole;
+  whatsapp?: string; // Número do WhatsApp (opcional)
   password?: string;
   createdAt: string;
   lastLogin?: string;

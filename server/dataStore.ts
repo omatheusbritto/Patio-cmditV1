@@ -18,6 +18,7 @@ export interface UserAccount {
   username: string;
   name: string;
   role: UserRole;
+  whatsapp?: string;
   password?: string;
   createdAt: string;
   lastLogin?: string;
@@ -28,6 +29,24 @@ const DATA_DIR = path.join(process.cwd(), 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const RECORDS_FILE = path.join(DATA_DIR, 'records.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+const LOGS_FILE = path.join(DATA_DIR, 'access_logs.json');
+
+export type LogEventType = 'LOGIN' | 'LOGOUT' | 'EXPIRADO';
+
+export interface AccessLog {
+  id: string;
+  timestamp: string; // ISO string
+  dateFormatted?: string; // dd/MM/yyyy HH:mm:ss
+  event: LogEventType;
+  username: string;
+  name: string;
+  role: UserRole;
+  whatsapp?: string;
+  ip?: string;
+  userAgent?: string;
+  deviceType?: 'mobile' | 'desktop' | 'tablet' | 'outro';
+  details?: string;
+}
 
 export interface AppSettings {
   sheetsWebhookUrl?: string | null;
@@ -66,7 +85,20 @@ function ensureDataDirectory() {
 // USERS STORE (POSTGRESQL -> MYSQL -> JSON)
 // ----------------------------------------------------
 export async function loadServerUsersAsync(): Promise<UserAccount[]> {
-  // 1. Try PostgreSQL
+  // 1. Check Google Drive Spreadsheet directly as PRIMARY Source of Truth if webhook URL is configured
+  try {
+    const settings = await loadServerSettingsAsync();
+    if (settings.sheetsWebhookUrl && settings.sheetsWebhookUrl.startsWith('http')) {
+      const restored = await restoreUsersFromSpreadsheetAsync(settings.sheetsWebhookUrl);
+      if (restored.success && Array.isArray(restored.users) && restored.users.length > 0) {
+        return restored.users;
+      }
+    }
+  } catch (sheetErr: any) {
+    console.warn('Primary Google Sheets users fetch notice:', sheetErr.message);
+  }
+
+  // 2. Local database cache fallback (PostgreSQL / MySQL / JSON)
   const pg = getPgPool();
   if (pg) {
     try {
@@ -83,7 +115,7 @@ export async function loadServerUsersAsync(): Promise<UserAccount[]> {
           createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
           isActive: Boolean(r.is_active === true || r.is_active === 1),
         }));
-        saveServerUsers(users); // Keep local cache
+        saveServerUsers(users);
         return users;
       }
     } catch (err) {
@@ -91,7 +123,7 @@ export async function loadServerUsersAsync(): Promise<UserAccount[]> {
     }
   }
 
-  // 2. Try MySQL / MariaDB
+  // 3. MySQL / MariaDB fallback
   const mysqlPool = getDbPool();
   if (mysqlPool) {
     try {
@@ -117,6 +149,187 @@ export async function loadServerUsersAsync(): Promise<UserAccount[]> {
   }
 
   return loadServerUsers();
+}
+
+export async function restoreUsersFromSpreadsheetAsync(
+  customWebhookUrl?: string
+): Promise<{ success: boolean; totalRestored: number; users: UserAccount[]; error?: string }> {
+  try {
+    const settings = await loadServerSettingsAsync();
+    const webhookUrl = customWebhookUrl || settings.sheetsWebhookUrl;
+
+    if (!webhookUrl || !webhookUrl.startsWith('http')) {
+      return {
+        success: false,
+        totalRestored: 0,
+        users: loadServerUsers(),
+        error: 'Nenhuma URL de Webhook da planilha configurada.',
+      };
+    }
+
+    // Call doGet on the Google Apps Script Webhook
+    const resp = await fetch(webhookUrl, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+      redirect: 'follow',
+    });
+
+    if (!resp.ok) {
+      return {
+        success: false,
+        totalRestored: 0,
+        users: loadServerUsers(),
+        error: `Servidor da planilha respondeu com status HTTP ${resp.status}`,
+      };
+    }
+
+    const data = await resp.json().catch(() => null);
+    if (!data || !data.tabs) {
+      return {
+        success: false,
+        totalRestored: 0,
+        users: loadServerUsers(),
+        error: 'Formato de resposta da planilha inválido ou sem abas.',
+      };
+    }
+
+    // Find the Users tab (e.g. "👥 Usuários (CMDIT)", "USUARIOS_CMDIT", or tabs with "usuari")
+    let userTab: any = null;
+    for (const [tabKey, tabObj] of Object.entries<any>(data.tabs)) {
+      const lower = tabKey.toLowerCase();
+      if (lower.includes('usuari') || lower.includes('operador') || lower.includes('cmdit')) {
+        userTab = tabObj;
+        break;
+      }
+    }
+
+    if (!userTab || !Array.isArray(userTab.rows) || userTab.rows.length === 0) {
+      return {
+        success: true,
+        totalRestored: 0,
+        users: loadServerUsers(),
+        error: 'Nenhum operador encontrado na aba de usuários da planilha.',
+      };
+    }
+
+    const currentUsers = loadServerUsers();
+    const restoredUsers: UserAccount[] = [...currentUsers];
+    let addedCount = 0;
+
+    const parseRole = (rawRole: string): UserRole => {
+      const r = (rawRole || '').toLowerCase();
+      if (r.includes('master') || r.includes('admin')) return 'master';
+      if (r.includes('51') || r.includes('qualidade')) return 'qualidade_51';
+      if (r.includes('pdc') || r.includes('fila')) return 'pdc';
+      if (r.includes('combust') || r.includes('abastec')) return 'combustivel';
+      if (r.includes('entrada') || r.includes('saida') || r.includes('saída')) return 'entrada_saida';
+      if (r.includes('vistoria')) return 'vistoriador';
+      if (r.includes('motor')) return 'motorista';
+      if (r.includes('patio') || r.includes('pátio')) return 'patio';
+      return 'operador';
+    };
+
+    for (const row of userTab.rows) {
+      // Look for columns: Username, Name, Role, Whatsapp, Password, Status
+      const values = Object.values(row).map((v) => String(v || '').trim());
+      // Typically: Col 1: Date, Col 2: Username, Col 3: Name, Col 4: Role, Col 5: Whatsapp/Contato, Col 6: Password, Col 7: Status
+      let rowUsername = '';
+      let rowName = '';
+      let rowRole = 'operador';
+      let rowWhatsapp = '';
+      let rowPassword = '';
+      let rowIsActive = true;
+
+      // Extract by keys or positional values
+      for (const [k, v] of Object.entries<any>(row)) {
+        const keyLower = k.toLowerCase();
+        const strVal = String(v || '').trim();
+        if (keyLower.includes('matr') || keyLower.includes('usuário') || keyLower.includes('usuario') || keyLower.includes('login') || keyLower === 'col_2') {
+          if (strVal && !rowUsername) rowUsername = strVal.toLowerCase();
+        } else if (keyLower.includes('nome') || keyLower === 'col_3') {
+          if (strVal && !rowName) rowName = strVal;
+        } else if (keyLower.includes('função') || keyLower.includes('cargo') || keyLower.includes('role') || keyLower === 'col_4') {
+          if (strVal) rowRole = strVal;
+        } else if (keyLower.includes('whats') || keyLower.includes('celular') || keyLower.includes('telefone') || keyLower.includes('contato') || keyLower.includes('tel')) {
+          if (strVal && strVal !== '-') rowWhatsapp = strVal;
+        } else if (keyLower.includes('senha') || keyLower.includes('password')) {
+          if (strVal && !rowPassword) rowPassword = strVal;
+        } else if (keyLower.includes('status')) {
+          if (strVal.toUpperCase() === 'BLOQUEADO' || strVal.toUpperCase() === 'INATIVO') {
+            rowIsActive = false;
+          }
+        }
+      }
+
+      // Fallback by position if headers were generic
+      if (!rowUsername && values[1] && values[1] !== '_rowIndex') {
+        rowUsername = values[1].toLowerCase();
+        rowName = values[2] || rowUsername;
+        rowRole = values[3] || 'operador';
+        // If 8 columns: [date, user, name, role, whats, pass, status, lastAccess]
+        if (values.length >= 7) {
+          rowWhatsapp = values[4] && values[4] !== '-' ? values[4] : '';
+          rowPassword = values[5] || '';
+          rowIsActive = (values[6] || '').toUpperCase() !== 'BLOQUEADO';
+        } else {
+          rowPassword = values[4] || '';
+          rowIsActive = (values[5] || '').toUpperCase() !== 'BLOQUEADO';
+        }
+      }
+
+      if (rowUsername && rowUsername !== 'mastercmdit' && rowUsername.length >= 2) {
+        const cleanUser = rowUsername.toLowerCase().trim();
+        const existingIdx = restoredUsers.findIndex((u) => u.username.toLowerCase() === cleanUser);
+        const parsedAccount: UserAccount = {
+          id: existingIdx !== -1 ? restoredUsers[existingIdx].id : `user-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          username: cleanUser,
+          name: rowName || cleanUser.toUpperCase(),
+          role: parseRole(rowRole),
+          whatsapp: rowWhatsapp || (existingIdx !== -1 ? restoredUsers[existingIdx].whatsapp : undefined),
+          password: rowPassword || (existingIdx !== -1 ? restoredUsers[existingIdx].password : '123456'),
+          createdAt: new Date().toISOString(),
+          isActive: rowIsActive,
+        };
+
+        if (existingIdx !== -1) {
+          restoredUsers[existingIdx] = { ...restoredUsers[existingIdx], ...parsedAccount };
+        } else {
+          restoredUsers.push(parsedAccount);
+          addedCount++;
+        }
+
+        // Also persist to PostgreSQL / MariaDB if active
+        const pg = getPgPool();
+        if (pg) {
+          pg.query(
+            `INSERT INTO users (id, username, password_hash, full_name, role, is_active)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT (username) DO UPDATE SET
+               password_hash = EXCLUDED.password_hash,
+               full_name = EXCLUDED.full_name,
+               role = EXCLUDED.role,
+               is_active = EXCLUDED.is_active`,
+            [parsedAccount.id, parsedAccount.username, parsedAccount.password, parsedAccount.name, parsedAccount.role, parsedAccount.isActive]
+          ).catch(() => {});
+        }
+      }
+    }
+
+    saveServerUsers(restoredUsers);
+    return {
+      success: true,
+      totalRestored: restoredUsers.length,
+      users: restoredUsers,
+    };
+  } catch (err: any) {
+    console.warn('Error in restoreUsersFromSpreadsheetAsync:', err.message);
+    return {
+      success: false,
+      totalRestored: 0,
+      users: loadServerUsers(),
+      error: err.message,
+    };
+  }
 }
 
 export function loadServerUsers(): UserAccount[] {
@@ -157,7 +370,8 @@ export async function createServerUserAsync(
   username: string,
   name: string,
   password: string,
-  role: UserRole = 'operador'
+  role: UserRole = 'operador',
+  whatsapp?: string
 ): Promise<{ success: boolean; error?: string; user?: UserAccount }> {
   const cleanUsername = username.trim().toLowerCase();
   if (!cleanUsername) return { success: false, error: 'Usuário / Matrícula é obrigatório.' };
@@ -165,11 +379,13 @@ export async function createServerUserAsync(
   if (!password.trim()) return { success: false, error: 'Senha é obrigatória.' };
 
   const userId = `user-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const cleanWhatsapp = whatsapp ? whatsapp.trim() : undefined;
   const newUser: UserAccount = {
     id: userId,
     username: cleanUsername,
     name: name.trim(),
     role,
+    whatsapp: cleanWhatsapp || undefined,
     password: password.trim(),
     createdAt: new Date().toISOString(),
     isActive: true,
@@ -211,10 +427,13 @@ export async function createServerUserAsync(
 
   // Also update local storage
   const users = loadServerUsers();
-  if (!users.some((u) => u.username.toLowerCase() === cleanUsername)) {
+  const existingIdx = users.findIndex((u) => u.username.toLowerCase() === cleanUsername);
+  if (existingIdx !== -1) {
+    users[existingIdx] = { ...users[existingIdx], ...newUser };
+  } else {
     users.push(newUser);
-    saveServerUsers(users);
   }
+  saveServerUsers(users);
 
   return { success: true, user: newUser };
 }
@@ -223,7 +442,8 @@ export function createServerUser(
   username: string,
   name: string,
   password: string,
-  role: UserRole = 'operador'
+  role: UserRole = 'operador',
+  whatsapp?: string
 ): { success: boolean; error?: string; user?: UserAccount } {
   const cleanUsername = username.trim().toLowerCase();
   const users = loadServerUsers();
@@ -237,11 +457,13 @@ export function createServerUser(
     return { success: false, error: `O usuário / matrícula "${username}" já existe.` };
   }
 
+  const cleanWhatsapp = whatsapp ? whatsapp.trim() : undefined;
   const newUser: UserAccount = {
     id: `user-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
     username: cleanUsername,
     name: name.trim(),
     role,
+    whatsapp: cleanWhatsapp || undefined,
     password: password.trim(),
     createdAt: new Date().toISOString(),
     isActive: true,
@@ -505,7 +727,25 @@ export async function authenticateServerUserAsync(
     }
   }
 
-  return authenticateServerUser(username, password);
+  const localAuth = authenticateServerUser(username, password);
+  if (localAuth.success) {
+    return localAuth;
+  }
+
+  // If local auth failed, try restoring users from linked Google Spreadsheet if configured
+  try {
+    const settings = await loadServerSettingsAsync();
+    if (settings.sheetsWebhookUrl && settings.sheetsWebhookUrl.startsWith('http')) {
+      const restored = await restoreUsersFromSpreadsheetAsync(settings.sheetsWebhookUrl);
+      if (restored.success) {
+        return authenticateServerUser(username, password);
+      }
+    }
+  } catch (err: any) {
+    console.warn('Auto-restore from spreadsheet on login attempt failed:', err.message);
+  }
+
+  return localAuth;
 }
 
 export function authenticateServerUser(
@@ -541,6 +781,96 @@ export function authenticateServerUser(
 // RECORDS STORE (SHARED FLEET HISTORY ACROSS DEVICES)
 // ----------------------------------------------------
 export async function loadServerRecordsAsync(): Promise<any[]> {
+  // 1. If Google Drive Spreadsheet Webhook is configured, read latest records directly from the spreadsheet tabs
+  try {
+    const settings = await loadServerSettingsAsync();
+    if (settings.sheetsWebhookUrl && settings.sheetsWebhookUrl.startsWith('http')) {
+      const resp = await fetch(settings.sheetsWebhookUrl, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        redirect: 'follow',
+      });
+      if (resp.ok) {
+        const sheetData = await resp.json().catch(() => null);
+        if (sheetData && sheetData.tabs) {
+          const sheetRecords: any[] = [];
+          for (const [tabKey, tabObj] of Object.entries<any>(sheetData.tabs)) {
+            const lower = tabKey.toLowerCase();
+            // Skip users tab
+            if (lower.includes('usuari') || lower.includes('operador') || lower.includes('cmdit')) {
+              continue;
+            }
+            if (Array.isArray(tabObj.rows)) {
+              for (const row of tabObj.rows) {
+                const values = Object.values(row).map((v) => String(v || '').trim());
+                // Look for plate, date, operator
+                let rPlate = '';
+                let rDate = '';
+                let rTime = '';
+                let rCondutor = '';
+                let rKm = '';
+                let rFuel = '';
+                let rDestino = '';
+                let rOperator = '';
+                let rObs = '';
+
+                for (const [k, v] of Object.entries<any>(row)) {
+                  const kLow = k.toLowerCase();
+                  const str = String(v || '').trim();
+                  if (kLow.includes('plac') || kLow.includes('veic')) rPlate = str;
+                  else if (kLow.includes('data') || kLow === 'dt') rDate = str;
+                  else if (kLow.includes('hora') || kLow === 'hr') rTime = str;
+                  else if (kLow.includes('condut') || kLow.includes('motor')) rCondutor = str;
+                  else if (kLow.includes('km') || kLow.includes('odomet')) rKm = str;
+                  else if (kLow.includes('combust') || kLow.includes('nivel') || kLow.includes('nível')) rFuel = str;
+                  else if (kLow.includes('dest')) rDestino = str;
+                  else if (kLow.includes('operad')) rOperator = str;
+                  else if (kLow.includes('obs')) rObs = str;
+                }
+
+                if (!rPlate && values[2] && values[2] !== '_rowIndex') {
+                  rDate = values[0] || '';
+                  rTime = values[1] || '';
+                  rPlate = values[2] || '';
+                }
+
+                if (rPlate) {
+                  let opType = 'entrada';
+                  if (lower.includes('said') || lower.includes('saíd')) opType = 'saida';
+                  else if (lower.includes('combust') || lower.includes('abastec')) opType = 'abastecimento';
+                  else if (lower.includes('51') || lower.includes('qualidade')) opType = 'qualidade_51';
+                  else if (lower.includes('pdc') || lower.includes('fila')) opType = 'pdc';
+
+                  sheetRecords.push({
+                    id: `sheet-${rPlate}-${rDate}-${rTime}-${Math.random().toString(36).substring(2, 5)}`,
+                    plate: rPlate.toUpperCase(),
+                    operationType: opType,
+                    entryTime: rDate && rTime ? `${rDate} ${rTime}` : rDate || new Date().toISOString(),
+                    driverName: rCondutor || '-',
+                    odometer: rKm || '-',
+                    fuelLevel: rFuel || '-',
+                    destination: rDestino || '-',
+                    operatorName: rOperator || 'OPERADOR',
+                    notes: rObs || '',
+                    status: opType === 'saida' ? 'outside' : 'inside',
+                  });
+                }
+              }
+            }
+          }
+          if (sheetRecords.length > 0) {
+            // Sort by most recent
+            sheetRecords.reverse();
+            saveServerRecords(sheetRecords);
+            return sheetRecords;
+          }
+        }
+      }
+    }
+  } catch (sheetErr: any) {
+    console.warn('Google Sheets records load notice:', sheetErr.message);
+  }
+
   const pg = getPgPool();
   if (pg) {
     try {
@@ -855,5 +1185,376 @@ export function saveServerSettings(newSettings: Partial<AppSettings>): AppSettin
   } catch (err) {
     console.error('Error saving settings file:', err);
     return loadServerSettings();
+  }
+}
+
+// ----------------------------------------------------
+// ACCESS & AUDIT LOGS STORE (LOGIN / LOGOUT / TRACKING)
+// ----------------------------------------------------
+
+export function formatBrazilianDate(isoOrDate: string | Date = new Date()): string {
+  const d = typeof isoOrDate === 'string' ? new Date(isoOrDate) : isoOrDate;
+  if (isNaN(d.getTime())) return '-';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const day = pad(d.getDate());
+  const month = pad(d.getMonth() + 1);
+  const year = d.getFullYear();
+  const hours = pad(d.getHours());
+  const min = pad(d.getMinutes());
+  const sec = pad(d.getSeconds());
+  return `${day}/${month}/${year} ${hours}:${min}:${sec}`;
+}
+
+export function loadServerLogs(): AccessLog[] {
+  try {
+    ensureDataDirectory();
+    if (!fs.existsSync(LOGS_FILE)) {
+      fs.writeFileSync(LOGS_FILE, JSON.stringify([], null, 2), 'utf-8');
+      return [];
+    }
+    const raw = fs.readFileSync(LOGS_FILE, 'utf-8');
+    const parsed: AccessLog[] = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    console.error('Error loading access logs file:', err);
+    return [];
+  }
+}
+
+export function saveServerLogs(logs: AccessLog[]): void {
+  try {
+    ensureDataDirectory();
+    // Keep max 2000 recent logs in local storage
+    const trimmed = logs.slice(0, 2000);
+    fs.writeFileSync(LOGS_FILE, JSON.stringify(trimmed, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Error saving access logs file:', err);
+  }
+}
+
+export async function loadServerLogsAsync(): Promise<AccessLog[]> {
+  const pg = getPgPool();
+  if (pg) {
+    try {
+      const res = await pg.query(
+        'SELECT id, timestamp, date_formatted, event, username, full_name, role, whatsapp, ip, user_agent, device_type, details FROM access_logs ORDER BY created_at DESC LIMIT 1000'
+      );
+      if (res && Array.isArray(res.rows) && res.rows.length > 0) {
+        const mapped: AccessLog[] = res.rows.map((r) => ({
+          id: String(r.id),
+          timestamp: String(r.timestamp),
+          dateFormatted: r.date_formatted || formatBrazilianDate(r.timestamp),
+          event: (r.event as LogEventType) || 'LOGIN',
+          username: String(r.username),
+          name: String(r.full_name || r.username),
+          role: (r.role as UserRole) || 'operador',
+          whatsapp: r.whatsapp ? String(r.whatsapp) : undefined,
+          ip: r.ip ? String(r.ip) : undefined,
+          userAgent: r.user_agent ? String(r.user_agent) : undefined,
+          deviceType: r.device_type as any,
+          details: r.details ? String(r.details) : undefined,
+        }));
+        saveServerLogs(mapped);
+        return mapped;
+      }
+    } catch (err: any) {
+      console.warn('PostgreSQL logs load failed, falling back to JSON:', err.message);
+    }
+  }
+
+  const mysqlPool = getDbPool();
+  if (mysqlPool) {
+    try {
+      const [rows]: any = await mysqlPool.query(
+        'SELECT id, timestamp, date_formatted, event, username, full_name, role, whatsapp, ip, user_agent, device_type, details FROM access_logs ORDER BY created_at DESC LIMIT 1000'
+      );
+      if (Array.isArray(rows) && rows.length > 0) {
+        const mapped: AccessLog[] = rows.map((r: any) => ({
+          id: String(r.id),
+          timestamp: String(r.timestamp),
+          dateFormatted: r.date_formatted || formatBrazilianDate(r.timestamp),
+          event: (r.event as LogEventType) || 'LOGIN',
+          username: String(r.username),
+          name: String(r.full_name || r.username),
+          role: (r.role as UserRole) || 'operador',
+          whatsapp: r.whatsapp ? String(r.whatsapp) : undefined,
+          ip: r.ip ? String(r.ip) : undefined,
+          userAgent: r.user_agent ? String(r.user_agent) : undefined,
+          deviceType: r.device_type as any,
+          details: r.details ? String(r.details) : undefined,
+        }));
+        saveServerLogs(mapped);
+        return mapped;
+      }
+    } catch (err: any) {
+      console.warn('MariaDB logs load failed, falling back to JSON:', err.message);
+    }
+  }
+
+  return loadServerLogs();
+}
+
+export async function appendServerLogAsync(logInput: {
+  event: LogEventType;
+  username: string;
+  name?: string;
+  role?: UserRole;
+  whatsapp?: string;
+  ip?: string;
+  userAgent?: string;
+  deviceType?: 'mobile' | 'desktop' | 'tablet' | 'outro';
+  details?: string;
+}): Promise<AccessLog> {
+  const nowIso = new Date().toISOString();
+  const dateFormatted = formatBrazilianDate(nowIso);
+  const logId = `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+  // Determine user details if not provided
+  let fullName = logInput.name;
+  let userRole: UserRole = logInput.role || 'operador';
+  let userWhatsapp = logInput.whatsapp;
+
+  if (!fullName) {
+    const users = loadServerUsers();
+    const foundUser = users.find((u) => u.username.toLowerCase() === logInput.username.toLowerCase());
+    if (foundUser) {
+      fullName = foundUser.name;
+      userRole = foundUser.role;
+      userWhatsapp = userWhatsapp || foundUser.whatsapp;
+    } else {
+      fullName = logInput.username;
+    }
+  }
+
+  const accessLog: AccessLog = {
+    id: logId,
+    timestamp: nowIso,
+    dateFormatted,
+    event: logInput.event,
+    username: logInput.username.toLowerCase().trim(),
+    name: fullName || logInput.username,
+    role: userRole,
+    whatsapp: userWhatsapp && userWhatsapp !== '-' ? userWhatsapp : undefined,
+    ip: logInput.ip,
+    userAgent: logInput.userAgent,
+    deviceType: logInput.deviceType,
+    details: logInput.details,
+  };
+
+  // 1. PostgreSQL Save
+  const pg = getPgPool();
+  if (pg) {
+    try {
+      await pg.query(
+        `INSERT INTO access_logs (id, timestamp, date_formatted, event, username, full_name, role, whatsapp, ip, user_agent, device_type, details)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+        [
+          accessLog.id,
+          accessLog.timestamp,
+          accessLog.dateFormatted,
+          accessLog.event,
+          accessLog.username,
+          accessLog.name,
+          accessLog.role,
+          accessLog.whatsapp || null,
+          accessLog.ip || null,
+          accessLog.userAgent || null,
+          accessLog.deviceType || null,
+          accessLog.details || null,
+        ]
+      );
+    } catch (err: any) {
+      console.warn('PostgreSQL log insert error:', err.message);
+    }
+  }
+
+  // 2. MySQL / MariaDB Save
+  const mysqlPool = getDbPool();
+  if (mysqlPool) {
+    try {
+      await mysqlPool.query(
+        `INSERT INTO access_logs (id, timestamp, date_formatted, event, username, full_name, role, whatsapp, ip, user_agent, device_type, details)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          accessLog.id,
+          accessLog.timestamp,
+          accessLog.dateFormatted,
+          accessLog.event,
+          accessLog.username,
+          accessLog.name,
+          accessLog.role,
+          accessLog.whatsapp || null,
+          accessLog.ip || null,
+          accessLog.userAgent || null,
+          accessLog.deviceType || null,
+          accessLog.details || null,
+        ]
+      );
+    } catch (err: any) {
+      console.warn('MariaDB log insert error:', err.message);
+    }
+  }
+
+  // 3. Local JSON Cache (Unshift to top)
+  const currentLogs = loadServerLogs();
+  currentLogs.unshift(accessLog);
+  saveServerLogs(currentLogs);
+
+  return accessLog;
+}
+
+export async function clearServerLogsAsync(): Promise<void> {
+  saveServerLogs([]);
+  const pg = getPgPool();
+  if (pg) {
+    pg.query('TRUNCATE TABLE access_logs').catch((e) => console.warn(e.message));
+  }
+  const mysqlPool = getDbPool();
+  if (mysqlPool) {
+    mysqlPool.query('TRUNCATE TABLE access_logs').catch((e) => console.warn(e.message));
+  }
+}
+
+export async function restoreLogsFromSpreadsheetAsync(
+  customWebhookUrl?: string
+): Promise<{ success: boolean; totalRestored: number; logs: AccessLog[]; error?: string }> {
+  try {
+    const settings = await loadServerSettingsAsync();
+    const webhookUrl = customWebhookUrl || settings.sheetsWebhookUrl;
+
+    if (!webhookUrl || !webhookUrl.startsWith('http')) {
+      return {
+        success: false,
+        totalRestored: 0,
+        logs: loadServerLogs(),
+        error: 'Nenhuma URL de Webhook da planilha configurada.',
+      };
+    }
+
+    const resp = await fetch(webhookUrl, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      redirect: 'follow',
+    });
+
+    if (!resp.ok) {
+      return {
+        success: false,
+        totalRestored: 0,
+        logs: loadServerLogs(),
+        error: `Servidor da planilha respondeu com status HTTP ${resp.status}`,
+      };
+    }
+
+    const data = await resp.json().catch(() => null);
+    if (!data || !data.tabs) {
+      return {
+        success: false,
+        totalRestored: 0,
+        logs: loadServerLogs(),
+        error: 'Formato de resposta da planilha inválido ou sem abas.',
+      };
+    }
+
+    // Find the Logs tab (e.g. "LOGS_ACESSO", "LOGS_AUDITORIA", or containing "log")
+    let logTab: any = null;
+    for (const [tabKey, tabObj] of Object.entries<any>(data.tabs)) {
+      const nameUpper = String(tabKey || '').toUpperCase();
+      if (nameUpper.includes('LOG') || nameUpper.includes('ACESSO') || nameUpper.includes('AUDIT')) {
+        logTab = tabObj;
+        break;
+      }
+    }
+
+    if (!logTab || !Array.isArray(logTab.rows) || logTab.rows.length === 0) {
+      return {
+        success: true,
+        totalRestored: 0,
+        logs: loadServerLogs(),
+        error: 'Nenhum registro de log encontrado na planilha.',
+      };
+    }
+
+    const restoredLogs: AccessLog[] = [];
+    for (const row of logTab.rows) {
+      // Columns: DATA/HORA, EVENTO, MATRÍCULA / USUÁRIO, NOME COMPLETO, FUNÇÃO / CARGO, WHATSAPP, DISPOSITIVO / NAVEGADOR, OBSERVAÇÕES / DETALHES
+      let rowDate = '';
+      let rowEvent: LogEventType = 'LOGIN';
+      let rowUsername = '';
+      let rowName = '';
+      let rowRole: UserRole = 'operador';
+      let rowWhatsapp = '';
+      let rowDevice = '';
+      let rowDetails = '';
+
+      for (const [key, val] of Object.entries(row)) {
+        if (key.startsWith('_')) continue;
+        const normKey = key.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const strVal = String(val || '').trim();
+
+        if (normKey.includes('data') || normKey.includes('hora') || normKey.includes('timestamp')) {
+          rowDate = strVal;
+        } else if (normKey.includes('evento') || normKey.includes('tipo') || normKey.includes('acao')) {
+          const up = strVal.toUpperCase();
+          if (up.includes('LOGOUT') || up.includes('SAIDA') || up.includes('SAIR')) rowEvent = 'LOGOUT';
+          else if (up.includes('EXPIR')) rowEvent = 'EXPIRADO';
+          else rowEvent = 'LOGIN';
+        } else if (normKey.includes('matricula') || normKey.includes('usuario') || normKey.includes('user') || normKey.includes('login')) {
+          rowUsername = strVal.toLowerCase();
+        } else if (normKey.includes('nome')) {
+          rowName = strVal;
+        } else if (normKey.includes('funcao') || normKey.includes('cargo') || normKey.includes('perfil') || normKey.includes('role')) {
+          const rLower = strVal.toLowerCase();
+          if (rLower.includes('master')) rowRole = 'master';
+          else if (rLower.includes('51') || rLower.includes('qualidade')) rowRole = 'qualidade_51';
+          else if (rLower.includes('pdc')) rowRole = 'pdc';
+          else if (rLower.includes('combustivel') || rLower.includes('abastec')) rowRole = 'combustivel';
+          else if (rLower.includes('entrada') || rLower.includes('saida')) rowRole = 'entrada_saida';
+          else if (rLower.includes('patio')) rowRole = 'patio';
+          else if (rLower.includes('vistoria')) rowRole = 'vistoriador';
+          else if (rLower.includes('motor')) rowRole = 'motorista';
+          else rowRole = 'operador';
+        } else if (normKey.includes('whats') || normKey.includes('celular') || normKey.includes('telefone') || normKey.includes('contato')) {
+          rowWhatsapp = strVal !== '-' ? strVal : '';
+        } else if (normKey.includes('dispositivo') || normKey.includes('navegador') || normKey.includes('agent') || normKey.includes('ip')) {
+          rowDevice = strVal;
+        } else if (normKey.includes('obs') || normKey.includes('detalh') || normKey.includes('motivo')) {
+          rowDetails = strVal;
+        }
+      }
+
+      if (rowUsername) {
+        restoredLogs.push({
+          id: `sheet-log-${Date.now()}-${restoredLogs.length}`,
+          timestamp: new Date().toISOString(),
+          dateFormatted: rowDate || formatBrazilianDate(new Date()),
+          event: rowEvent,
+          username: rowUsername,
+          name: rowName || rowUsername,
+          role: rowRole,
+          whatsapp: rowWhatsapp || undefined,
+          userAgent: rowDevice || undefined,
+          details: rowDetails || undefined,
+        });
+      }
+    }
+
+    if (restoredLogs.length > 0) {
+      saveServerLogs(restoredLogs);
+    }
+
+    return {
+      success: true,
+      totalRestored: restoredLogs.length,
+      logs: restoredLogs,
+    };
+  } catch (err: any) {
+    console.warn('Error in restoreLogsFromSpreadsheetAsync:', err.message);
+    return {
+      success: false,
+      totalRestored: 0,
+      logs: loadServerLogs(),
+      error: err.message,
+    };
   }
 }

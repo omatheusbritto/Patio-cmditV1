@@ -20,8 +20,10 @@ export function dataUrlToFile(dataUrl: string, filename: string): File {
 export interface ShareOptions {
   photoDataUrl?: string;
   dashboardPhotoDataUrl?: string;
+  documentPhotoDataUrl?: string;
   description: string;
   plate: string;
+  operationType?: OperationType;
 }
 
 export interface ShareResult {
@@ -249,36 +251,46 @@ export function openWhatsAppShare(text: string): void {
 
 /**
  * Execute native WhatsApp share with Image file(s) + Text Caption.
- * When both Plate and Dashboard photos are present (e.g. Abastecimento),
+ * When both Plate and Second photo (Document CRLV or Dashboard) are present,
  * it generates a crisp composite image containing BOTH photos side-by-side / stacked
  * with timestamps and labels, ensuring WhatsApp Mobile receives both photos together with 100% reliability.
  */
 export async function shareToWhatsApp(options: ShareOptions): Promise<ShareResult> {
-  const { photoDataUrl, dashboardPhotoDataUrl, description, plate } = options;
+  const { photoDataUrl, dashboardPhotoDataUrl, documentPhotoDataUrl, description, plate, operationType } = options;
   const safePlate = plate ? plate.replace(/[^a-zA-Z0-9]/g, '') : 'veiculo';
   const timestamp = Date.now();
+  const secondPhotoUrl = documentPhotoDataUrl || dashboardPhotoDataUrl;
 
   const files: File[] = [];
 
-  // If we have both photos (Plate and Dashboard), create a combined high-res image
-  if (photoDataUrl && dashboardPhotoDataUrl) {
+  // If we have both photos (Plate and Document/Dashboard), create a combined high-res image
+  if (photoDataUrl && secondPhotoUrl) {
+    const isDoc = Boolean(documentPhotoDataUrl);
+    const opLabel = operationType === 'entrada' 
+      ? 'COMPROVANTE DE ENTRADA' 
+      : operationType === 'saida' 
+        ? 'COMPROVANTE DE SAÍDA' 
+        : isDoc ? 'REGISTRO COM DOCUMENTO' : 'COMPROVANTE DE ABASTECIMENTO';
+
+    const secondTag = isDoc ? '📄 2. DOCUMENTO / CRLV' : '⛽ 2. PAINEL / ODÔMETRO';
+
     try {
       const combinedDataUrl = await combineTwoPhotos({
         photo1Url: photoDataUrl,
-        photo2Url: dashboardPhotoDataUrl,
+        photo2Url: secondPhotoUrl,
         plate: safePlate,
-        operationTitle: 'COMPROVANTE DE ABASTECIMENTO',
+        operationTitle: opLabel,
         tag1: '📸 1. PLACA DO VEÍCULO',
-        tag2: '⛽ 2. PAINEL / ODÔMETRO',
+        tag2: secondTag,
       });
 
-      const filename = `abastecimento_completo_${safePlate}_${timestamp}.jpg`;
+      const filename = `comprovante_duplo_${safePlate}_${timestamp}.jpg`;
       files.push(dataUrlToFile(combinedDataUrl, filename));
     } catch (e) {
       console.warn('Erro ao gerar imagem combinada das 2 fotos:', e);
       // Fallback: push individual files
       files.push(dataUrlToFile(photoDataUrl, `1_placa_${safePlate}_${timestamp}.jpg`));
-      files.push(dataUrlToFile(dashboardPhotoDataUrl, `2_painel_${safePlate}_${timestamp}.jpg`));
+      files.push(dataUrlToFile(secondPhotoUrl, `2_${isDoc ? 'documento' : 'painel'}_${safePlate}_${timestamp}.jpg`));
     }
   } else if (photoDataUrl) {
     try {
@@ -287,12 +299,13 @@ export async function shareToWhatsApp(options: ShareOptions): Promise<ShareResul
     } catch (e) {
       console.warn('Erro ao processar foto da placa para compartilhamento:', e);
     }
-  } else if (dashboardPhotoDataUrl) {
+  } else if (secondPhotoUrl) {
     try {
-      const filename2 = `painel_${safePlate}_${timestamp}.jpg`;
-      files.push(dataUrlToFile(dashboardPhotoDataUrl, filename2));
+      const isDoc = Boolean(documentPhotoDataUrl);
+      const filename2 = `${isDoc ? 'documento' : 'painel'}_${safePlate}_${timestamp}.jpg`;
+      files.push(dataUrlToFile(secondPhotoUrl, filename2));
     } catch (e) {
-      console.warn('Erro ao processar foto do painel para compartilhamento:', e);
+      console.warn('Erro ao processar segunda foto para compartilhamento:', e);
     }
   }
 
@@ -309,8 +322,8 @@ export async function shareToWhatsApp(options: ShareOptions): Promise<ShareResul
         return {
           success: true,
           method: 'web_share_files',
-          message: dashboardPhotoDataUrl
-            ? 'Enviando comprovante com as 2 fotos (Placa e Painel) + legenda para o WhatsApp!'
+          message: secondPhotoUrl
+            ? 'Enviando comprovante com as 2 fotos (Placa + Documento/Painel) + legenda para o WhatsApp!'
             : 'Compartilhado com sucesso via seletor nativo!',
         };
       }

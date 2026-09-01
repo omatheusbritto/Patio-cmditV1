@@ -49,22 +49,93 @@ export function getAllUsers(): UserAccount[] {
 }
 
 /**
+ * Mescla duas listas de usuários sem perder cadastros locais ou do servidor
+ */
+function mergeUsersList(localList: UserAccount[], serverList: UserAccount[]): UserAccount[] {
+  const map = new Map<string, UserAccount>();
+
+  // Primeiro adiciona os locais
+  for (const u of localList) {
+    if (u && u.username) {
+      map.set(u.username.toLowerCase(), u);
+    }
+  }
+
+  // Depois sobrepõe/adiciona os do servidor (que costumam ter IDs e status atualizados)
+  for (const u of serverList) {
+    if (u && u.username) {
+      const existing = map.get(u.username.toLowerCase());
+      map.set(u.username.toLowerCase(), { ...existing, ...u });
+    }
+  }
+
+  // Garante usuário master
+  if (!map.has('mastercmdit')) {
+    map.set('mastercmdit', DEFAULT_MASTER_USER);
+  }
+
+  return Array.from(map.values());
+}
+
+/**
  * Busca a lista atualizada de usuários no servidor central (sincronização multi-dispositivo)
  */
 export async function fetchServerUsers(): Promise<UserAccount[]> {
+  const localUsers = getAllUsers();
+
   try {
     const res = await fetch('/api/users');
     if (res.ok) {
       const data = await res.json();
       if (data.success && Array.isArray(data.users)) {
-        saveUsersList(data.users);
-        return data.users;
+        const merged = mergeUsersList(localUsers, data.users);
+        saveUsersList(merged);
+
+        // Se houver usuários locais que não estão no servidor, sincroniza-os em background
+        const serverUsernames = new Set(data.users.map((u: any) => u.username.toLowerCase()));
+        for (const localU of localUsers) {
+          if (!serverUsernames.has(localU.username.toLowerCase()) && localU.username !== 'mastercmdit') {
+            fetch('/api/users/sync-single', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ user: localU }),
+            }).catch(() => {});
+          }
+        }
+
+        return merged;
       }
     }
   } catch (err) {
     console.warn('Não foi possível sincronizar usuários com o servidor:', err);
   }
-  return getAllUsers();
+  return localUsers;
+}
+
+/**
+ * Restaura todos os usuários diretamente da aba USUARIOS_CMDIT do Google Sheets
+ */
+export async function restoreUsersFromSheetClient(
+  webhookUrl?: string
+): Promise<{ success: boolean; totalRestored?: number; users?: UserAccount[]; error?: string }> {
+  try {
+    const res = await fetch('/api/users/restore-from-sheet', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ webhookUrl }),
+    });
+
+    const data = await res.json();
+    if (data.success && Array.isArray(data.users)) {
+      const localUsers = getAllUsers();
+      const merged = mergeUsersList(localUsers, data.users);
+      saveUsersList(merged);
+      return { success: true, totalRestored: data.totalRestored || data.users.length, users: merged };
+    }
+    return { success: false, error: data.error || 'Não foi possível restaurar usuários da planilha.' };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Erro ao conectar ao servidor para restaurar da planilha.' };
+  }
 }
 
 /**
@@ -85,9 +156,11 @@ export async function createNewUser(
   username: string,
   name: string,
   password: string,
-  role: UserRole = 'operador'
+  role: UserRole = 'operador',
+  whatsapp?: string
 ): Promise<{ success: boolean; error?: string; user?: UserAccount }> {
   const cleanUsername = username.trim().toLowerCase();
+  const cleanWhatsapp = whatsapp ? whatsapp.trim() : undefined;
 
   if (!cleanUsername) {
     return { success: false, error: 'Usuário / Matrícula é obrigatório.' };
@@ -108,6 +181,7 @@ export async function createNewUser(
         name: name.trim(),
         password: password.trim(),
         role,
+        whatsapp: cleanWhatsapp,
       }),
     });
 
@@ -134,6 +208,7 @@ export async function createNewUser(
       username: cleanUsername,
       name: name.trim(),
       role,
+      whatsapp: cleanWhatsapp,
       password: password.trim(),
       createdAt: new Date().toISOString(),
       isActive: true,
@@ -254,23 +329,68 @@ export async function loginUser(
   password: string
 ): Promise<{ success: boolean; error?: string; session?: AuthSession }> {
   const cleanUsername = username.trim().toLowerCase();
+  const cleanPassword = password.trim();
 
+  // 1. Tenta autenticação direta com o backend
   try {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: cleanUsername, password: password.trim() }),
+      body: JSON.stringify({ username: cleanUsername, password: cleanPassword }),
     });
 
-    const data = await res.json();
-    if (res.ok && data.success && data.session) {
+    const data = await res.json().catch(() => null);
+    if (res.ok && data?.success && data.session) {
       localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(data.session));
       if (Array.isArray(data.users)) {
-        saveUsersList(data.users);
+        const merged = mergeUsersList(getAllUsers(), data.users);
+        saveUsersList(merged);
       }
       return { success: true, session: data.session };
-    } else if (res.status === 401 || (data && data.error)) {
-      return { success: false, error: data.error || 'Usuário / Matrícula ou senha incorretos.' };
+    }
+
+    // Se o servidor retornou erro 401 ou usuário não encontrado, verifica se temos o usuário no localStorage
+    const localUsers = getAllUsers();
+    const localUser = localUsers.find(
+      (u) => u.username.toLowerCase() === cleanUsername && u.password === cleanPassword
+    );
+
+    if (localUser) {
+      if (localUser.isActive === false) {
+        return {
+          success: false,
+          error: 'Este usuário está bloqueado. Contate o Administrador Master.',
+        };
+      }
+
+      // Sincroniza esse usuário com o servidor para que o servidor aprenda o cadastro
+      try {
+        await fetch('/api/users/sync-single', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user: localUser }),
+        });
+      } catch {}
+
+      const now = Date.now();
+      const session: AuthSession = {
+        user: {
+          id: localUser.id,
+          username: localUser.username,
+          name: localUser.name,
+          role: localUser.role,
+        },
+        loginTimestamp: now,
+        expiresAt: now + SESSION_DURATION_MS,
+      };
+      localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
+      localUser.lastLogin = new Date().toISOString();
+      saveUsersList(localUsers);
+      return { success: true, session };
+    }
+
+    if (data && data.error) {
+      return { success: false, error: data.error };
     }
   } catch (netErr) {
     console.warn('Servidor offline ou inacessível no momento, tentando autenticação local:', netErr);
@@ -279,7 +399,7 @@ export async function loginUser(
   // Fallback offline local
   const users = getAllUsers();
   const user = users.find(
-    (u) => u.username.toLowerCase() === cleanUsername && u.password === password.trim()
+    (u) => u.username.toLowerCase() === cleanUsername && u.password === cleanPassword
   );
 
   if (!user) {
@@ -338,9 +458,32 @@ export function getCurrentSession(): AuthSession | null {
 }
 
 /**
- * Encerra a sessão
+ * Encerra a sessão e registra o evento de LOGOUT
  */
-export function logoutUser(): void {
+export function logoutUser(reason: string = 'Logout manual'): void {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.SESSION);
+    if (raw) {
+      const session: AuthSession = JSON.parse(raw);
+      if (session && session.user) {
+        // Envia requisição assíncrona para registrar o LOGOUT no servidor e na planilha
+        fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: session.user.username,
+            name: session.user.name,
+            role: session.user.role,
+            userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+            reason,
+          }),
+        }).catch(() => {});
+      }
+    }
+  } catch (e) {
+    console.warn('Erro ao registrar log de logout:', e);
+  }
+
   try {
     localStorage.removeItem(STORAGE_KEYS.SESSION);
   } catch (e) {

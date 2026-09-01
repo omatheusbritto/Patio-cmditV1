@@ -546,9 +546,24 @@ var TAB_USUARIOS = {
     "MATRÍCULA / USUÁRIO",
     "NOME COMPLETO",
     "FUNÇÃO / CARGO",
+    "WHATSAPP / CONTATO",
     "SENHA",
     "STATUS",
     "ÚLTIMO ACESSO"
+  ]
+};
+
+var TAB_LOGS = {
+  tabName: "LOGS_ACESSO",
+  headers: [
+    "DATA / HORA",
+    "EVENTO",
+    "MATRÍCULA / USUÁRIO",
+    "NOME COMPLETO",
+    "FUNÇÃO / CARGO",
+    "WHATSAPP / CONTATO",
+    "DISPOSITIVO / NAVEGADOR",
+    "OBSERVAÇÕES / DETALHES"
   ]
 };
 
@@ -602,6 +617,24 @@ function doPost(e) {
         uHRange.setFontColor("#ffffff");
       }
 
+      // Garante a aba de Logs de Acesso
+      var lExists = false;
+      for (var l = 0; l < ss.getSheets().length; l++) {
+        var sheetLName = ss.getSheets()[l].getName().toUpperCase();
+        if (sheetLName.indexOf("LOG") !== -1 || sheetLName.indexOf("ACESSO") !== -1) {
+          lExists = true;
+          break;
+        }
+      }
+      if (!lExists) {
+        var lNew = ss.insertSheet(TAB_LOGS.tabName);
+        lNew.appendRow(TAB_LOGS.headers);
+        var lHRange = lNew.getRange(1, 1, 1, TAB_LOGS.headers.length);
+        lHRange.setFontWeight("bold");
+        lHRange.setBackground("#0f172a");
+        lHRange.setFontColor("#ffffff");
+      }
+
       return ContentService.createTextOutput(JSON.stringify({
         success: true,
         spreadsheetUrl: sUrl,
@@ -647,6 +680,7 @@ function doPost(e) {
         var uUsername = String(targetUser.username || "").toLowerCase().trim();
         var uName = String(targetUser.name || "").trim();
         var uRole = String(targetUser.role || "patio").trim();
+        var uWhatsapp = String(targetUser.whatsapp || targetUser.whats || targetUser.celular || targetUser.telefone || targetUser.contato || "").trim() || "-";
         var uPassword = String(targetUser.password || "").trim();
         var uStatus = targetUser.isActive === false || String(targetUser.isActive).toLowerCase() === "false" ? "BLOQUEADO" : "ATIVO";
 
@@ -671,7 +705,7 @@ function doPost(e) {
           }
         }
 
-        var rowValues = [dateU, uUsername, uName, uRoleLabel, uPassword, uStatus, "-"];
+        var rowValues = [dateU, uUsername, uName, uRoleLabel, uWhatsapp, uPassword, uStatus, "-"];
 
         if (userRowIndex !== -1) {
           uSheet.getRange(userRowIndex, 1, 1, rowValues.length).setValues([rowValues]);
@@ -740,11 +774,13 @@ function doPost(e) {
           var u = usersList[uIdx];
           var roleName = roleMap[u.role] || String(u.role || "").toUpperCase();
           var status = u.isActive === false ? "BLOQUEADO" : "ATIVO";
+          var uWhats = String(u.whatsapp || u.whats || u.celular || u.telefone || u.contato || "").trim() || "-";
           newRows.push([
             u.createdAt ? Utilities.formatDate(new Date(u.createdAt), "America/Sao_Paulo", "dd/MM/yyyy HH:mm:ss") : dateU,
             String(u.username || "").toLowerCase().trim(),
             String(u.name || "").trim(),
             roleName,
+            uWhats,
             String(u.password || "").trim(),
             status,
             "-"
@@ -766,6 +802,87 @@ function doPost(e) {
           message: "Todos os " + newRows.length + " usuários foram sincronizados na aba " + uSheet.getName() + "!"
         })).setMimeType(ContentService.MimeType.JSON);
       }
+    }
+
+    // ------------------------------------------------------------------------
+    // 1.1 AUDITORIA E LOGS DE ACESSO (Aba LOGS_ACESSO na mesma planilha)
+    // ------------------------------------------------------------------------
+    var isLogAction = data.action === 'log_access' || data.action === 'log_event' ||
+                      data.action === 'append_log' || data.type === 'log';
+
+    if (isLogAction) {
+      var lSheet = null;
+      var allSheetsLogs = ss.getSheets();
+      for (var sl = 0; sl < allSheetsLogs.length; sl++) {
+        var sNameLog = allSheetsLogs[sl].getName().toUpperCase();
+        if (sNameLog.indexOf("LOG") !== -1 || sNameLog.indexOf("ACESSO") !== -1) {
+          lSheet = allSheetsLogs[sl];
+          break;
+        }
+      }
+
+      if (!lSheet) {
+        lSheet = ss.insertSheet(TAB_LOGS.tabName);
+        lSheet.appendRow(TAB_LOGS.headers);
+        var lHRange = lSheet.getRange(1, 1, 1, TAB_LOGS.headers.length);
+        lHRange.setFontWeight("bold");
+        lHRange.setBackground("#0f172a");
+        lHRange.setFontColor("#ffffff");
+      }
+
+      var targetLog = data.log || data;
+      var nowL = new Date();
+      var dateL = targetLog.dateFormatted || Utilities.formatDate(nowL, "America/Sao_Paulo", "dd/MM/yyyy HH:mm:ss");
+      var lEvent = String(targetLog.event || "LOGIN").toUpperCase();
+      var lUsername = String(targetLog.username || "").toLowerCase().trim();
+      var lName = String(targetLog.name || targetLog.username || "").trim();
+      var lRole = String(targetLog.role || "operador").trim();
+      var lWhatsapp = String(targetLog.whatsapp || targetLog.whats || targetLog.celular || "-").trim() || "-";
+      var lDevice = String(targetLog.userAgent || targetLog.deviceType || targetLog.ip || "Navegador Web").trim();
+      var lDetails = String(targetLog.details || "-").trim();
+
+      var roleLabelsLog = {
+        master: "👑 Administrador Master",
+        patio: "📋 Operador do Pátio",
+        qualidade_51: "🔍 Operador 51 Qualidade",
+        pdc: "📋 Operador Fila PDC",
+        combustivel: "⛽ Operador Combustível",
+        entrada_saida: "🚪 Operador Entrada/Saída",
+        vistoriador: "🔍 Vistoriador",
+        motorista: "🚗 Motorista"
+      };
+      var lRoleLabel = roleLabelsLog[lRole] || lRole.toUpperCase();
+
+      var logRow = [
+        dateL,
+        lEvent,
+        lUsername,
+        lName,
+        lRoleLabel,
+        lWhatsapp,
+        lDevice,
+        lDetails
+      ];
+
+      // Inserção no topo (Linha 2, logo abaixo do cabeçalho)
+      lSheet.insertRowAfter(1);
+      var logTargetRange = lSheet.getRange(2, 1, 1, logRow.length);
+      logTargetRange.setValues([logRow]);
+      logTargetRange.setFontWeight("normal");
+      logTargetRange.setBackground(null);
+      logTargetRange.setFontColor("#000000");
+
+      return ContentService.createTextOutput(JSON.stringify({
+        success: true,
+        spreadsheetUrl: sUrl,
+        spreadsheetId: sId,
+        spreadsheetTitle: sTitle,
+        action: "log_access",
+        event: lEvent,
+        username: lUsername,
+        tabName: lSheet.getName(),
+        message: "Log de acesso registrado na aba " + lSheet.getName() + "!"
+      })).setMimeType(ContentService.MimeType.JSON);
     }
 
     // ------------------------------------------------------------------------
@@ -1112,6 +1229,84 @@ export async function syncSingleUserToSheet(
     return data;
   } catch (err: any) {
     return { success: false, error: err.message || 'Falha ao sincronizar usuário com a planilha.' };
+  }
+}
+
+/**
+ * Access Logs (Login / Logout / Audit) Client Helpers
+ */
+export async function fetchServerLogs(): Promise<{ success: boolean; logs: any[]; error?: string }> {
+  try {
+    const resp = await fetch('/api/logs');
+    if (!resp.ok) {
+      throw new Error(`Status ${resp.status}`);
+    }
+    const data = await resp.json();
+    return { success: true, logs: data.logs || [] };
+  } catch (err: any) {
+    return { success: false, logs: [], error: err.message || 'Falha ao carregar logs do servidor.' };
+  }
+}
+
+export async function recordAccessLog(
+  event: 'LOGIN' | 'LOGOUT' | 'EXPIRADO',
+  user: { username: string; name?: string; role?: string; whatsapp?: string },
+  details?: string
+): Promise<{ success: boolean; log?: any; error?: string }> {
+  try {
+    const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : undefined;
+    const resp = await fetch('/api/logs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event,
+        username: user.username,
+        name: user.name,
+        role: user.role,
+        whatsapp: user.whatsapp,
+        userAgent,
+        details,
+      }),
+    });
+    const data = await resp.json();
+    return data;
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Falha ao registrar log de acesso.' };
+  }
+}
+
+export async function restoreLogsFromSheet(
+  customWebhookUrl?: string
+): Promise<{ success: boolean; totalRestored: number; logs: any[]; error?: string }> {
+  try {
+    const config = getStoredDriveConfig();
+    const webhookUrl = customWebhookUrl || config.webhookUrl;
+
+    const resp = await fetch('/api/logs/restore-from-sheet', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ webhookUrl }),
+    });
+
+    const data = await resp.json();
+    return data;
+  } catch (err: any) {
+    return {
+      success: false,
+      totalRestored: 0,
+      logs: [],
+      error: err.message || 'Falha ao restaurar logs da planilha.',
+    };
+  }
+}
+
+export async function clearServerLogs(): Promise<{ success: boolean; error?: string }> {
+  try {
+    const resp = await fetch('/api/logs', { method: 'DELETE' });
+    const data = await resp.json();
+    return data;
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Falha ao limpar logs.' };
   }
 }
 

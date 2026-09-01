@@ -70,38 +70,124 @@ export function stampDateTimeOnCanvas(
 }
 
 /**
- * Ensures an image Data URL has the bottom-right date/time watermark embedded.
+ * Ensures an image Data URL has the bottom-right date/time watermark embedded and is properly scaled.
  */
 export async function stampDateTimeOnDataUrl(
   dataUrl: string,
   date: Date = new Date(),
-  quality: number = 0.92
+  quality: number = 0.88
 ): Promise<string> {
-  return new Promise((resolve) => {
-    try {
+  return compressAndStampImage(dataUrl, { maxDimension: 1280, quality, stampDate: true, date });
+}
+
+/**
+ * Universal safe image optimizer for Camera and File inputs (Placas, Painel, Documentos CRLV).
+ * Resizes ultra-high resolution mobile photos (12MP - 108MP) to crisp, manageable ~120KB-250KB JPEGs.
+ * Embeds discreet date/time watermark and avoids browser OOM / memory crash.
+ */
+export async function compressAndStampImage(
+  input: File | Blob | string,
+  options: {
+    maxDimension?: number;
+    quality?: number;
+    stampDate?: boolean;
+    date?: Date;
+  } = {}
+): Promise<string> {
+  const {
+    maxDimension = 1280,
+    quality = 0.85,
+    stampDate = true,
+    date = new Date(),
+  } = options;
+
+  let objectUrl: string | null = null;
+
+  try {
+    let imageSrc = '';
+    if (typeof input === 'string') {
+      imageSrc = input;
+    } else if (input && typeof input === 'object') {
+      objectUrl = URL.createObjectURL(input as Blob);
+      imageSrc = objectUrl;
+    }
+
+    if (!imageSrc) {
+      return '';
+    }
+
+    return await new Promise((resolve) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
+
       img.onload = () => {
-        const w = img.naturalWidth || img.width || 1280;
-        const h = img.naturalHeight || img.height || 720;
+        if (objectUrl) {
+          try {
+            URL.revokeObjectURL(objectUrl);
+          } catch {}
+          objectUrl = null;
+        }
+
+        const origW = img.naturalWidth || img.width || 1280;
+        const origH = img.naturalHeight || img.height || 720;
+
+        let targetW = origW;
+        let targetH = origH;
+
+        if (origW > maxDimension || origH > maxDimension) {
+          if (origW >= origH) {
+            targetW = maxDimension;
+            targetH = Math.max(1, Math.round((origH * maxDimension) / origW));
+          } else {
+            targetH = maxDimension;
+            targetW = Math.max(1, Math.round((origW * maxDimension) / origH));
+          }
+        }
+
         const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return resolve(dataUrl);
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext('2d', { alpha: false });
 
-        ctx.drawImage(img, 0, 0, w, h);
-        stampDateTimeOnCanvas(ctx, w, h, date);
+        if (!ctx) {
+          return resolve(typeof input === 'string' ? input : '');
+        }
 
-        const result = canvas.toDataURL('image/jpeg', quality);
-        resolve(result);
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+
+        // Draw downscaled photo
+        ctx.drawImage(img, 0, 0, targetW, targetH);
+
+        // Stamp date/time if requested
+        if (stampDate) {
+          stampDateTimeOnCanvas(ctx, targetW, targetH, date);
+        }
+
+        const resultDataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve(resultDataUrl);
       };
-      img.onerror = () => resolve(dataUrl);
-      img.src = dataUrl;
-    } catch {
-      resolve(dataUrl);
+
+      img.onerror = () => {
+        if (objectUrl) {
+          try {
+            URL.revokeObjectURL(objectUrl);
+          } catch {}
+        }
+        // Fallback: If string, return as-is
+        resolve(typeof input === 'string' ? input : '');
+      };
+
+      img.src = imageSrc;
+    });
+  } catch (err) {
+    if (objectUrl) {
+      try {
+        URL.revokeObjectURL(objectUrl);
+      } catch {}
     }
-  });
+    return typeof input === 'string' ? input : '';
+  }
 }
 
 export async function optimizeImageForOcr(

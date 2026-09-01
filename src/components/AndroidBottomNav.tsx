@@ -1,5 +1,5 @@
 import React from 'react';
-import { Camera, Layers, History } from 'lucide-react';
+import { Camera, Layers, History, ShieldCheck } from 'lucide-react';
 import { NavTab } from '../types';
 
 interface AndroidBottomNavProps {
@@ -33,6 +33,12 @@ export const AndroidBottomNav: React.FC<AndroidBottomNavProps> = ({
       label: 'Histórico & Busca',
       icon: History,
       badge: historyCount > 0 ? historyCount : null,
+    },
+    {
+      id: 'logs' as NavTab,
+      label: 'Logs & Acesso',
+      icon: ShieldCheck,
+      badge: null,
     },
   ];
 
