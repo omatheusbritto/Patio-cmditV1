@@ -447,6 +447,31 @@ export async function appendRecordToGoogleSheets(
 }
 
 /**
+ * Fetch spreadsheet directly via backend proxy / view-raw
+ */
+export async function fetchSpreadsheetDirectly(webhookUrl?: string): Promise<{
+  success: boolean;
+  spreadsheetTitle?: string;
+  spreadsheetUrl?: string;
+  tabs?: Record<string, { name: string; headers: string[]; rows: any[] }>;
+  error?: string;
+}> {
+  try {
+    const config = getStoredDriveConfig();
+    const targetUrl = webhookUrl || config.webhookUrl || config.spreadsheetUrl;
+    const resp = await fetch('/api/sheets/view-raw', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ webhookUrl: targetUrl }),
+    });
+    const data = await resp.json();
+    return data;
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Erro ao consultar planilha.' };
+  }
+}
+
+/**
  * Template de Script do Google Apps Script para copiar e colar na planilha
  * Consolidação completa: Todas as 6 abas na MESMA planilha oficial única:
  * - 📥 Entrada (12 colunas): Data, Hora, Placa, Condutor, KM odômetro, Nível Combustível, Origem, Destino, Chave reserva, Tipo veículo, Observação, Operador
@@ -601,38 +626,50 @@ function doPost(e) {
       }
 
       // Garante a aba de Usuários
-      var uExists = false;
+      var uSheetFound = null;
       for (var u = 0; u < ss.getSheets().length; u++) {
         if (ss.getSheets()[u].getName().toUpperCase().indexOf("USUARIOS") !== -1) {
-          uExists = true;
+          uSheetFound = ss.getSheets()[u];
           break;
         }
       }
-      if (!uExists) {
+      if (!uSheetFound) {
         var uNew = ss.insertSheet(TAB_USUARIOS.tabName);
         uNew.appendRow(TAB_USUARIOS.headers);
         var uHRange = uNew.getRange(1, 1, 1, TAB_USUARIOS.headers.length);
         uHRange.setFontWeight("bold");
         uHRange.setBackground("#0f172a");
         uHRange.setFontColor("#ffffff");
+      } else {
+        var uHRangeFix = uSheetFound.getRange(1, 1, 1, TAB_USUARIOS.headers.length);
+        uHRangeFix.setValues([TAB_USUARIOS.headers]);
+        uHRangeFix.setFontWeight("bold");
+        uHRangeFix.setBackground("#0f172a");
+        uHRangeFix.setFontColor("#ffffff");
       }
 
       // Garante a aba de Logs de Acesso
-      var lExists = false;
+      var lSheetFound = null;
       for (var l = 0; l < ss.getSheets().length; l++) {
         var sheetLName = ss.getSheets()[l].getName().toUpperCase();
         if (sheetLName.indexOf("LOG") !== -1 || sheetLName.indexOf("ACESSO") !== -1) {
-          lExists = true;
+          lSheetFound = ss.getSheets()[l];
           break;
         }
       }
-      if (!lExists) {
+      if (!lSheetFound) {
         var lNew = ss.insertSheet(TAB_LOGS.tabName);
         lNew.appendRow(TAB_LOGS.headers);
         var lHRange = lNew.getRange(1, 1, 1, TAB_LOGS.headers.length);
         lHRange.setFontWeight("bold");
         lHRange.setBackground("#0f172a");
         lHRange.setFontColor("#ffffff");
+      } else {
+        var lHRangeFix = lSheetFound.getRange(1, 1, 1, TAB_LOGS.headers.length);
+        lHRangeFix.setValues([TAB_LOGS.headers]);
+        lHRangeFix.setFontWeight("bold");
+        lHRangeFix.setBackground("#0f172a");
+        lHRangeFix.setFontColor("#ffffff");
       }
 
       return ContentService.createTextOutput(JSON.stringify({
@@ -669,6 +706,23 @@ function doPost(e) {
         uHeaderRange.setFontWeight("bold");
         uHeaderRange.setBackground("#0f172a");
         uHeaderRange.setFontColor("#ffffff");
+      } else {
+        // AUTO-CORREÇÃO DE CABEÇALHOS:
+        // Garante que a linha 1 contenha exatamente as 8 colunas oficiais:
+        // 1: DATA DE CADASTRO | 2: MATRÍCULA / USUÁRIO | 3: NOME COMPLETO | 4: FUNÇÃO / CARGO | 5: WHATSAPP / CONTATO | 6: SENHA | 7: STATUS | 8: ÚLTIMO ACESSO
+        var currentCols = Math.max(uSheet.getLastColumn(), TAB_USUARIOS.headers.length);
+        var currentHeaders = uSheet.getRange(1, 1, 1, currentCols).getValues()[0];
+        var col5Name = String(currentHeaders[4] || "").toUpperCase();
+        var col6Name = String(currentHeaders[5] || "").toUpperCase();
+        
+        // Se a coluna 5 for SENHA ou não tiver WHATSAPP na coluna 5, reescreve os cabeçalhos oficiais
+        if (col5Name.indexOf("WHATS") === -1 || col6Name.indexOf("SENHA") === -1 || currentHeaders.length < TAB_USUARIOS.headers.length) {
+          var fixHRange = uSheet.getRange(1, 1, 1, TAB_USUARIOS.headers.length);
+          fixHRange.setValues([TAB_USUARIOS.headers]);
+          fixHRange.setFontWeight("bold");
+          fixHRange.setBackground("#0f172a");
+          fixHRange.setFontColor("#ffffff");
+        }
       }
 
       var nowU = new Date();
@@ -705,7 +759,24 @@ function doPost(e) {
           }
         }
 
-        var rowValues = [dateU, uUsername, uName, uRoleLabel, uWhatsapp, uPassword, uStatus, "-"];
+        // 8 Colunas Oficiais: [Data, Matrícula, Nome, Cargo, WhatsApp, Senha, Status, Último Acesso]
+        var rowValues = [
+          dateU,
+          uUsername,
+          uName,
+          uRoleLabel,
+          uWhatsapp,
+          uPassword,
+          uStatus,
+          "-"
+        ];
+
+        // Garante que o cabeçalho da linha 1 está atualizado
+        var hCheck = uSheet.getRange(1, 1, 1, TAB_USUARIOS.headers.length);
+        hCheck.setValues([TAB_USUARIOS.headers]);
+        hCheck.setFontWeight("bold");
+        hCheck.setBackground("#0f172a");
+        hCheck.setFontColor("#ffffff");
 
         if (userRowIndex !== -1) {
           uSheet.getRange(userRowIndex, 1, 1, rowValues.length).setValues([rowValues]);
@@ -721,7 +792,10 @@ function doPost(e) {
           action: "save_user",
           username: uUsername,
           tabName: uSheet.getName(),
-          message: "Usuário " + uName + " (" + uUsername + ") gravado com sucesso na aba " + uSheet.getName() + "!"
+          whatsapp: uWhatsapp,
+          hasPassword: !!uPassword,
+          columnsCount: rowValues.length,
+          message: "Usuário " + uName + " (" + uUsername + ") gravado com sucesso na aba " + uSheet.getName() + " com WhatsApp e Senha em colunas separadas!"
         })).setMimeType(ContentService.MimeType.JSON);
       }
 
@@ -753,6 +827,15 @@ function doPost(e) {
       // C. Ação: Sincronizar Todos os Usuários de uma vez
       if (data.action === 'sync_all_users' && Array.isArray(data.users)) {
         var usersList = data.users;
+
+        // Atualiza a Linha 1 de cabeçalhos oficiais
+        var hRangeAll = uSheet.getRange(1, 1, 1, TAB_USUARIOS.headers.length);
+        hRangeAll.setValues([TAB_USUARIOS.headers]);
+        hRangeAll.setFontWeight("bold");
+        hRangeAll.setBackground("#0f172a");
+        hRangeAll.setFontColor("#ffffff");
+
+        // Limpa registros anteriores para reescrever limpo com 8 colunas
         var lastRow = uSheet.getLastRow();
         if (lastRow > 1) {
           uSheet.deleteRows(2, lastRow - 1);
@@ -775,13 +858,15 @@ function doPost(e) {
           var roleName = roleMap[u.role] || String(u.role || "").toUpperCase();
           var status = u.isActive === false ? "BLOQUEADO" : "ATIVO";
           var uWhats = String(u.whatsapp || u.whats || u.celular || u.telefone || u.contato || "").trim() || "-";
+          var uPass = String(u.password || "").trim();
+
           newRows.push([
             u.createdAt ? Utilities.formatDate(new Date(u.createdAt), "America/Sao_Paulo", "dd/MM/yyyy HH:mm:ss") : dateU,
             String(u.username || "").toLowerCase().trim(),
             String(u.name || "").trim(),
             roleName,
             uWhats,
-            String(u.password || "").trim(),
+            uPass,
             status,
             "-"
           ]);
@@ -799,7 +884,8 @@ function doPost(e) {
           action: "sync_all_users",
           totalUsers: newRows.length,
           tabName: uSheet.getName(),
-          message: "Todos os " + newRows.length + " usuários foram sincronizados na aba " + uSheet.getName() + "!"
+          columnsCount: TAB_USUARIOS.headers.length,
+          message: "Todos os " + newRows.length + " usuários foram sincronizados com sucesso na aba " + uSheet.getName() + " com a nova estrutura de 8 colunas!"
         })).setMimeType(ContentService.MimeType.JSON);
       }
     }

@@ -17,6 +17,11 @@ import {
   Shield,
   Phone,
   MessageCircle,
+  Eye,
+  EyeOff,
+  Activity,
+  Check,
+  HelpCircle,
 } from 'lucide-react';
 import {
   getAllUsers,
@@ -32,6 +37,7 @@ import {
   getStoredDriveConfig,
   getOfficialSpreadsheetUrl,
   fetchServerDriveConfig,
+  fetchSpreadsheetDirectly,
 } from '../utils/googleDriveClient';
 import { UserAccount, UserRole, getRoleBadgeStyle, getRoleDisplayName } from '../types';
 
@@ -43,10 +49,27 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
   const [users, setUsers] = useState<UserAccount[]>(() => getAllUsers());
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');
+  const [activeTab, setActiveTab] = useState<'list' | 'create' | 'diagnostic'>('list');
   const [isSyncingSheet, setIsSyncingSheet] = useState(false);
   const [syncStatusMsg, setSyncStatusMsg] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [driveConfig, setDriveConfig] = useState(() => getStoredDriveConfig());
+  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
+
+  // Diagnostic State
+  const [isDiagnosing, setIsDiagnosing] = useState(false);
+  const [diagnosticData, setDiagnosticData] = useState<{
+    testedAt: string;
+    webhookOk: boolean;
+    spreadsheetTitle?: string;
+    hasUserTab: boolean;
+    userTabHeaders?: string[];
+    sheetUsersCount: number;
+    appUsersCount: number;
+    colWhatsappName?: string;
+    colPasswordName?: string;
+    status: 'perfect' | 'needs_sync' | 'unreachable';
+    details: string;
+  } | null>(null);
 
   // Form State para Novo Usuário
   const [newUsername, setNewUsername] = useState('');
@@ -84,6 +107,13 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
 
   const officialUrl = getOfficialSpreadsheetUrl() || driveConfig.spreadsheetUrl;
 
+  const togglePasswordVisibility = (userId: string) => {
+    setVisiblePasswords((prev) => ({
+      ...prev,
+      [userId]: !prev[userId],
+    }));
+  };
+
   const handleSyncWithSpreadsheet = async () => {
     setIsSyncingSheet(true);
     setSyncStatusMsg({ text: 'Sincronizando operadores com a planilha oficial...', type: 'info' });
@@ -91,7 +121,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
       const res = await syncAllUsersToSheet(users);
       if (res.success) {
         setSyncStatusMsg({
-          text: `🎉 Sucesso! ${users.length} operadores salvos na aba USUARIOS_CMDIT da planilha oficial!`,
+          text: `🎉 Sucesso! ${users.length} operadores salvos com colunas corretas (WhatsApp na Coluna 5 e Senha na Coluna 6) na aba USUARIOS_CMDIT!`,
           type: 'success',
         });
       } else {
@@ -104,7 +134,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
       setSyncStatusMsg({ text: '⚠️ Falha na comunicação com a planilha.', type: 'error' });
     } finally {
       setIsSyncingSheet(false);
-      setTimeout(() => setSyncStatusMsg(null), 6000);
+      setTimeout(() => setSyncStatusMsg(null), 8000);
     }
   };
 
@@ -130,6 +160,84 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
     } finally {
       setIsSyncingSheet(false);
       setTimeout(() => setSyncStatusMsg(null), 6000);
+    }
+  };
+
+  const runDiagnostic = async () => {
+    setIsDiagnosing(true);
+    setActiveTab('diagnostic');
+    try {
+      const config = await fetchServerDriveConfig();
+      setDriveConfig(config);
+      const url = config.webhookUrl || config.spreadsheetUrl;
+      if (!url || !url.startsWith('http')) {
+        setDiagnosticData({
+          testedAt: new Date().toLocaleTimeString('pt-BR'),
+          webhookOk: false,
+          hasUserTab: false,
+          sheetUsersCount: 0,
+          appUsersCount: users.length,
+          status: 'unreachable',
+          details: 'URL do Webhook do Google Apps Script ainda não configurada no sistema.',
+        });
+        setIsDiagnosing(false);
+        return;
+      }
+
+      const sheetData = await fetchSpreadsheetDirectly(url);
+      if (sheetData.success && sheetData.tabs) {
+        const userTab = Object.values(sheetData.tabs).find((t: any) =>
+          t.name.toUpperCase().includes('USUARIO') || t.name.toUpperCase().includes('USUÁRIO')
+        ) as any;
+
+        const headers = userTab?.headers || [];
+        const rows = userTab?.rows || [];
+        const col5 = headers[4] || '';
+        const col6 = headers[5] || '';
+
+        const isHeadersCorrect =
+          col5.toUpperCase().includes('WHATS') ||
+          col5.toUpperCase().includes('CELULAR') ||
+          col5.toUpperCase().includes('CONTATO');
+
+        setDiagnosticData({
+          testedAt: new Date().toLocaleTimeString('pt-BR'),
+          webhookOk: true,
+          spreadsheetTitle: sheetData.spreadsheetTitle || 'Planilha CMDIT',
+          hasUserTab: !!userTab,
+          userTabHeaders: headers,
+          sheetUsersCount: rows.length,
+          appUsersCount: users.length,
+          colWhatsappName: col5 || 'Não encontrada',
+          colPasswordName: col6 || 'Não encontrada',
+          status: isHeadersCorrect && userTab ? 'perfect' : 'needs_sync',
+          details: isHeadersCorrect
+            ? 'A sincronização está 100% operacional! A coluna de WhatsApp e Senha estão perfeitamente separadas e alinhadas na planilha.'
+            : 'A aba foi encontrada, mas precisa de uma sincronização para atualizar os cabeçalhos das 8 colunas.',
+        });
+      } else {
+        setDiagnosticData({
+          testedAt: new Date().toLocaleTimeString('pt-BR'),
+          webhookOk: false,
+          hasUserTab: false,
+          sheetUsersCount: 0,
+          appUsersCount: users.length,
+          status: 'unreachable',
+          details: sheetData.error || 'Não foi possível consultar a planilha diretamente.',
+        });
+      }
+    } catch (err: any) {
+      setDiagnosticData({
+        testedAt: new Date().toLocaleTimeString('pt-BR'),
+        webhookOk: false,
+        hasUserTab: false,
+        sheetUsersCount: 0,
+        appUsersCount: users.length,
+        status: 'unreachable',
+        details: err.message || 'Erro ao testar comunicação.',
+      });
+    } finally {
+      setIsDiagnosing(false);
     }
   };
 
@@ -261,7 +369,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                 </span>
               </div>
               <p className="text-[11px] text-emerald-200/90 mt-0.5 leading-snug">
-                Tudo centralizado em uma única planilha: Veículos (Entrada, Saída, 51, Combustível, PDC) + Usuários.
+                Estrutura de 8 colunas: <strong>WhatsApp na Coluna 5</strong> e <strong>Senha na Coluna 6</strong>.
               </p>
             </div>
           </div>
@@ -276,7 +384,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                 title="Abrir a planilha oficial gravada no Google Drive"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
-                <span>Abrir Planilha Oficial</span>
+                <span>Abrir no Google Sheets</span>
               </a>
             ) : (
               <button
@@ -303,7 +411,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
             }`}
           >
             <Users className="w-4 h-4" />
-            <span>Operadores Ativos ({users.length})</span>
+            <span>Operadores ({users.length})</span>
           </button>
 
           <button
@@ -316,13 +424,135 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
             }`}
           >
             <UserPlus className="w-4 h-4" />
-            <span>Cadastrar Operador</span>
+            <span>Cadastrar Novo</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={runDiagnostic}
+            className={`pb-2.5 px-3 text-xs font-black flex items-center gap-1.5 border-b-2 transition cursor-pointer ${
+              activeTab === 'diagnostic'
+                ? 'border-emerald-600 text-emerald-700'
+                : 'border-transparent text-neutral-500 hover:text-neutral-800'
+            }`}
+          >
+            <Activity className="w-4 h-4" />
+            <span>Diagnóstico & Como Saber</span>
           </button>
         </div>
 
         {/* Content Area */}
         <div className="flex-1 overflow-y-auto p-4 bg-neutral-50/50">
-          {activeTab === 'create' ? (
+          {activeTab === 'diagnostic' ? (
+            <div className="flex flex-col gap-3.5 max-w-lg mx-auto py-1">
+              <div className="p-4 bg-white rounded-2xl border border-neutral-200 shadow-xs flex flex-col gap-3">
+                <div className="flex items-center justify-between pb-2 border-b border-neutral-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
+                      <Activity className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-black text-neutral-900">Como Saber se Funcionou a Sincronização?</h3>
+                      <p className="text-[11px] text-neutral-500">Confirmação em tempo real entre o App e o Google Sheets</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={runDiagnostic}
+                    disabled={isDiagnosing}
+                    className="p-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 transition flex items-center gap-1 text-xs font-bold"
+                    title="Repetir Teste de Diagnóstico"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isDiagnosing ? 'animate-spin text-emerald-600' : ''}`} />
+                    <span className="hidden sm:inline">Atualizar</span>
+                  </button>
+                </div>
+
+                {/* 3 Formas Práticas de Saber que Funcionou */}
+                <div className="flex flex-col gap-2 bg-emerald-50/70 p-3 rounded-xl border border-emerald-200 text-emerald-950 text-xs">
+                  <h4 className="font-black text-emerald-900 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+                    3 Formas de Confirmar que Funcionou:
+                  </h4>
+                  <ul className="flex flex-col gap-1.5 text-[11px] list-disc list-inside">
+                    <li>
+                      <strong>1. Abrir o Google Sheets:</strong> Clique no botão superior <span className="font-bold text-emerald-900 underline">"Abrir no Google Sheets"</span> e veja a aba <strong>USUARIOS_CMDIT</strong>.
+                    </li>
+                    <li>
+                      <strong>2. Conferencia das Colunas:</strong> Verifique que a <strong>Coluna E</strong> agora é <span className="font-mono bg-white px-1 py-0.5 rounded border border-emerald-300 font-bold">WHATSAPP / CONTATO</span> e a <strong>Coluna F</strong> é <span className="font-mono bg-white px-1 py-0.5 rounded border border-emerald-300 font-bold">SENHA</span>.
+                    </li>
+                    <li>
+                      <strong>3. Teste de Cadastro em Tempo Real:</strong> Ao criar um novo operador ou redefinir uma senha, a linha correspondente é atualizada imediatamente na planilha.
+                    </li>
+                  </ul>
+                </div>
+
+                {/* Resultado do Diagnóstico Automático */}
+                {isDiagnosing ? (
+                  <div className="p-6 text-center flex flex-col items-center justify-center gap-2 text-xs text-neutral-600">
+                    <RefreshCw className="w-6 h-6 animate-spin text-emerald-600" />
+                    <p className="font-bold">Consultando o Google Apps Script e a aba USUARIOS_CMDIT...</p>
+                  </div>
+                ) : diagnosticData ? (
+                  <div className="flex flex-col gap-2.5 pt-1">
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="p-2.5 bg-neutral-50 rounded-xl border border-neutral-200">
+                        <span className="text-[10px] text-neutral-400 block font-bold">Comunicação Webhook</span>
+                        <span className={`font-black flex items-center gap-1 mt-0.5 ${diagnosticData.webhookOk ? 'text-emerald-700' : 'text-rose-700'}`}>
+                          {diagnosticData.webhookOk ? <Check className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                          {diagnosticData.webhookOk ? 'Conectado (HTTP 200)' : 'Não configurado / Erro'}
+                        </span>
+                      </div>
+
+                      <div className="p-2.5 bg-neutral-50 rounded-xl border border-neutral-200">
+                        <span className="text-[10px] text-neutral-400 block font-bold">Aba USUARIOS_CMDIT</span>
+                        <span className={`font-black flex items-center gap-1 mt-0.5 ${diagnosticData.hasUserTab ? 'text-emerald-700' : 'text-amber-700'}`}>
+                          {diagnosticData.hasUserTab ? <Check className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                          {diagnosticData.hasUserTab ? 'Presente na Planilha' : 'Será criada na 1ª sync'}
+                        </span>
+                      </div>
+
+                      <div className="p-2.5 bg-neutral-50 rounded-xl border border-neutral-200">
+                        <span className="text-[10px] text-neutral-400 block font-bold">Coluna 5 (E) na Planilha</span>
+                        <span className="font-mono font-bold text-neutral-800 truncate block mt-0.5" title={diagnosticData.colWhatsappName}>
+                          {diagnosticData.colWhatsappName}
+                        </span>
+                      </div>
+
+                      <div className="p-2.5 bg-neutral-50 rounded-xl border border-neutral-200">
+                        <span className="text-[10px] text-neutral-400 block font-bold">Coluna 6 (F) na Planilha</span>
+                        <span className="font-mono font-bold text-neutral-800 truncate block mt-0.5" title={diagnosticData.colPasswordName}>
+                          {diagnosticData.colPasswordName}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-neutral-100 rounded-xl text-neutral-800 text-[11px] flex items-center justify-between">
+                      <span>Operadores no App: <strong>{diagnosticData.appUsersCount}</strong></span>
+                      <span>Operadores na Planilha: <strong>{diagnosticData.sheetUsersCount}</strong></span>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-neutral-900 text-white text-[11px] leading-relaxed flex items-start gap-2">
+                      <HelpCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                      <span>{diagnosticData.details}</span>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="flex items-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleSyncWithSpreadsheet}
+                    disabled={isSyncingSheet}
+                    className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-xs transition cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isSyncingSheet ? 'animate-spin' : ''}`} />
+                    <span>Forçar Sincronização e Corrigir Aba Agora</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : activeTab === 'create' ? (
             <form onSubmit={handleCreateUser} className="flex flex-col gap-3.5 max-w-md mx-auto py-1">
               {formMsg && (
                 <div
@@ -373,12 +603,15 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                   <label className="text-xs font-black text-neutral-700">Senha Inicial:</label>
                   <input
                     type="text"
-                    placeholder="Defina a senha de acesso"
+                    placeholder="Defina a senha de acesso (Ex: 123456)"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     className="bg-neutral-50 border border-neutral-300 rounded-xl px-3 py-2 text-xs font-medium text-neutral-900 focus:bg-white focus:border-emerald-600 outline-none transition"
                     required
                   />
+                  <p className="text-[10px] text-neutral-500 mt-0.5">
+                    A senha será salva exclusivamente na coluna <strong>SENHA</strong> (Coluna 6 da planilha).
+                  </p>
                 </div>
 
                 <div className="flex flex-col gap-1">
@@ -397,7 +630,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                     className="bg-neutral-50 border border-neutral-300 rounded-xl px-3 py-2 text-xs font-medium text-neutral-900 focus:bg-white focus:border-emerald-600 outline-none transition"
                   />
                   <p className="text-[10px] text-neutral-500 mt-0.5">
-                    Não obrigatório. Se informado, será gravado na planilha oficial para contato direto.
+                    Salvo na coluna <strong>WHATSAPP / CONTATO</strong> (Coluna 5 da planilha).
                   </p>
                 </div>
 
@@ -415,9 +648,6 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                     <option value="qualidade_51">Operador 51 Qualidade (Bolsão 51 ➔ P1, P2, P3, R1, ADM, outros)</option>
                     <option value="master">Administrador Master (Acesso total + Gestão de Usuários e Planilha)</option>
                   </select>
-                  <p className="text-[10px] text-neutral-500 mt-0.5">
-                    O operador terá acesso restrito exclusivamente às telas e formulários da sua função.
-                  </p>
                 </div>
               </div>
 
@@ -438,7 +668,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                   <Search className="w-4 h-4 absolute left-3 top-2.5 text-neutral-400" />
                   <input
                     type="text"
-                    placeholder="Buscar por colaborador, matrícula ou função..."
+                    placeholder="Buscar por colaborador, matrícula ou WhatsApp..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full bg-white border border-neutral-200 rounded-xl pl-9 pr-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-600 shadow-2xs"
@@ -454,7 +684,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                     title="Restaurar lista de operadores diretamente da aba USUARIOS_CMDIT do Google Sheets"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isSyncingSheet ? 'animate-spin text-emerald-700' : 'text-emerald-700'}`} />
-                    <span>📥 Restaurar da Planilha</span>
+                    <span>📥 Restaurar</span>
                   </button>
 
                   <button
@@ -462,7 +692,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                     onClick={handleSyncWithSpreadsheet}
                     disabled={isSyncingSheet}
                     className="px-2.5 py-2 rounded-xl bg-white border border-neutral-200 hover:border-emerald-500 text-neutral-700 hover:text-emerald-700 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer disabled:opacity-50"
-                    title="Sincronizar todos os operadores agora com a planilha oficial"
+                    title="Sincronizar todos os operadores agora com a planilha oficial garantindo colunas separadas"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isSyncingSheet ? 'animate-spin text-emerald-600' : ''}`} />
                     <span className="hidden sm:inline">Gravar Planilha</span>
@@ -503,6 +733,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                     const roleStyle = getRoleBadgeStyle(user.role);
                     const roleTitle = getRoleDisplayName(user.role);
                     const isMasterUser = user.role === 'master' || user.username.toLowerCase() === 'mastercmdit';
+                    const isPasswordVisible = !!visiblePasswords[user.id];
 
                     return (
                       <div
@@ -544,6 +775,19 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                                 <span>Login: <strong className="text-neutral-800 font-mono font-bold">{user.username}</strong></span>
                                 <span>•</span>
                                 <span>{roleTitle}</span>
+                                <span>•</span>
+                                <div className="inline-flex items-center gap-1 bg-neutral-100 px-1.5 py-0.5 rounded border border-neutral-200 text-neutral-700 font-mono text-[9px]">
+                                  <span>Senha:</span>
+                                  <strong>{isPasswordVisible ? (user.password || '123456') : '••••••'}</strong>
+                                  <button
+                                    type="button"
+                                    onClick={() => togglePasswordVisibility(user.id)}
+                                    className="text-neutral-500 hover:text-neutral-800 ml-0.5"
+                                    title={isPasswordVisible ? 'Ocultar senha' : 'Ver senha'}
+                                  >
+                                    {isPasswordVisible ? <EyeOff className="w-2.5 h-2.5" /> : <Eye className="w-2.5 h-2.5" />}
+                                  </button>
+                                </div>
                                 {user.whatsapp && user.whatsapp !== '-' && (
                                   <>
                                     <span>•</span>

@@ -277,6 +277,13 @@ export async function restoreUsersFromSpreadsheetAsync(
         }
       }
 
+      // Smart Phone / Password safeguard:
+      // If rowPassword looks like a Brazilian phone number and rowWhatsapp is empty, fix the swap
+      if (rowPassword && /^(\+?55\s?)?\(?\d{2}\)?\s?\d{4,5}[-\s]?\d{4}$/.test(rowPassword) && !rowWhatsapp) {
+        rowWhatsapp = rowPassword;
+        rowPassword = '';
+      }
+
       if (rowUsername && rowUsername !== 'mastercmdit' && rowUsername.length >= 2) {
         const cleanUser = rowUsername.toLowerCase().trim();
         const existingIdx = restoredUsers.findIndex((u) => u.username.toLowerCase() === cleanUser);
