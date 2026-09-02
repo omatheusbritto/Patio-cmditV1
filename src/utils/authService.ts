@@ -400,7 +400,9 @@ export async function loginUser(
     // Se o servidor retornou erro 401 ou usuário não encontrado, verifica se temos o usuário no localStorage
     const localUsers = getAllUsers();
     const localUser = localUsers.find(
-      (u) => u.username.toLowerCase() === cleanUsername && u.password === cleanPassword
+      (u) =>
+        (u.username.toLowerCase() === cleanUsername || u.name.toLowerCase().trim() === cleanUsername) &&
+        (u.password === password || u.password?.trim() === cleanPassword || u.password?.trim().toLowerCase() === cleanPassword.toLowerCase())
     );
 
     if (localUser) {
@@ -447,7 +449,9 @@ export async function loginUser(
   // Fallback offline local
   const users = getAllUsers();
   const user = users.find(
-    (u) => u.username.toLowerCase() === cleanUsername && u.password === cleanPassword
+    (u) =>
+      (u.username.toLowerCase() === cleanUsername || u.name.toLowerCase().trim() === cleanUsername) &&
+      (u.password === password || u.password?.trim() === cleanPassword || u.password?.trim().toLowerCase() === cleanPassword.toLowerCase())
   );
 
   if (!user) {

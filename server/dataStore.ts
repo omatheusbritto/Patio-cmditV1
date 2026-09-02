@@ -193,11 +193,19 @@ export async function restoreUsersFromSpreadsheetAsync(
       };
     }
 
-    // Find the Users tab (e.g. "👥 Usuários (CMDIT)", "USUARIOS_CMDIT", or tabs with "usuari")
+    // Find the Users tab (e.g. "👥 Usuários (CMDIT)", "USUARIOS_CMDIT", "USUARIOS", "OPERADORES", "USUÁRIOS", etc.)
     let userTab: any = null;
     for (const [tabKey, tabObj] of Object.entries<any>(data.tabs)) {
-      const lower = tabKey.toLowerCase();
-      if (lower.includes('usuari') || lower.includes('operador') || lower.includes('cmdit')) {
+      const lower = tabKey.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (
+        lower.includes('usuari') ||
+        lower.includes('operador') ||
+        lower.includes('cmdit') ||
+        lower.includes('colaborador') ||
+        lower.includes('funcionario') ||
+        lower.includes('login') ||
+        lower.includes('acesso')
+      ) {
         userTab = tabObj;
         break;
       }
@@ -231,7 +239,7 @@ export async function restoreUsersFromSpreadsheetAsync(
 
     for (const row of userTab.rows) {
       // Look for columns: Username, Name, Role, Whatsapp, Password, Status
-      const values = Object.values(row).map((v) => String(v || '').trim());
+      const values = Object.values(row).map((v) => (v !== null && v !== undefined ? String(v).trim() : ''));
       // Typically: Col 1: Date, Col 2: Username, Col 3: Name, Col 4: Role, Col 5: Whatsapp/Contato, Col 6: Password, Col 7: Status
       let rowUsername = '';
       let rowName = '';
@@ -240,60 +248,109 @@ export async function restoreUsersFromSpreadsheetAsync(
       let rowPassword = '';
       let rowIsActive = true;
 
-      // Extract by keys or positional values
+      // Extract by normalized keys
       for (const [k, v] of Object.entries<any>(row)) {
-        const keyLower = k.toLowerCase();
-        const strVal = String(v || '').trim();
-        if (keyLower.includes('matr') || keyLower.includes('usuário') || keyLower.includes('usuario') || keyLower.includes('login') || keyLower === 'col_2') {
-          if (strVal && !rowUsername) rowUsername = strVal.toLowerCase();
-        } else if (keyLower.includes('nome') || keyLower === 'col_3') {
-          if (strVal && !rowName) rowName = strVal;
-        } else if (keyLower.includes('função') || keyLower.includes('cargo') || keyLower.includes('role') || keyLower === 'col_4') {
-          if (strVal) rowRole = strVal;
-        } else if (keyLower.includes('whats') || keyLower.includes('celular') || keyLower.includes('telefone') || keyLower.includes('contato') || keyLower.includes('tel')) {
-          if (strVal && strVal !== '-') rowWhatsapp = strVal;
-        } else if (keyLower.includes('senha') || keyLower.includes('password')) {
-          if (strVal && !rowPassword) rowPassword = strVal;
-        } else if (keyLower.includes('status')) {
-          if (strVal.toUpperCase() === 'BLOQUEADO' || strVal.toUpperCase() === 'INATIVO') {
+        if (v === null || v === undefined) continue;
+        const keyLower = k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const strVal = String(v).trim();
+        if (!strVal) continue;
+
+        if (
+          keyLower.includes('matr') ||
+          keyLower.includes('usuario') ||
+          keyLower.includes('login') ||
+          keyLower === 'col_2' ||
+          keyLower === 'username' ||
+          keyLower === 'user'
+        ) {
+          if (!rowUsername) rowUsername = strVal.toLowerCase();
+        } else if (
+          (keyLower.includes('nome') || keyLower === 'col_3' || keyLower === 'name' || keyLower === 'colaborador' || keyLower === 'funcionario') &&
+          !keyLower.includes('usuario')
+        ) {
+          if (!rowName) rowName = strVal;
+        } else if (
+          keyLower.includes('funcao') ||
+          keyLower.includes('cargo') ||
+          keyLower.includes('role') ||
+          keyLower === 'col_4' ||
+          keyLower === 'perfil'
+        ) {
+          rowRole = strVal;
+        } else if (
+          keyLower.includes('whats') ||
+          keyLower.includes('celular') ||
+          keyLower.includes('telefone') ||
+          keyLower.includes('contato') ||
+          keyLower.includes('tel') ||
+          keyLower.includes('fone')
+        ) {
+          if (strVal !== '-') rowWhatsapp = strVal;
+        } else if (
+          keyLower.includes('senha') ||
+          keyLower.includes('password') ||
+          keyLower.includes('pass') ||
+          keyLower.includes('pin') ||
+          keyLower === 'col_6'
+        ) {
+          if (!rowPassword) rowPassword = strVal;
+        } else if (keyLower.includes('status') || keyLower.includes('situacao') || keyLower.includes('ativo')) {
+          const up = strVal.toUpperCase();
+          if (up === 'BLOQUEADO' || up === 'INATIVO' || up === 'FALSE' || up === '0' || up === 'DESATIVADO') {
             rowIsActive = false;
           }
         }
       }
 
-      // Fallback by position if headers were generic
-      if (!rowUsername && values[1] && values[1] !== '_rowIndex') {
-        rowUsername = values[1].toLowerCase();
-        rowName = values[2] || rowUsername;
-        rowRole = values[3] || 'operador';
-        // If 8 columns: [date, user, name, role, whats, pass, status, lastAccess]
+      // Fallback by positional columns if header keys were generic or not matched
+      if (!rowUsername && values.length >= 2) {
+        // Find first column that looks like a username/matricula
+        for (let i = 0; i < values.length; i++) {
+          const val = values[i];
+          if (!val || val === '_rowIndex' || val.includes('/') && val.includes(':')) continue;
+          if (!rowUsername && val.length >= 2 && !val.includes('@') && isNaN(Date.parse(val))) {
+            rowUsername = val.toLowerCase();
+            rowName = values[i + 1] || rowUsername;
+            rowRole = values[i + 2] || 'operador';
+            break;
+          }
+        }
+      }
+
+      // If password was still not found by named header, examine row values by index
+      if (!rowPassword && values.length >= 4) {
+        // If 8 columns: [0:date, 1:user, 2:name, 3:role, 4:whats, 5:pass, 6:status, 7:lastAccess]
         if (values.length >= 7) {
-          rowWhatsapp = values[4] && values[4] !== '-' ? values[4] : '';
-          rowPassword = values[5] || '';
-          rowIsActive = (values[6] || '').toUpperCase() !== 'BLOQUEADO';
-        } else {
-          rowPassword = values[4] || '';
-          rowIsActive = (values[5] || '').toUpperCase() !== 'BLOQUEADO';
+          if (values[5] && values[5] !== '-' && !/^\+?55/.test(values[5])) {
+            rowPassword = values[5];
+          } else if (values[4] && !values[4].includes('(') && !/^\+?55/.test(values[4])) {
+            // maybe 7 cols without whatsapp: [0:date, 1:user, 2:name, 3:role, 4:pass, 5:status]
+            rowPassword = values[4];
+          }
+        } else if (values.length >= 5) {
+          rowPassword = values[4] || values[3] || '';
         }
       }
 
       // Smart Phone / Password safeguard:
-      // If rowPassword looks like a Brazilian phone number and rowWhatsapp is empty, fix the swap
+      // If rowPassword looks like a Brazilian phone number and rowWhatsapp is empty, swap them
       if (rowPassword && /^(\+?55\s?)?\(?\d{2}\)?\s?\d{4,5}[-\s]?\d{4}$/.test(rowPassword) && !rowWhatsapp) {
         rowWhatsapp = rowPassword;
         rowPassword = '';
       }
 
-      if (rowUsername && rowUsername !== 'mastercmdit' && rowUsername.length >= 2) {
+      if (rowUsername && rowUsername !== 'mastercmdit' && rowUsername.length >= 1) {
         const cleanUser = rowUsername.toLowerCase().trim();
         const existingIdx = restoredUsers.findIndex((u) => u.username.toLowerCase() === cleanUser);
+        const resolvedPassword = rowPassword ? rowPassword.trim() : (existingIdx !== -1 ? restoredUsers[existingIdx].password || '123456' : '123456');
+
         const parsedAccount: UserAccount = {
           id: existingIdx !== -1 ? restoredUsers[existingIdx].id : `user-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           username: cleanUser,
           name: rowName || cleanUser.toUpperCase(),
           role: parseRole(rowRole),
           whatsapp: rowWhatsapp || (existingIdx !== -1 ? restoredUsers[existingIdx].whatsapp : undefined),
-          password: rowPassword || (existingIdx !== -1 ? restoredUsers[existingIdx].password : '123456'),
+          password: resolvedPassword,
           createdAt: new Date().toISOString(),
           isActive: rowIsActive,
         };
@@ -852,10 +909,33 @@ export function authenticateServerUser(
 ): { success: boolean; error?: string; user?: Omit<UserAccount, 'password'> } {
   const users = loadServerUsers();
   const cleanUsername = username.trim().toLowerCase();
+  const rawPass = password || '';
+  const cleanPass = rawPass.trim();
 
-  const user = users.find(
-    (u) => u.username.toLowerCase() === cleanUsername && u.password === password.trim()
+  // 1. First try exact match or trimmed match
+  let user = users.find(
+    (u) =>
+      u.username.toLowerCase() === cleanUsername &&
+      (u.password === rawPass || u.password?.trim() === cleanPass)
   );
+
+  // 2. If not found, try case-insensitive match (in case spreadsheet had uppercase password or user typed lowercase)
+  if (!user) {
+    user = users.find(
+      (u) =>
+        u.username.toLowerCase() === cleanUsername &&
+        u.password?.trim().toLowerCase() === cleanPass.toLowerCase()
+    );
+  }
+
+  // 3. If still not found, check matching by Name if user typed their full name instead of username
+  if (!user) {
+    user = users.find(
+      (u) =>
+        u.name.toLowerCase().trim() === cleanUsername &&
+        (u.password === rawPass || u.password?.trim() === cleanPass || u.password?.trim().toLowerCase() === cleanPass.toLowerCase())
+    );
+  }
 
   if (!user) {
     return { success: false, error: 'Usuário / Matrícula ou senha incorretos.' };
