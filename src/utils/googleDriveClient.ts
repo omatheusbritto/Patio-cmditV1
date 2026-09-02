@@ -536,7 +536,14 @@ export function getAppsScriptTemplateCode(): string {
  * - 🔍 Qualidade 51 (8 colunas): Data, Hora, Placa, Condutor, Característica do Veículo, Nível Combustível, Destino, Operador
  * - ⛽ Combustível (8 colunas): Data, Hora, Placa, KM odômetro, Nível Combustível, Condutor, Destino, Operador
  * - 📋 Fila PDC (6 colunas): Data, Hora, Placa, Nível Combustível, Observação, Operador
- * - 👥 USUARIOS_CMDIT (7 colunas): Data de Cadastro, Matrícula / Usuário, Nome Completo, Função / Cargo, Senha, Status, Último Acesso
+ * - 👥 USUARIOS_CMDIT (7 colunas):
+ *     Coluna A: Data e Hora da criação do usuario
+ *     Coluna B: Matricula/Usuario
+ *     Coluna C: Nome do usuario
+ *     Coluna D: Senha
+ *     Coluna E: Whatsapp
+ *     Coluna F: Status
+ *     Coluna G: ultimo acesso
  */
 export const GOOGLE_APPS_SCRIPT_TEMPLATE = `// ============================================================================
 // SCRIPT DE GRAVAÇÃO AUTOMÁTICA OFICIAL UNIFICADA - CMDIT CONTROLE DE PÁTIO
@@ -621,17 +628,24 @@ var TAB_CONFIGS = {
   }
 };
 
+// 7 Colunas Oficiais da Aba de Usuários:
+// Coluna A: Data e Hora da criação do usuario
+// Coluna B: Matricula/Usuario
+// Coluna C: Nome do usuario
+// Coluna D: Senha
+// Coluna E: Whatsapp
+// Coluna F: Status
+// Coluna G: ultimo acesso
 var TAB_USUARIOS = {
   tabName: "USUARIOS_CMDIT",
   headers: [
-    "DATA DE CADASTRO",
-    "MATRÍCULA / USUÁRIO",
-    "NOME COMPLETO",
-    "FUNÇÃO / CARGO",
-    "WHATSAPP / CONTATO",
-    "SENHA",
-    "STATUS",
-    "ÚLTIMO ACESSO"
+    "Data e Hora da criação do usuario",
+    "Matricula/Usuario",
+    "Nome do usuario",
+    "Senha",
+    "Whatsapp",
+    "Status",
+    "ultimo acesso"
   ]
 };
 
@@ -682,7 +696,7 @@ function doPost(e) {
         }
       }
 
-      // Garante a aba de Usuários
+      // Garante a aba de Usuários com as 7 colunas oficiais
       var uSheetFound = null;
       for (var u = 0; u < ss.getSheets().length; u++) {
         if (ss.getSheets()[u].getName().toUpperCase().indexOf("USUARIOS") !== -1) {
@@ -739,7 +753,7 @@ function doPost(e) {
     }
 
     // ------------------------------------------------------------------------
-    // 1. GESTÃO E SINCRONIZAÇÃO DE USUÁRIOS (Aba USUARIOS_CMDIT na mesma planilha)
+    // 1. GESTÃO E SINCRONIZAÇÃO DE USUÁRIOS (Aba USUARIOS_CMDIT - 7 Colunas)
     // ------------------------------------------------------------------------
     var isUserAction = data.action === 'save_user' || data.action === 'sync_user' ||
                        data.action === 'delete_user' || data.action === 'sync_all_users' ||
@@ -765,15 +779,14 @@ function doPost(e) {
         uHeaderRange.setFontColor("#ffffff");
       } else {
         // AUTO-CORREÇÃO DE CABEÇALHOS:
-        // Garante que a linha 1 contenha exatamente as 8 colunas oficiais:
-        // 1: DATA DE CADASTRO | 2: MATRÍCULA / USUÁRIO | 3: NOME COMPLETO | 4: FUNÇÃO / CARGO | 5: WHATSAPP / CONTATO | 6: SENHA | 7: STATUS | 8: ÚLTIMO ACESSO
+        // Garante que a linha 1 contenha exatamente as 7 colunas oficiais:
+        // 1: Data e Hora da criação do usuario | 2: Matricula/Usuario | 3: Nome do usuario | 4: Senha | 5: Whatsapp | 6: Status | 7: ultimo acesso
         var currentCols = Math.max(uSheet.getLastColumn(), TAB_USUARIOS.headers.length);
         var currentHeaders = uSheet.getRange(1, 1, 1, currentCols).getValues()[0];
+        var col4Name = String(currentHeaders[3] || "").toUpperCase();
         var col5Name = String(currentHeaders[4] || "").toUpperCase();
-        var col6Name = String(currentHeaders[5] || "").toUpperCase();
         
-        // Se a coluna 5 for SENHA ou não tiver WHATSAPP na coluna 5, reescreve os cabeçalhos oficiais
-        if (col5Name.indexOf("WHATS") === -1 || col6Name.indexOf("SENHA") === -1 || currentHeaders.length < TAB_USUARIOS.headers.length) {
+        if (col4Name.indexOf("SENHA") === -1 || col5Name.indexOf("WHATS") === -1 || currentHeaders.length !== TAB_USUARIOS.headers.length) {
           var fixHRange = uSheet.getRange(1, 1, 1, TAB_USUARIOS.headers.length);
           fixHRange.setValues([TAB_USUARIOS.headers]);
           fixHRange.setFontWeight("bold");
@@ -790,22 +803,10 @@ function doPost(e) {
         var targetUser = data.user || data;
         var uUsername = String(targetUser.username || "").toLowerCase().trim();
         var uName = String(targetUser.name || "").trim();
-        var uRole = String(targetUser.role || "patio").trim();
-        var uWhatsapp = String(targetUser.whatsapp || targetUser.whats || targetUser.celular || targetUser.telefone || targetUser.contato || "").trim() || "-";
         var uPassword = String(targetUser.password || "").trim();
+        var uWhatsapp = String(targetUser.whatsapp || targetUser.whats || targetUser.celular || targetUser.telefone || targetUser.contato || "").trim() || "-";
         var uStatus = targetUser.isActive === false || String(targetUser.isActive).toLowerCase() === "false" ? "BLOQUEADO" : "ATIVO";
-
-        var roleLabels = {
-          master: "👑 Administrador Master",
-          patio: "📋 Operador do Pátio",
-          qualidade_51: "🔍 Operador 51 Qualidade",
-          pdc: "📋 Operador Fila PDC",
-          combustivel: "⛽ Operador Combustível",
-          entrada_saida: "🚪 Operador Entrada/Saída",
-          vistoriador: "🔍 Vistoriador",
-          motorista: "🚗 Motorista"
-        };
-        var uRoleLabel = roleLabels[uRole] || uRole.toUpperCase();
+        var uLastAccess = targetUser.lastLogin ? Utilities.formatDate(new Date(targetUser.lastLogin), "America/Sao_Paulo", "dd/MM/yyyy HH:mm:ss") : "-";
 
         var uData = uSheet.getDataRange().getValues();
         var userRowIndex = -1;
@@ -816,19 +817,25 @@ function doPost(e) {
           }
         }
 
-        // 8 Colunas Oficiais: [Data, Matrícula, Nome, Cargo, WhatsApp, Senha, Status, Último Acesso]
+        // 7 Colunas Oficiais Solicitadas:
+        // Col A (idx 0): Data e Hora da criação do usuario
+        // Col B (idx 1): Matricula/Usuario
+        // Col C (idx 2): Nome do usuario
+        // Col D (idx 3): Senha
+        // Col E (idx 4): Whatsapp
+        // Col F (idx 5): Status
+        // Col G (idx 6): ultimo acesso
         var rowValues = [
           dateU,
           uUsername,
           uName,
-          uRoleLabel,
-          uWhatsapp,
           uPassword,
+          uWhatsapp,
           uStatus,
-          "-"
+          uLastAccess
         ];
 
-        // Garante que o cabeçalho da linha 1 está atualizado
+        // Garante cabeçalhos da linha 1
         var hCheck = uSheet.getRange(1, 1, 1, TAB_USUARIOS.headers.length);
         hCheck.setValues([TAB_USUARIOS.headers]);
         hCheck.setFontWeight("bold");
@@ -852,7 +859,7 @@ function doPost(e) {
           whatsapp: uWhatsapp,
           hasPassword: !!uPassword,
           columnsCount: rowValues.length,
-          message: "Usuário " + uName + " (" + uUsername + ") gravado com sucesso na aba " + uSheet.getName() + " com WhatsApp e Senha em colunas separadas!"
+          message: "Usuário " + uName + " (" + uUsername + ") gravado na aba " + uSheet.getName() + " com 7 colunas oficiais (Senha na Coluna D)."
         })).setMimeType(ContentService.MimeType.JSON);
       }
 
@@ -892,40 +899,37 @@ function doPost(e) {
         hRangeAll.setBackground("#0f172a");
         hRangeAll.setFontColor("#ffffff");
 
-        // Limpa registros anteriores para reescrever limpo com 8 colunas
+        // Limpa registros anteriores para reescrever limpo com 7 colunas
         var lastRow = uSheet.getLastRow();
         if (lastRow > 1) {
           uSheet.deleteRows(2, lastRow - 1);
         }
 
-        var roleMap = {
-          master: "👑 Administrador Master",
-          patio: "📋 Operador do Pátio",
-          qualidade_51: "🔍 Operador 51 Qualidade",
-          pdc: "📋 Operador Fila PDC",
-          combustivel: "⛽ Operador Combustível",
-          entrada_saida: "🚪 Operador Entrada/Saída",
-          vistoriador: "🔍 Vistoriador",
-          motorista: "🚗 Motorista"
-        };
-
         var newRows = [];
         for (var uIdx = 0; uIdx < usersList.length; uIdx++) {
           var u = usersList[uIdx];
-          var roleName = roleMap[u.role] || String(u.role || "").toUpperCase();
           var status = u.isActive === false ? "BLOQUEADO" : "ATIVO";
           var uWhats = String(u.whatsapp || u.whats || u.celular || u.telefone || u.contato || "").trim() || "-";
           var uPass = String(u.password || "").trim();
+          var uCreated = u.createdAt ? Utilities.formatDate(new Date(u.createdAt), "America/Sao_Paulo", "dd/MM/yyyy HH:mm:ss") : dateU;
+          var uLastAcc = u.lastLogin ? Utilities.formatDate(new Date(u.lastLogin), "America/Sao_Paulo", "dd/MM/yyyy HH:mm:ss") : "-";
 
+          // 7 Colunas Oficiais Exatas:
+          // Col A: Data e Hora da criação do usuario
+          // Col B: Matricula/Usuario
+          // Col C: Nome do usuario
+          // Col D: Senha
+          // Col E: Whatsapp
+          // Col F: Status
+          // Col G: ultimo acesso
           newRows.push([
-            u.createdAt ? Utilities.formatDate(new Date(u.createdAt), "America/Sao_Paulo", "dd/MM/yyyy HH:mm:ss") : dateU,
+            uCreated,
             String(u.username || "").toLowerCase().trim(),
             String(u.name || "").trim(),
-            roleName,
-            uWhats,
             uPass,
+            uWhats,
             status,
-            "-"
+            uLastAcc
           ]);
         }
 
@@ -942,7 +946,7 @@ function doPost(e) {
           totalUsers: newRows.length,
           tabName: uSheet.getName(),
           columnsCount: TAB_USUARIOS.headers.length,
-          message: "Todos os " + newRows.length + " usuários foram sincronizados com sucesso na aba " + uSheet.getName() + " com a nova estrutura de 8 colunas!"
+          message: "Todos os " + newRows.length + " usuários foram sincronizados com sucesso na aba " + uSheet.getName() + " com a estrutura oficial de 7 colunas (Senha na Coluna D e WhatsApp na Coluna E)!"
         })).setMimeType(ContentService.MimeType.JSON);
       }
     }

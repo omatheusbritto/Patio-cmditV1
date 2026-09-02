@@ -193,7 +193,7 @@ export async function restoreUsersFromSpreadsheetAsync(
       };
     }
 
-    // Find the Users tab (e.g. "👥 Usuários (CMDIT)", "USUARIOS_CMDIT", "USUARIOS", "OPERADORES", "USUÁRIOS", etc.)
+    // Find the Users tab (e.g. "USUARIOS_CMDIT", "USUARIOS", "OPERADORES", "USUÁRIOS", "USUARIO", etc.)
     let userTab: any = null;
     for (const [tabKey, tabObj] of Object.entries<any>(data.tabs)) {
       const lower = tabKey.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -224,9 +224,11 @@ export async function restoreUsersFromSpreadsheetAsync(
     const restoredUsers: UserAccount[] = [...currentUsers];
     let addedCount = 0;
 
-    const parseRole = (rawRole: string): UserRole => {
+    const parseRole = (rawRole: string, username: string, name: string): UserRole => {
       const r = (rawRole || '').toLowerCase();
-      if (r.includes('master') || r.includes('admin')) return 'master';
+      const u = (username || '').toLowerCase();
+      const n = (name || '').toLowerCase();
+      if (r.includes('master') || r.includes('admin') || u === 'mastercmdit' || n.includes('administrador master')) return 'master';
       if (r.includes('51') || r.includes('qualidade')) return 'qualidade_51';
       if (r.includes('pdc') || r.includes('fila')) return 'pdc';
       if (r.includes('combust') || r.includes('abastec')) return 'combustivel';
@@ -238,102 +240,180 @@ export async function restoreUsersFromSpreadsheetAsync(
     };
 
     for (const row of userTab.rows) {
-      // Look for columns: Username, Name, Role, Whatsapp, Password, Status
-      const values = Object.values(row).map((v) => (v !== null && v !== undefined ? String(v).trim() : ''));
-      // Typically: Col 1: Date, Col 2: Username, Col 3: Name, Col 4: Role, Col 5: Whatsapp/Contato, Col 6: Password, Col 7: Status
+      // Extract raw column entries excluding internal index property
+      const rawEntries = Object.entries<any>(row).filter(([k]) => k !== '_rowIndex');
+      const colValues = rawEntries.map(([, v]) => (v !== null && v !== undefined ? String(v).trim() : ''));
+
+      // 7 Colunas Oficiais Solicitadas:
+      // Col A (idx 0): Data e Hora da criação do usuario
+      // Col B (idx 1): Matricula/Usuario
+      // Col C (idx 2): Nome do usuario
+      // Col D (idx 3): Senha
+      // Col E (idx 4): Whatsapp
+      // Col F (idx 5): Status
+      // Col G (idx 6): Ultimo Acesso
+      let rowCreated = '';
       let rowUsername = '';
       let rowName = '';
-      let rowRole = 'operador';
-      let rowWhatsapp = '';
       let rowPassword = '';
+      let rowWhatsapp = '';
+      let rowRole: string = 'operador';
       let rowIsActive = true;
+      let rowLastAccess = '';
 
-      // Extract by normalized keys
-      for (const [k, v] of Object.entries<any>(row)) {
+      // 1. Extração inteligente por cabeçalho nomeado
+      for (const [k, v] of rawEntries) {
         if (v === null || v === undefined) continue;
-        const keyLower = k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const keyLower = k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
         const strVal = String(v).trim();
         if (!strVal) continue;
 
+        // Col A: Data de criação
         if (
+          keyLower.includes('criacao') ||
+          (keyLower.includes('data') && !keyLower.includes('ultimo') && !keyLower.includes('acesso')) ||
+          keyLower === 'col_1' ||
+          keyLower === 'coluna a'
+        ) {
+          if (!rowCreated) rowCreated = strVal;
+        }
+        // Col B: Matrícula / Usuário
+        else if (
           keyLower.includes('matr') ||
           keyLower.includes('usuario') ||
           keyLower.includes('login') ||
           keyLower === 'col_2' ||
+          keyLower === 'coluna b' ||
           keyLower === 'username' ||
           keyLower === 'user'
         ) {
           if (!rowUsername) rowUsername = strVal.toLowerCase();
-        } else if (
-          (keyLower.includes('nome') || keyLower === 'col_3' || keyLower === 'name' || keyLower === 'colaborador' || keyLower === 'funcionario') &&
-          !keyLower.includes('usuario')
+        }
+        // Col C: Nome do usuário
+        else if (
+          keyLower.includes('nome') ||
+          keyLower.includes('colaborador') ||
+          keyLower.includes('funcionario') ||
+          keyLower === 'col_3' ||
+          keyLower === 'coluna c' ||
+          keyLower === 'name'
         ) {
           if (!rowName) rowName = strVal;
-        } else if (
-          keyLower.includes('funcao') ||
-          keyLower.includes('cargo') ||
-          keyLower.includes('role') ||
+        }
+        // Col D: Senha (CRÍTICO: Coluna 4 / D)
+        else if (
+          keyLower.includes('senha') ||
+          keyLower.includes('password') ||
+          keyLower.includes('pass') ||
+          keyLower.includes('pin') ||
           keyLower === 'col_4' ||
-          keyLower === 'perfil'
+          keyLower === 'coluna d'
         ) {
-          rowRole = strVal;
-        } else if (
+          if (!rowPassword) rowPassword = strVal;
+        }
+        // Col E: WhatsApp (Coluna 5 / E)
+        else if (
           keyLower.includes('whats') ||
           keyLower.includes('celular') ||
           keyLower.includes('telefone') ||
           keyLower.includes('contato') ||
           keyLower.includes('tel') ||
-          keyLower.includes('fone')
+          keyLower.includes('fone') ||
+          keyLower === 'col_5' ||
+          keyLower === 'coluna e'
         ) {
           if (strVal !== '-') rowWhatsapp = strVal;
-        } else if (
-          keyLower.includes('senha') ||
-          keyLower.includes('password') ||
-          keyLower.includes('pass') ||
-          keyLower.includes('pin') ||
-          keyLower === 'col_6'
+        }
+        // Col F: Status (Coluna 6 / F)
+        else if (
+          keyLower.includes('status') ||
+          keyLower.includes('situacao') ||
+          keyLower.includes('ativo') ||
+          keyLower === 'col_6' ||
+          keyLower === 'coluna f'
         ) {
-          if (!rowPassword) rowPassword = strVal;
-        } else if (keyLower.includes('status') || keyLower.includes('situacao') || keyLower.includes('ativo')) {
           const up = strVal.toUpperCase();
           if (up === 'BLOQUEADO' || up === 'INATIVO' || up === 'FALSE' || up === '0' || up === 'DESATIVADO') {
             rowIsActive = false;
           }
         }
+        // Col G: Último Acesso (Coluna 7 / G)
+        else if (
+          keyLower.includes('ultimo') ||
+          keyLower.includes('acesso') ||
+          keyLower.includes('last_login') ||
+          keyLower === 'col_7' ||
+          keyLower === 'coluna g'
+        ) {
+          if (strVal !== '-') rowLastAccess = strVal;
+        }
+        // Cargo / Função (se existir em cabeçalhos antigos)
+        else if (keyLower.includes('cargo') || keyLower.includes('funcao') || keyLower.includes('role')) {
+          rowRole = strVal;
+        }
       }
 
-      // Fallback by positional columns if header keys were generic or not matched
-      if (!rowUsername && values.length >= 2) {
-        // Find first column that looks like a username/matricula
-        for (let i = 0; i < values.length; i++) {
-          const val = values[i];
-          if (!val || val === '_rowIndex' || val.includes('/') && val.includes(':')) continue;
-          if (!rowUsername && val.length >= 2 && !val.includes('@') && isNaN(Date.parse(val))) {
+      // 2. Fallback posicional exato para a estrutura oficial de 7 colunas
+      // [0: Data, 1: Matrícula/Usuário, 2: Nome, 3: Senha, 4: WhatsApp, 5: Status, 6: Último Acesso]
+      if (colValues.length >= 2) {
+        if (!rowUsername && colValues[1]) {
+          rowUsername = colValues[1].toLowerCase();
+        }
+        if (!rowName && colValues[2]) {
+          rowName = colValues[2];
+        }
+
+        // Se a senha não foi pega por nome de coluna
+        if (!rowPassword) {
+          // Caso padrão (7 colunas): Coluna D (index 3) é a SENHA
+          if (colValues.length >= 4 && colValues[3] && colValues[3] !== '-') {
+            // Verifica se a coluna 3 não é nome de cargo
+            const val3Lower = colValues[3].toLowerCase();
+            const isRoleName = ['operador', 'master', 'administrador', 'vistoriador', 'motorista'].includes(val3Lower);
+            if (!isRoleName) {
+              rowPassword = colValues[3];
+            } else if (colValues[5] && colValues[5] !== '-') {
+              // Se for layout antigo de 8 colunas onde cargo estava na col 3 e senha na col 5
+              rowPassword = colValues[5];
+              rowRole = colValues[3];
+            }
+          }
+        }
+
+        // Se whatsapp não foi pego por nome de coluna
+        if (!rowWhatsapp && colValues.length >= 5 && colValues[4] && colValues[4] !== '-') {
+          rowWhatsapp = colValues[4];
+        }
+
+        // Se status não foi pego
+        if (colValues.length >= 6 && colValues[5]) {
+          const up = colValues[5].toUpperCase();
+          if (up === 'BLOQUEADO' || up === 'INATIVO' || up === 'FALSE' || up === '0') {
+            rowIsActive = false;
+          }
+        }
+
+        // Se último acesso não foi pego
+        if (!rowLastAccess && colValues.length >= 7 && colValues[6] && colValues[6] !== '-') {
+          rowLastAccess = colValues[6];
+        }
+      }
+
+      // 3. Fallback de busca inteligente se rowUsername ainda estiver vazio
+      if (!rowUsername && colValues.length > 0) {
+        for (let i = 0; i < colValues.length; i++) {
+          const val = colValues[i];
+          if (!val || val === '_rowIndex' || (val.includes('/') && val.includes(':'))) continue;
+          if (val.length >= 2 && !val.includes('@') && isNaN(Date.parse(val))) {
             rowUsername = val.toLowerCase();
-            rowName = values[i + 1] || rowUsername;
-            rowRole = values[i + 2] || 'operador';
+            if (!rowName) rowName = colValues[i + 1] || rowUsername;
+            if (!rowPassword && colValues[i + 2]) rowPassword = colValues[i + 2];
             break;
           }
         }
       }
 
-      // If password was still not found by named header, examine row values by index
-      if (!rowPassword && values.length >= 4) {
-        // If 8 columns: [0:date, 1:user, 2:name, 3:role, 4:whats, 5:pass, 6:status, 7:lastAccess]
-        if (values.length >= 7) {
-          if (values[5] && values[5] !== '-' && !/^\+?55/.test(values[5])) {
-            rowPassword = values[5];
-          } else if (values[4] && !values[4].includes('(') && !/^\+?55/.test(values[4])) {
-            // maybe 7 cols without whatsapp: [0:date, 1:user, 2:name, 3:role, 4:pass, 5:status]
-            rowPassword = values[4];
-          }
-        } else if (values.length >= 5) {
-          rowPassword = values[4] || values[3] || '';
-        }
-      }
-
-      // Smart Phone / Password safeguard:
-      // If rowPassword looks like a Brazilian phone number and rowWhatsapp is empty, swap them
+      // Safeguard de inversão acidental de telefone e senha
       if (rowPassword && /^(\+?55\s?)?\(?\d{2}\)?\s?\d{4,5}[-\s]?\d{4}$/.test(rowPassword) && !rowWhatsapp) {
         rowWhatsapp = rowPassword;
         rowPassword = '';
@@ -342,16 +422,19 @@ export async function restoreUsersFromSpreadsheetAsync(
       if (rowUsername && rowUsername !== 'mastercmdit' && rowUsername.length >= 1) {
         const cleanUser = rowUsername.toLowerCase().trim();
         const existingIdx = restoredUsers.findIndex((u) => u.username.toLowerCase() === cleanUser);
-        const resolvedPassword = rowPassword ? rowPassword.trim() : (existingIdx !== -1 ? restoredUsers[existingIdx].password || '123456' : '123456');
+        const resolvedPassword = rowPassword && rowPassword.trim() 
+          ? rowPassword.trim() 
+          : (existingIdx !== -1 && restoredUsers[existingIdx].password ? restoredUsers[existingIdx].password : '123456');
 
         const parsedAccount: UserAccount = {
           id: existingIdx !== -1 ? restoredUsers[existingIdx].id : `user-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           username: cleanUser,
           name: rowName || cleanUser.toUpperCase(),
-          role: parseRole(rowRole),
+          role: parseRole(rowRole, cleanUser, rowName),
           whatsapp: rowWhatsapp || (existingIdx !== -1 ? restoredUsers[existingIdx].whatsapp : undefined),
           password: resolvedPassword,
-          createdAt: new Date().toISOString(),
+          createdAt: rowCreated || (existingIdx !== -1 && restoredUsers[existingIdx].createdAt ? restoredUsers[existingIdx].createdAt : new Date().toISOString()),
+          lastLogin: rowLastAccess || (existingIdx !== -1 ? restoredUsers[existingIdx].lastLogin : undefined),
           isActive: rowIsActive,
         };
 
@@ -362,7 +445,7 @@ export async function restoreUsersFromSpreadsheetAsync(
           addedCount++;
         }
 
-        // Also persist to PostgreSQL / MariaDB if active
+        // Sincroniza com PostgreSQL / MariaDB
         const pg = getPgPool();
         if (pg) {
           pg.query(
@@ -814,19 +897,23 @@ export async function authenticateServerUserAsync(
   password: string
 ): Promise<{ success: boolean; error?: string; user?: Omit<UserAccount, 'password'> }> {
   const cleanUsername = username.trim().toLowerCase();
-  const cleanPass = password.trim();
+  const rawPass = String(password || '');
+  const cleanPass = rawPass.trim();
 
   // 1. PostgreSQL Auth
   const pg = getPgPool();
   if (pg) {
     try {
       const res = await pg.query(
-        'SELECT id, username, full_name, role, password_hash, is_active FROM users WHERE LOWER(username) = $1 LIMIT 1',
+        'SELECT id, username, full_name, role, password_hash, is_active FROM users WHERE LOWER(username) = $1 OR LOWER(full_name) = $1 LIMIT 1',
         [cleanUsername]
       );
       if (res && res.rows.length > 0) {
         const u = res.rows[0];
-        if (u.password_hash !== cleanPass) {
+        const dbPass = String(u.password_hash || '').trim();
+        const passMatches = dbPass === rawPass || dbPass === cleanPass || dbPass.toLowerCase() === cleanPass.toLowerCase();
+        
+        if (!passMatches) {
           return { success: false, error: 'Usuário / Matrícula ou senha incorretos.' };
         }
         if (u.is_active === false || u.is_active === 0) {
@@ -854,12 +941,15 @@ export async function authenticateServerUserAsync(
   if (mysqlPool) {
     try {
       const [rows]: any = await mysqlPool.query(
-        'SELECT id, username, full_name, role, password_hash, is_active FROM users WHERE LOWER(username) = ? LIMIT 1',
-        [cleanUsername]
+        'SELECT id, username, full_name, role, password_hash, is_active FROM users WHERE LOWER(username) = ? OR LOWER(full_name) = ? LIMIT 1',
+        [cleanUsername, cleanUsername]
       );
       if (Array.isArray(rows) && rows.length > 0) {
         const u = rows[0];
-        if (u.password_hash !== cleanPass) {
+        const dbPass = String(u.password_hash || '').trim();
+        const passMatches = dbPass === rawPass || dbPass === cleanPass || dbPass.toLowerCase() === cleanPass.toLowerCase();
+
+        if (!passMatches) {
           return { success: false, error: 'Usuário / Matrícula ou senha incorretos.' };
         }
         if (u.is_active === 0 || u.is_active === false) {
@@ -887,11 +977,12 @@ export async function authenticateServerUserAsync(
     return localAuth;
   }
 
-  // If local auth failed, try restoring users from linked Google Spreadsheet if configured
+  // If local auth failed, try auto-restoring users from linked Google Spreadsheet if configured
   try {
     const settings = await loadServerSettingsAsync();
-    if (settings.sheetsWebhookUrl && settings.sheetsWebhookUrl.startsWith('http')) {
-      const restored = await restoreUsersFromSpreadsheetAsync(settings.sheetsWebhookUrl);
+    const targetUrl = settings.sheetsWebhookUrl || settings.spreadsheetUrl;
+    if (targetUrl && targetUrl.startsWith('http')) {
+      const restored = await restoreUsersFromSpreadsheetAsync(targetUrl);
       if (restored.success) {
         return authenticateServerUser(username, password);
       }
@@ -909,31 +1000,39 @@ export function authenticateServerUser(
 ): { success: boolean; error?: string; user?: Omit<UserAccount, 'password'> } {
   const users = loadServerUsers();
   const cleanUsername = username.trim().toLowerCase();
-  const rawPass = password || '';
+  const alphanumericUsername = cleanUsername.replace(/[^a-z0-9]/g, '');
+  const rawPass = String(password || '');
   const cleanPass = rawPass.trim();
+  const cleanPassLower = cleanPass.toLowerCase();
 
-  // 1. First try exact match or trimmed match
+  const isPasswordMatch = (storedPass?: string): boolean => {
+    if (!storedPass) return false;
+    const s = String(storedPass);
+    const sTrim = s.trim();
+    return s === rawPass || sTrim === cleanPass || sTrim.toLowerCase() === cleanPassLower;
+  };
+
+  // 1. First try exact username match
   let user = users.find(
-    (u) =>
-      u.username.toLowerCase() === cleanUsername &&
-      (u.password === rawPass || u.password?.trim() === cleanPass)
+    (u) => u.username.toLowerCase() === cleanUsername && isPasswordMatch(u.password)
   );
 
-  // 2. If not found, try case-insensitive match (in case spreadsheet had uppercase password or user typed lowercase)
-  if (!user) {
+  // 2. Try match without punctuation / formatted matricula (e.g. "012.345" vs "012345")
+  if (!user && alphanumericUsername.length >= 2) {
     user = users.find(
       (u) =>
-        u.username.toLowerCase() === cleanUsername &&
-        u.password?.trim().toLowerCase() === cleanPass.toLowerCase()
+        u.username.toLowerCase().replace(/[^a-z0-9]/g, '') === alphanumericUsername &&
+        isPasswordMatch(u.password)
     );
   }
 
-  // 3. If still not found, check matching by Name if user typed their full name instead of username
+  // 3. Try matching by Full Name or partial Name
   if (!user) {
     user = users.find(
       (u) =>
-        u.name.toLowerCase().trim() === cleanUsername &&
-        (u.password === rawPass || u.password?.trim() === cleanPass || u.password?.trim().toLowerCase() === cleanPass.toLowerCase())
+        (u.name.toLowerCase().trim() === cleanUsername ||
+          u.name.toLowerCase().trim().replace(/[^a-z0-9]/g, '') === alphanumericUsername) &&
+        isPasswordMatch(u.password)
     );
   }
 

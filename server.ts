@@ -1147,15 +1147,18 @@ async function startServer() {
             diag.hasUserTab = true;
             diag.userTabHeaders = userTab.headers || [];
             diag.sheetUsersCount = Array.isArray(userTab.rows) ? userTab.rows.length : 0;
-            diag.colWhatsappName = userTab.headers?.[4] || 'Não configurada (Coluna 5)';
-            diag.colPasswordName = userTab.headers?.[5] || 'Não configurada (Coluna 6)';
+            diag.colPasswordName = userTab.headers?.[3] || 'Não configurada (Coluna 4 - D)';
+            diag.colWhatsappName = userTab.headers?.[4] || 'Não configurada (Coluna 5 - E)';
 
+            const col4Upper = String(diag.colPasswordName).toUpperCase();
             const col5Upper = String(diag.colWhatsappName).toUpperCase();
-            const isHeadersCorrect = col5Upper.includes('WHATS') || col5Upper.includes('CELULAR') || col5Upper.includes('CONTATO');
+            const isHeadersCorrect =
+              (col4Upper.includes('SENHA') || col4Upper.includes('PASSWORD')) &&
+              (col5Upper.includes('WHATS') || col5Upper.includes('CELULAR') || col5Upper.includes('CONTATO') || col5Upper.includes('TEL'));
 
             if (isHeadersCorrect) {
               diag.status = 'perfect';
-              diag.details = `A sincronização está 100% operacional! A aba ${userTab.name} está ativa na planilha com as 8 colunas oficiais: WhatsApp na Coluna 5 (E) e Senha na Coluna 6 (F).`;
+              diag.details = `A sincronização está 100% operacional! A aba ${userTab.name} está ativa na planilha com a estrutura solicitada de 7 colunas: Senha na Coluna 4 (D) e WhatsApp na Coluna 5 (E).`;
             } else {
               diag.status = 'needs_sync';
               diag.details = `A aba de usuários foi encontrada (${userTab.name}), mas os cabeçalhos atuais precisam de atualização. Clique no botão "Forçar Sincronização e Corrigir Aba Agora" para regravar a estrutura correta.`;

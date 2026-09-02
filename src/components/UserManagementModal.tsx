@@ -513,7 +513,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                       <strong>1. Abrir o Google Sheets:</strong> Clique no botão superior <span className="font-bold text-emerald-900 underline">"Abrir no Google Sheets"</span> e veja a aba <strong>USUARIOS_CMDIT</strong>.
                     </li>
                     <li>
-                      <strong>2. Conferencia das Colunas:</strong> Verifique que a <strong>Coluna E</strong> agora é <span className="font-mono bg-white px-1 py-0.5 rounded border border-emerald-300 font-bold">WHATSAPP / CONTATO</span> e a <strong>Coluna F</strong> é <span className="font-mono bg-white px-1 py-0.5 rounded border border-emerald-300 font-bold">SENHA</span>.
+                      <strong>2. Conferência das Colunas:</strong> Verifique que a <strong>Coluna D (4ª)</strong> é <span className="font-mono bg-white px-1 py-0.5 rounded border border-emerald-300 font-bold">SENHA</span> e a <strong>Coluna E (5ª)</strong> é <span className="font-mono bg-white px-1 py-0.5 rounded border border-emerald-300 font-bold">WHATSAPP</span>.
                     </li>
                     <li>
                       <strong>3. Teste de Cadastro em Tempo Real:</strong> Ao criar um novo operador ou redefinir uma senha, a linha correspondente é atualizada imediatamente na planilha.
@@ -547,16 +547,16 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                       </div>
 
                       <div className="p-2.5 bg-neutral-50 rounded-xl border border-neutral-200">
-                        <span className="text-[10px] text-neutral-400 block font-bold">Coluna 5 (E) na Planilha</span>
-                        <span className="font-mono font-bold text-neutral-800 truncate block mt-0.5" title={diagnosticData.colWhatsappName}>
-                          {diagnosticData.colWhatsappName}
+                        <span className="text-[10px] text-neutral-400 block font-bold">Coluna 4 (D) - Senha</span>
+                        <span className="font-mono font-bold text-neutral-800 truncate block mt-0.5" title={diagnosticData.colPasswordName}>
+                          {diagnosticData.colPasswordName}
                         </span>
                       </div>
 
                       <div className="p-2.5 bg-neutral-50 rounded-xl border border-neutral-200">
-                        <span className="text-[10px] text-neutral-400 block font-bold">Coluna 6 (F) na Planilha</span>
-                        <span className="font-mono font-bold text-neutral-800 truncate block mt-0.5" title={diagnosticData.colPasswordName}>
-                          {diagnosticData.colPasswordName}
+                        <span className="text-[10px] text-neutral-400 block font-bold">Coluna 5 (E) - WhatsApp</span>
+                        <span className="font-mono font-bold text-neutral-800 truncate block mt-0.5" title={diagnosticData.colWhatsappName}>
+                          {diagnosticData.colWhatsappName}
                         </span>
                       </div>
                     </div>
@@ -676,7 +676,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                     required
                   />
                   <p className="text-[10px] text-neutral-500 mt-0.5">
-                    A senha será salva exclusivamente na coluna <strong>SENHA</strong> (Coluna 6 da planilha).
+                    A senha será salva na coluna <strong>SENHA</strong> (Coluna 4 / D da planilha).
                   </p>
                 </div>
 
@@ -696,7 +696,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                     className="bg-neutral-50 border border-neutral-300 rounded-xl px-3 py-2 text-xs font-medium text-neutral-900 focus:bg-white focus:border-emerald-600 outline-none transition"
                   />
                   <p className="text-[10px] text-neutral-500 mt-0.5">
-                    Salvo na coluna <strong>WHATSAPP / CONTATO</strong> (Coluna 5 da planilha).
+                    Salvo na coluna <strong>WHATSAPP</strong> (Coluna 5 / E da planilha).
                   </p>
                 </div>
 
@@ -1024,7 +1024,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-black text-neutral-700">Senha de Acesso (Coluna 6):</label>
+                  <label className="text-xs font-black text-neutral-700">Senha de Acesso (Coluna 4 - D):</label>
                   <input
                     type="text"
                     value={editPassword}
@@ -1036,7 +1036,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
 
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-black text-neutral-700 flex items-center justify-between">
-                    <span>WhatsApp / Contato (Coluna 5):</span>
+                    <span>WhatsApp (Coluna 5 - E):</span>
                     <span className="text-[10px] text-neutral-400">(Opcional)</span>
                   </label>
                   <input
