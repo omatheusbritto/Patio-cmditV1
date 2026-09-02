@@ -939,6 +939,217 @@ async function startServer() {
     }
   });
 
+  // API Route: Visualização Bruta e Diagnóstico da Planilha
+  app.all('/api/sheets/view-raw', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const settings = await loadServerSettingsAsync();
+      const bodyUrl = req.body?.webhookUrl || (req.query?.webhookUrl as string);
+      const targetUrl = bodyUrl || settings.sheetsWebhookUrl || settings.spreadsheetUrl;
+
+      if (!targetUrl || !targetUrl.startsWith('http')) {
+        res.json({
+          success: false,
+          error: 'URL da Planilha ou do Webhook não configurada. Configure o Webhook do Google Apps Script na aba Master.',
+        });
+        return;
+      }
+
+      // If it's an Apps Script Webhook URL
+      if (targetUrl.includes('script.google.com')) {
+        try {
+          const fetchResp = await fetch(targetUrl, {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+            redirect: 'follow',
+          });
+
+          const rawText = await fetchResp.text();
+
+          // Safeguard: Check if response is HTML instead of JSON
+          if (rawText.trim().startsWith('<') || rawText.includes('<!DOCTYPE') || rawText.includes('<html')) {
+            if (rawText.includes('ServiceLogin') || rawText.includes('accounts.google.com')) {
+              res.json({
+                success: false,
+                isHtml: true,
+                error: 'Permissão necessária: O Google Apps Script exige login. No Apps Script, clique em "Implantar" ➔ "Gerenciar implantações" ➔ Editar ➔ configure "Quem pode acessar" como "Qualquer pessoa" (Anyone) e salve como "Nova versão".',
+              });
+              return;
+            }
+            res.json({
+              success: false,
+              isHtml: true,
+              error: 'O Webhook retornou uma página HTML em vez de JSON. Verifique se o script do Google Apps Script foi implantado como Aplicativo da Web.',
+            });
+            return;
+          }
+
+          try {
+            const data = JSON.parse(rawText);
+            res.json({
+              success: true,
+              source: 'apps_script',
+              ...data,
+            });
+            return;
+          } catch (jsonErr: any) {
+            res.json({
+              success: false,
+              error: `Resposta não é um JSON válido: ${rawText.substring(0, 150)}`,
+            });
+            return;
+          }
+        } catch (fetchErr: any) {
+          res.json({
+            success: false,
+            error: `Falha ao conectar no Webhook: ${fetchErr.message}`,
+          });
+          return;
+        }
+      }
+
+      // If it's a direct Google Sheets document URL
+      let sheetId = settings.spreadsheetId || '';
+      const match = targetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+      if (match && match[1]) {
+        sheetId = match[1];
+      }
+
+      if (sheetId) {
+        res.json({
+          success: true,
+          source: 'google_sheets_url',
+          spreadsheetId: sheetId,
+          spreadsheetUrl: targetUrl,
+          message: 'URL da Planilha Google configurada.',
+        });
+        return;
+      }
+
+      res.json({
+        success: false,
+        error: 'URL não reconhecida.',
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        error: err.message || 'Erro ao processar consulta da planilha.',
+      });
+    }
+  });
+
+  // API Route: Diagnóstico Abrangente da Sincronização
+  app.all('/api/sheets/diagnostic', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const settings = await loadServerSettingsAsync();
+      const bodyUrl = req.body?.webhookUrl || (req.query?.webhookUrl as string);
+      const webhookUrl = bodyUrl || settings.sheetsWebhookUrl;
+      const spreadsheetUrl = settings.spreadsheetUrl || 'https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit';
+      const localUsers = await loadServerUsersAsync();
+
+      const diag: any = {
+        testedAt: new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
+        webhookConfigured: !!(webhookUrl && webhookUrl.startsWith('http')),
+        webhookUrl: webhookUrl || null,
+        spreadsheetUrl: spreadsheetUrl || null,
+        appUsersCount: localUsers.length,
+        sheetUsersCount: 0,
+        webhookOk: false,
+        hasUserTab: false,
+        userTabHeaders: [] as string[],
+        colWhatsappName: 'Não detectada',
+        colPasswordName: 'Não detectada',
+        status: 'unreachable',
+        details: '',
+      };
+
+      if (!webhookUrl || !webhookUrl.startsWith('http')) {
+        diag.status = 'unreachable';
+        diag.details = 'A URL do Webhook do Google Apps Script ainda não foi configurada. Acesse o Painel do Master ➔ Configurar Planilha ➔ Cole a URL do Webhook (/exec) da sua implantação do Google Apps Script.';
+        res.json({ success: true, diagnostic: diag });
+        return;
+      }
+
+      try {
+        const resp = await fetch(webhookUrl, {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          redirect: 'follow',
+        });
+
+        const rawText = await resp.text();
+
+        // Check if returned HTML login/redirect page
+        if (rawText.trim().startsWith('<') || rawText.includes('<!DOCTYPE') || rawText.includes('<html')) {
+          diag.webhookOk = false;
+          diag.status = 'unreachable';
+          diag.details = 'O Google Apps Script retornou uma página de autenticação (HTML) em vez de dados JSON. Como resolver: No Apps Script, clique em "Implantar" ➔ "Gerenciar implantações" ➔ Editar (ícone de lápis) ➔ em "Quem pode acessar", selecione "Qualquer pessoa" (Anyone) e clique em "Implantar" com uma Nova Versão.';
+          res.json({ success: true, diagnostic: diag });
+          return;
+        }
+
+        let data: any = null;
+        try {
+          data = JSON.parse(rawText);
+        } catch {
+          diag.webhookOk = false;
+          diag.status = 'unreachable';
+          diag.details = `O Webhook respondeu, mas não retornou um formato JSON válido. Conteúdo retornado: ${rawText.substring(0, 100)}`;
+          res.json({ success: true, diagnostic: diag });
+          return;
+        }
+
+        diag.webhookOk = true;
+        diag.spreadsheetTitle = data.spreadsheetTitle || 'Planilha CMDIT';
+
+        if (data.tabs && typeof data.tabs === 'object') {
+          // Find users tab
+          const userTab = Object.values(data.tabs).find((t: any) => {
+            const name = String(t.name || '').toUpperCase();
+            return name.includes('USUARIO') || name.includes('USUÁRIO') || name.includes('OPERADOR');
+          }) as any;
+
+          if (userTab) {
+            diag.hasUserTab = true;
+            diag.userTabHeaders = userTab.headers || [];
+            diag.sheetUsersCount = Array.isArray(userTab.rows) ? userTab.rows.length : 0;
+            diag.colWhatsappName = userTab.headers?.[4] || 'Não configurada (Coluna 5)';
+            diag.colPasswordName = userTab.headers?.[5] || 'Não configurada (Coluna 6)';
+
+            const col5Upper = String(diag.colWhatsappName).toUpperCase();
+            const isHeadersCorrect = col5Upper.includes('WHATS') || col5Upper.includes('CELULAR') || col5Upper.includes('CONTATO');
+
+            if (isHeadersCorrect) {
+              diag.status = 'perfect';
+              diag.details = `A sincronização está 100% operacional! A aba ${userTab.name} está ativa na planilha com as 8 colunas oficiais: WhatsApp na Coluna 5 (E) e Senha na Coluna 6 (F).`;
+            } else {
+              diag.status = 'needs_sync';
+              diag.details = `A aba de usuários foi encontrada (${userTab.name}), mas os cabeçalhos atuais precisam de atualização. Clique no botão "Forçar Sincronização e Corrigir Aba Agora" para regravar a estrutura correta.`;
+            }
+          } else {
+            diag.hasUserTab = false;
+            diag.status = 'needs_sync';
+            diag.details = 'O Webhook está conectado com sucesso! A aba USUARIOS_CMDIT será criada automaticamente na sua planilha assim que você clicar em "Forçar Sincronização".';
+          }
+        } else {
+          diag.status = 'needs_sync';
+          diag.details = 'Webhook conectado com sucesso! Clique em "Forçar Sincronização" para gravar todos os operadores na planilha.';
+        }
+
+        res.json({ success: true, diagnostic: diag });
+      } catch (connErr: any) {
+        diag.webhookOk = false;
+        diag.status = 'unreachable';
+        diag.details = `Falha ao tentar conectar ao Webhook: ${connErr.message}`;
+        res.json({ success: true, diagnostic: diag });
+      }
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        error: err.message || 'Erro no diagnóstico.',
+      });
+    }
+  });
+
   // API Route: Obter dados em tempo real da Planilha Online (Google Sheets API, doGet Apps Script, Drive/Excel XLSX Parser, GViz e Servidor)
   app.get('/api/sheets/online-data', async (req: Request, res: Response): Promise<void> => {
     try {

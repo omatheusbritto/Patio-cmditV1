@@ -21,6 +21,7 @@ import {
   EyeOff,
   Activity,
   Check,
+  Copy,
   HelpCircle,
 } from 'lucide-react';
 import {
@@ -38,6 +39,8 @@ import {
   getOfficialSpreadsheetUrl,
   fetchServerDriveConfig,
   fetchSpreadsheetDirectly,
+  fetchSheetDiagnostic,
+  getAppsScriptTemplateCode,
 } from '../utils/googleDriveClient';
 import { UserAccount, UserRole, getRoleBadgeStyle, getRoleDisplayName } from '../types';
 
@@ -79,6 +82,14 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
   const [newRole, setNewRole] = useState<UserRole>('patio');
   const [formMsg, setFormMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [copiedScript, setCopiedScript] = useState(false);
+
+  const handleCopyAppsScript = () => {
+    const code = getAppsScriptTemplateCode();
+    navigator.clipboard.writeText(code);
+    setCopiedScript(true);
+    setTimeout(() => setCopiedScript(false), 4000);
+  };
 
   // Reset Password State
   const [resettingUserId, setResettingUserId] = useState<string | null>(null);
@@ -170,51 +181,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
       const config = await fetchServerDriveConfig();
       setDriveConfig(config);
       const url = config.webhookUrl || config.spreadsheetUrl;
-      if (!url || !url.startsWith('http')) {
-        setDiagnosticData({
-          testedAt: new Date().toLocaleTimeString('pt-BR'),
-          webhookOk: false,
-          hasUserTab: false,
-          sheetUsersCount: 0,
-          appUsersCount: users.length,
-          status: 'unreachable',
-          details: 'URL do Webhook do Google Apps Script ainda não configurada no sistema.',
-        });
-        setIsDiagnosing(false);
-        return;
-      }
-
-      const sheetData = await fetchSpreadsheetDirectly(url);
-      if (sheetData.success && sheetData.tabs) {
-        const userTab = Object.values(sheetData.tabs).find((t: any) =>
-          t.name.toUpperCase().includes('USUARIO') || t.name.toUpperCase().includes('USUÁRIO')
-        ) as any;
-
-        const headers = userTab?.headers || [];
-        const rows = userTab?.rows || [];
-        const col5 = headers[4] || '';
-        const col6 = headers[5] || '';
-
-        const isHeadersCorrect =
-          col5.toUpperCase().includes('WHATS') ||
-          col5.toUpperCase().includes('CELULAR') ||
-          col5.toUpperCase().includes('CONTATO');
-
-        setDiagnosticData({
-          testedAt: new Date().toLocaleTimeString('pt-BR'),
-          webhookOk: true,
-          spreadsheetTitle: sheetData.spreadsheetTitle || 'Planilha CMDIT',
-          hasUserTab: !!userTab,
-          userTabHeaders: headers,
-          sheetUsersCount: rows.length,
-          appUsersCount: users.length,
-          colWhatsappName: col5 || 'Não encontrada',
-          colPasswordName: col6 || 'Não encontrada',
-          status: isHeadersCorrect && userTab ? 'perfect' : 'needs_sync',
-          details: isHeadersCorrect
-            ? 'A sincronização está 100% operacional! A coluna de WhatsApp e Senha estão perfeitamente separadas e alinhadas na planilha.'
-            : 'A aba foi encontrada, mas precisa de uma sincronização para atualizar os cabeçalhos das 8 colunas.',
-        });
+      
+      const diagRes = await fetchSheetDiagnostic(url);
+      if (diagRes && diagRes.success && diagRes.diagnostic) {
+        setDiagnosticData(diagRes.diagnostic);
       } else {
         setDiagnosticData({
           testedAt: new Date().toLocaleTimeString('pt-BR'),
@@ -223,7 +193,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
           sheetUsersCount: 0,
           appUsersCount: users.length,
           status: 'unreachable',
-          details: sheetData.error || 'Não foi possível consultar a planilha diretamente.',
+          details: diagRes?.error || 'Não foi possível consultar a planilha diretamente.',
         });
       }
     } catch (err: any) {
@@ -532,9 +502,41 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                       <span>Operadores na Planilha: <strong>{diagnosticData.sheetUsersCount}</strong></span>
                     </div>
 
-                    <div className="p-3 rounded-xl bg-neutral-900 text-white text-[11px] leading-relaxed flex items-start gap-2">
-                      <HelpCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                      <span>{diagnosticData.details}</span>
+                    <div className={`p-3.5 rounded-xl text-[11px] leading-relaxed flex flex-col gap-2 ${
+                      diagnosticData.status === 'perfect'
+                        ? 'bg-emerald-950 text-emerald-100 border border-emerald-700'
+                        : diagnosticData.status === 'needs_sync'
+                        ? 'bg-amber-950 text-amber-100 border border-amber-700'
+                        : 'bg-neutral-900 text-white'
+                    }`}>
+                      <div className="flex items-start gap-2">
+                        <HelpCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                        <span>{diagnosticData.details}</span>
+                      </div>
+
+                      {/* Se o Webhook não estiver funcionando ou exigir login */}
+                      {!diagnosticData.webhookOk && (
+                        <div className="mt-2 pt-2 border-t border-neutral-700 flex flex-col gap-2">
+                          <p className="font-bold text-amber-300">
+                            ⚙️ Passo a Passo para conectar o Webhook:
+                          </p>
+                          <ol className="list-decimal list-inside space-cols text-[10.5px] text-neutral-300 flex flex-col gap-1">
+                            <li>Abra sua Planilha Google ➔ menu <strong>Extensões</strong> ➔ <strong>Apps Script</strong></li>
+                            <li>Cole o código oficial do aplicativo e clique em Salvar</li>
+                            <li>Clique no botão azul <strong>Implantar</strong> ➔ <strong>Nova implantação</strong></li>
+                            <li>Selecione <strong>Aplicativo da Web</strong> e configure <em>"Quem pode acessar"</em> como <strong>"Qualquer pessoa" (Anyone)</strong></li>
+                            <li>Copie a URL gerada (terminada em <code>/exec</code>) e cole nas configurações do Master</li>
+                          </ol>
+                          <button
+                            type="button"
+                            onClick={handleCopyAppsScript}
+                            className="mt-1 py-1.5 px-3 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+                          >
+                            {copiedScript ? <Check className="w-3.5 h-3.5 text-emerald-200" /> : <Copy className="w-3.5 h-3.5" />}
+                            <span>{copiedScript ? 'Código Copiado com Sucesso!' : 'Copiar Código Completo do Apps Script'}</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : null}

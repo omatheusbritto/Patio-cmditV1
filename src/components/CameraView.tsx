@@ -5,9 +5,16 @@ import { stampDateTimeOnCanvas, stampDateTimeOnDataUrl, compressAndStampImage } 
 interface CameraViewProps {
   onPhotoCaptured: (dataUrl: string) => void;
   onCancel: () => void;
+  autoReadEnabled?: boolean;
+  onToggleAutoRead?: () => void;
 }
 
-export const CameraView: React.FC<CameraViewProps> = ({ onPhotoCaptured, onCancel }) => {
+export const CameraView: React.FC<CameraViewProps> = ({
+  onPhotoCaptured,
+  onCancel,
+  autoReadEnabled = true,
+  onToggleAutoRead,
+}) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -268,13 +275,29 @@ export const CameraView: React.FC<CameraViewProps> = ({ onPhotoCaptured, onCance
       />
 
       {/* Top Controls Overlay */}
-      <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between p-4 bg-gradient-to-b from-black/80 via-black/40 to-transparent">
+      <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between p-4 bg-gradient-to-b from-black/80 via-black/40 to-transparent gap-2">
         <button
           onClick={onCancel}
-          className="px-3.5 py-1.5 rounded-full bg-black/60 text-white/90 text-sm font-semibold backdrop-blur-md active:scale-95 transition"
+          className="px-3.5 py-1.5 rounded-full bg-black/60 text-white/90 text-xs font-semibold backdrop-blur-md active:scale-95 transition"
         >
           Cancelar
         </button>
+
+        {/* Botão Liga / Desliga Leitura Automática */}
+        {onToggleAutoRead && (
+          <button
+            type="button"
+            onClick={onToggleAutoRead}
+            className={`px-3 py-1.5 rounded-full backdrop-blur-md text-xs font-bold flex items-center gap-1.5 border transition shadow-sm active:scale-95 cursor-pointer ${
+              autoReadEnabled
+                ? 'bg-emerald-600/90 text-white border-emerald-400'
+                : 'bg-neutral-800/90 text-neutral-300 border-neutral-600'
+            }`}
+          >
+            <Sparkles className={`w-3.5 h-3.5 ${autoReadEnabled ? 'text-amber-300' : 'text-neutral-400'}`} />
+            <span>Leitura IA: <strong>{autoReadEnabled ? 'LIGADA' : 'DESLIGADA'}</strong></span>
+          </button>
+        )}
 
         <div className="flex items-center gap-2">
           {hasTorch && (

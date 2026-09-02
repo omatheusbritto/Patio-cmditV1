@@ -464,11 +464,68 @@ export async function fetchSpreadsheetDirectly(webhookUrl?: string): Promise<{
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ webhookUrl: targetUrl }),
     });
-    const data = await resp.json();
-    return data;
+    const text = await resp.text();
+    try {
+      const data = JSON.parse(text);
+      return data;
+    } catch {
+      return {
+        success: false,
+        error: 'O servidor retornou uma resposta não-JSON. Certifique-se de configurar o Webhook do Google Apps Script.',
+      };
+    }
   } catch (err: any) {
     return { success: false, error: err.message || 'Erro ao consultar planilha.' };
   }
+}
+
+/**
+ * Fetch comprehensive diagnostic directly from server
+ */
+export async function fetchSheetDiagnostic(webhookUrl?: string): Promise<{
+  success: boolean;
+  diagnostic?: {
+    testedAt: string;
+    webhookConfigured: boolean;
+    webhookUrl?: string;
+    spreadsheetUrl?: string;
+    appUsersCount: number;
+    sheetUsersCount: number;
+    webhookOk: boolean;
+    hasUserTab: boolean;
+    userTabHeaders: string[];
+    colWhatsappName: string;
+    colPasswordName: string;
+    status: 'perfect' | 'needs_sync' | 'unreachable';
+    details: string;
+  };
+  error?: string;
+}> {
+  try {
+    const config = getStoredDriveConfig();
+    const targetUrl = webhookUrl || config.webhookUrl || config.spreadsheetUrl;
+    const resp = await fetch('/api/sheets/diagnostic', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ webhookUrl: targetUrl }),
+    });
+    const text = await resp.text();
+    try {
+      const data = JSON.parse(text);
+      return data;
+    } catch {
+      return {
+        success: false,
+        error: 'O servidor retornou uma resposta não-JSON.',
+      };
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Erro ao consultar diagnóstico.' };
+  }
+}
+
+export function getAppsScriptTemplateCode(): string {
+  return GOOGLE_APPS_SCRIPT_TEMPLATE;
 }
 
 /**

@@ -4,13 +4,14 @@ import {
   User,
   KeyRound,
   AlertCircle,
-  Clock,
   LogIn,
-  HelpCircle,
   Eye,
   EyeOff,
+  RefreshCw,
+  CheckCircle2,
+  FileSpreadsheet,
 } from 'lucide-react';
-import { loginUser } from '../utils/authService';
+import { loginUser, restoreUsersFromSheetClient, fetchServerUsers } from '../utils/authService';
 import { AuthSession } from '../types';
 
 interface LoginModalProps {
@@ -23,11 +24,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [showDefaultHint, setShowDefaultHint] = useState(false);
+
+  // Sincronização direta com a Planilha Google
+  const [isSyncingSheet, setIsSyncingSheet] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
+    setSyncFeedback(null);
 
     if (!username.trim()) {
       setErrorMsg('Informe o usuário ou matrícula.');
@@ -54,6 +59,45 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
     }
   };
 
+  const handleSyncFromSpreadsheet = async () => {
+    setErrorMsg(null);
+    setSyncFeedback(null);
+    setIsSyncingSheet(true);
+
+    try {
+      // 1. Tenta restaurar diretamente da aba USUARIOS_CMDIT da Planilha Google
+      const result = await restoreUsersFromSheetClient();
+      
+      if (result.success) {
+        setSyncFeedback({
+          text: `✅ ${result.totalRestored || 'Todos os'} usuários e senhas sincronizados direto da planilha!`,
+          type: 'success',
+        });
+      } else {
+        // Fallback: sincroniza com o servidor central
+        const serverUsers = await fetchServerUsers();
+        if (serverUsers && serverUsers.length > 0) {
+          setSyncFeedback({
+            text: `✅ ${serverUsers.length} usuários sincronizados com sucesso!`,
+            type: 'success',
+          });
+        } else {
+          setSyncFeedback({
+            text: result.error || 'Não foi possível buscar os dados da planilha. Verifique a conexão.',
+            type: 'error',
+          });
+        }
+      }
+    } catch (err: any) {
+      setSyncFeedback({
+        text: err.message || 'Erro ao sincronizar com a planilha.',
+        type: 'error',
+      });
+    } finally {
+      setIsSyncingSheet(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-neutral-950/85 backdrop-blur-md flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl border border-neutral-200 animate-in fade-in zoom-in-95 duration-200">
@@ -63,8 +107,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
             <Lock className="w-7 h-7 text-emerald-300" />
           </div>
           <h2 className="text-xl font-black tracking-tight">Registro Veicular CMDIT</h2>
-          <p className="text-xs text-emerald-200 mt-1">
-            Autenticação & Controle de Pátio
+          <p className="text-xs text-emerald-200 mt-1 font-medium">
+            Acesso ao Sistema
           </p>
         </div>
 
@@ -77,6 +121,24 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
             </div>
           )}
 
+          {syncFeedback && (
+            <div
+              className={`p-3 rounded-xl text-xs font-bold flex items-center gap-2 ${
+                syncFeedback.type === 'success'
+                  ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                  : 'bg-amber-50 border border-amber-200 text-amber-800'
+              }`}
+            >
+              {syncFeedback.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+              ) : (
+                <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
+              )}
+              <span>{syncFeedback.text}</span>
+            </div>
+          )}
+
+          {/* Usuário / Matrícula */}
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-bold text-neutral-700 flex items-center gap-1.5">
               <User className="w-3.5 h-3.5 text-neutral-500" />
@@ -84,7 +146,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
             </label>
             <input
               type="text"
-              placeholder="Ex: mastercmdit ou sua matrícula"
+              placeholder="Digite seu usuário ou matrícula"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="w-full bg-neutral-50 border border-neutral-300 focus:border-emerald-600 focus:bg-white rounded-xl px-3.5 py-2.5 text-sm font-semibold text-neutral-900 outline-none transition"
@@ -93,6 +155,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
             />
           </div>
 
+          {/* Senha */}
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-bold text-neutral-700 flex items-center gap-1.5">
               <KeyRound className="w-3.5 h-3.5 text-neutral-500" />
@@ -116,36 +179,27 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
             </div>
           </div>
 
+          {/* Botão de Login Principal */}
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={isLoading || isSyncingSheet}
             className="w-full mt-2 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition active:scale-98 disabled:opacity-70 cursor-pointer"
           >
             <LogIn className="w-4 h-4" />
             <span>{isLoading ? 'Autenticando...' : 'Acessar o Sistema'}</span>
           </button>
 
-          {/* Master Info & Hint */}
-          <div className="pt-2 border-t border-neutral-100 text-center">
+          {/* Botão de Sincronizar Dados da Planilha */}
+          <div className="pt-2 border-t border-neutral-100 flex flex-col gap-2">
             <button
               type="button"
-              onClick={() => setShowDefaultHint(!showDefaultHint)}
-              className="text-[11px] text-neutral-500 hover:text-emerald-700 flex items-center justify-center gap-1 mx-auto font-medium cursor-pointer"
+              onClick={handleSyncFromSpreadsheet}
+              disabled={isSyncingSheet || isLoading}
+              className="w-full py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-bold text-xs flex items-center justify-center gap-2 transition active:scale-98 disabled:opacity-60 cursor-pointer"
             >
-              <HelpCircle className="w-3.5 h-3.5" />
-              <span>Como acessar como Master?</span>
+              <RefreshCw className={`w-3.5 h-3.5 text-emerald-700 ${isSyncingSheet ? 'animate-spin' : ''}`} />
+              <span>{isSyncingSheet ? 'Sincronizando com a Planilha...' : 'Sincronizar Dados (Planilha)'}</span>
             </button>
-
-            {showDefaultHint && (
-              <div className="mt-2.5 p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-left text-[11px] text-neutral-600 flex flex-col gap-1">
-                <span className="font-bold text-neutral-800">Credenciais Master:</span>
-                <div>• Usuário: <code className="bg-neutral-200 px-1.5 py-0.5 rounded text-neutral-900 font-bold">mastercmdit</code></div>
-                <div>• Senha: <code className="bg-neutral-200 px-1.5 py-0.5 rounded text-neutral-900 font-bold">Master@123</code></div>
-                <span className="text-[10px] text-neutral-400 mt-1">
-                  * Apenas o Master pode criar operadores, recuperar senhas e excluir usuários.
-                </span>
-              </div>
-            )}
           </div>
         </form>
       </div>

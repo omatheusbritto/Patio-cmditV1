@@ -34,6 +34,8 @@ interface PlateConfirmationProps {
   onConfirmPlate: (plate: string) => void;
   onRetakePhoto: () => void;
   onReanalyzeWithAi?: () => void;
+  autoReadEnabled?: boolean;
+  onToggleAutoRead?: () => void;
 }
 
 export const PlateConfirmation: React.FC<PlateConfirmationProps> = ({
@@ -48,6 +50,8 @@ export const PlateConfirmation: React.FC<PlateConfirmationProps> = ({
   onConfirmPlate,
   onRetakePhoto,
   onReanalyzeWithAi,
+  autoReadEnabled = true,
+  onToggleAutoRead,
 }) => {
   const [plateChars, setPlateChars] = useState<string[]>(() => {
     const clean = sanitizeRawText(initialPlate);
@@ -260,22 +264,41 @@ export const PlateConfirmation: React.FC<PlateConfirmationProps> = ({
 
         {/* Source and AI Notes */}
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-          {plateSource === 'gemini_ai' ? (
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-violet-50 text-violet-800 border border-violet-200">
-              <Sparkles className="w-3.5 h-3.5 text-violet-600" />
-              <span>IA de Alta Precisão (Zero Alucinação)</span>
-            </div>
-          ) : plateSource === 'local_ocr' ? (
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              <span>OCR Local do Aparelho</span>
-            </div>
-          ) : (
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-neutral-600 bg-neutral-100">
-              <Edit3 className="w-3 h-3" />
-              <span>Entrada Manual</span>
-            </div>
-          )}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {plateSource === 'gemini_ai' ? (
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-violet-50 text-violet-800 border border-violet-200">
+                <Sparkles className="w-3.5 h-3.5 text-violet-600" />
+                <span>IA de Alta Precisão (Zero Alucinação)</span>
+              </div>
+            ) : plateSource === 'local_ocr' ? (
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span>OCR Local do Aparelho</span>
+              </div>
+            ) : (
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-neutral-600 bg-neutral-100">
+                <Edit3 className="w-3 h-3" />
+                <span>Entrada Manual</span>
+              </div>
+            )}
+
+            {/* Quick Toggle of Auto-Read preference */}
+            {onToggleAutoRead && (
+              <button
+                type="button"
+                onClick={onToggleAutoRead}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold border transition active:scale-95 cursor-pointer ${
+                  autoReadEnabled
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                    : 'bg-neutral-100 text-neutral-600 border-neutral-300'
+                }`}
+                title="Alternar Leitura Automática de Placas"
+              >
+                <Sparkles className={`w-3 h-3 ${autoReadEnabled ? 'text-emerald-600' : 'text-neutral-400'}`} />
+                <span>Auto: <strong>{autoReadEnabled ? 'ON' : 'OFF'}</strong></span>
+              </button>
+            )}
+          </div>
 
           {/* Re-analyze with AI button */}
           {onReanalyzeWithAi && (
@@ -283,10 +306,10 @@ export const PlateConfirmation: React.FC<PlateConfirmationProps> = ({
               type="button"
               onClick={onReanalyzeWithAi}
               disabled={isOcrLoading}
-              className="inline-flex items-center gap-1.5 text-xs font-bold text-violet-700 bg-violet-100 hover:bg-violet-200 px-3 py-1.5 rounded-lg active:scale-95 transition border border-violet-300 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-violet-700 bg-violet-100 hover:bg-violet-200 px-3 py-1.5 rounded-lg active:scale-95 transition border border-violet-300 disabled:opacity-50 cursor-pointer shadow-sm"
             >
               <Bot className="w-3.5 h-3.5" />
-              <span>Reanalisar com IA</span>
+              <span>{cleanPlate.length === 0 ? '✨ Ler Placa com IA' : 'Reanalisar com IA'}</span>
             </button>
           )}
         </div>

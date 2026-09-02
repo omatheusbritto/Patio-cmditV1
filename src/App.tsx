@@ -54,6 +54,10 @@ import {
   logoutUser,
   formatRemainingSessionTime,
 } from './utils/authService';
+import {
+  getAutoPlateReadPreference,
+  setAutoPlateReadPreference,
+} from './utils/preferencesService';
 import { AuthSession } from './types';
 import { ShieldCheck, Clock, History, LogOut, AlertTriangle, FileSpreadsheet } from 'lucide-react';
 
@@ -65,6 +69,17 @@ export default function App() {
   const [isSpreadsheetModalOpen, setIsSpreadsheetModalOpen] = useState(false);
   const [sessionTimeText, setSessionTimeText] = useState<string>('');
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+
+  // User preference: Leitura Automática de Placas (Liga / Desliga)
+  const [autoReadEnabled, setAutoReadEnabled] = useState<boolean>(() => getAutoPlateReadPreference());
+
+  const handleToggleAutoRead = () => {
+    setAutoReadEnabled((prev) => {
+      const next = !prev;
+      setAutoPlateReadPreference(next);
+      return next;
+    });
+  };
 
   // Active Navigation Tab
   const [activeTab, setActiveTab] = useState<NavTab>('register');
@@ -193,6 +208,17 @@ export default function App() {
     setPhotoDataUrl(dataUrl);
     setCroppedPlateUrl(null);
     setCurrentStep('plate_confirm');
+
+    if (!autoReadEnabled) {
+      // Leitura Automática DESLIGADA pelo usuário: permite digitação manual direta
+      setIsOcrLoading(false);
+      setPlate('');
+      setPlateSource('manual');
+      setIsCertain(false);
+      setAnalysisNotes('Leitura automática desligada nas preferências. Digite a placa ou clique em Ler Placa com IA.');
+      return;
+    }
+
     setIsOcrLoading(true);
     setOcrProgressMsg('✨ Lendo placa em alta velocidade...');
 
@@ -561,6 +587,8 @@ export default function App() {
                 onOpenLogs={() => setActiveTab('logs')}
                 onOpenSpreadsheetOnline={() => setIsSpreadsheetModalOpen(true)}
                 metrics={patioMetrics}
+                autoReadEnabled={autoReadEnabled}
+                onToggleAutoRead={handleToggleAutoRead}
               />
             )}
 
@@ -568,6 +596,8 @@ export default function App() {
               <CameraView
                 onPhotoCaptured={handlePhotoCaptured}
                 onCancel={() => setCurrentStep('home')}
+                autoReadEnabled={autoReadEnabled}
+                onToggleAutoRead={handleToggleAutoRead}
               />
             )}
 
@@ -585,6 +615,8 @@ export default function App() {
                 onConfirmPlate={handleConfirmPlate}
                 onRetakePhoto={() => setCurrentStep('camera')}
                 onReanalyzeWithAi={handleReanalyzeWithAi}
+                autoReadEnabled={autoReadEnabled}
+                onToggleAutoRead={handleToggleAutoRead}
               />
             )}
 

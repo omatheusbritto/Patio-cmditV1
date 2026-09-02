@@ -26,6 +26,8 @@ interface HomeScreenProps {
   onOpenLogs?: () => void;
   onOpenSpreadsheetOnline?: () => void;
   metrics: PatioMetrics;
+  autoReadEnabled?: boolean;
+  onToggleAutoRead?: () => void;
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
@@ -35,6 +37,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onOpenLogs,
   onOpenSpreadsheetOnline,
   metrics,
+  autoReadEnabled = true,
+  onToggleAutoRead,
 }) => {
   const session萃 = getCurrentSession();
   const userRole = session萃?.user.role || 'patio';
@@ -94,6 +98,61 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           <Camera className="w-6 h-6 group-hover:rotate-6 transition transform" />
           <span>{mainBtnText}</span>
         </button>
+
+        {/* Botão Liga e Desliga: Leitura Automática de Placas */}
+        {onToggleAutoRead && (
+          <div className="w-full bg-white rounded-2xl p-3 border border-neutral-200 shadow-sm flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div
+                className={`w-9 h-9 rounded-xl flex items-center justify-center font-black transition ${
+                  autoReadEnabled
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-neutral-100 text-neutral-500'
+                }`}
+              >
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div className="text-left">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-black text-neutral-900 leading-tight">
+                    Leitura Automática
+                  </span>
+                  <span
+                    className={`text-[9.5px] font-black uppercase px-1.5 py-0.2 rounded-md ${
+                      autoReadEnabled
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-neutral-200 text-neutral-700'
+                    }`}
+                  >
+                    {autoReadEnabled ? 'LIGADA' : 'DESLIGADA'}
+                  </span>
+                </div>
+                <span className="text-[10.5px] text-neutral-500 block leading-tight mt-0.5">
+                  {autoReadEnabled
+                    ? 'Lê a placa com IA ao fotografar'
+                    : 'Digitação manual direta após a foto'}
+                </span>
+              </div>
+            </div>
+
+            {/* Switch Toggle (Liga / Desliga) */}
+            <button
+              type="button"
+              role="switch"
+              aria-checked={autoReadEnabled}
+              onClick={onToggleAutoRead}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                autoReadEnabled ? 'bg-emerald-600' : 'bg-neutral-300'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                  autoReadEnabled ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Master Direct Quick Action: Consultar Planilha Online */}
