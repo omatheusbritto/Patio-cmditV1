@@ -292,6 +292,54 @@ export async function toggleUserStatus(
 }
 
 /**
+ * Atualiza os dados completos de um usuário no servidor central e localmente
+ */
+export async function updateUserAccount(
+  userId: string,
+  updatedData: Partial<UserAccount>
+): Promise<{ success: boolean; error?: string; user?: UserAccount }> {
+  try {
+    const res = await fetch(`/api/users/${userId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updatedData),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      if (Array.isArray(data.users)) {
+        saveUsersList(data.users);
+      }
+      return { success: true, user: data.user };
+    } else {
+      return { success: false, error: data.error || 'Falha ao atualizar usuário no servidor.' };
+    }
+  } catch (err) {
+    console.warn('Fallback offline para atualizar usuário:', err);
+    const users = getAllUsers();
+    const index = users.findIndex((u) => u.id === userId);
+    if (index === -1) return { success: false, error: 'Usuário não encontrado.' };
+
+    const cleanUsername = updatedData.username ? updatedData.username.trim().toLowerCase() : users[index].username;
+    if (cleanUsername !== users[index].username) {
+      const exists = users.some((u) => u.id !== userId && u.username.toLowerCase() === cleanUsername);
+      if (exists) {
+        return { success: false, error: `O nome de usuário "${cleanUsername}" já pertence a outro operador.` };
+      }
+    }
+
+    users[index] = {
+      ...users[index],
+      ...updatedData,
+      username: cleanUsername,
+      name: updatedData.name ? updatedData.name.trim() : users[index].name,
+      password: updatedData.password ? updatedData.password.trim() : users[index].password,
+    };
+    saveUsersList(users);
+    return { success: true, user: users[index] };
+  }
+}
+
+/**
  * Exclui um usuário no servidor central
  */
 export async function deleteUser(userId: string): Promise<{ success: boolean; error?: string }> {

@@ -440,6 +440,12 @@ export default function App() {
     );
   };
 
+  // Save direct record (Master CRUD edit/create)
+  const handleSaveDirectRecord = async (savedRecord: VehicleRecord) => {
+    await saveRecord(savedRecord);
+    setRecords((prev) => [savedRecord, ...prev.filter((r) => r.id !== savedRecord.id)]);
+  };
+
   // Delete a single vehicle record
   const handleDeleteVehicleRecord = async (id: string) => {
     await deleteRecord(id);
@@ -780,13 +786,14 @@ export default function App() {
 
         {/* Tab 3: Histórico com Busca Rápida */}
         {activeTab === 'history' && (
-          <SmartHistory
-            records={records}
-            onUpdateStatus={handleUpdateVehicleStatus}
-            onDeleteRecord={handleDeleteVehicleRecord}
-            onClearHistory={handleClearAllRecords}
-            onOpenSpreadsheetOnline={() => setIsSpreadsheetModalOpen(true)}
-          />
+           <SmartHistory
+             records={records}
+             onUpdateStatus={handleUpdateVehicleStatus}
+             onDeleteRecord={handleDeleteVehicleRecord}
+             onSaveRecord={handleSaveDirectRecord}
+             onClearHistory={handleClearAllRecords}
+             onOpenSpreadsheetOnline={() => setIsSpreadsheetModalOpen(true)}
+           />
         )}
 
         {/* Tab 4: Tratamento de Logs de Acesso */}

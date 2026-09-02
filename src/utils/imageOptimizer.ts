@@ -190,6 +190,107 @@ export async function compressAndStampImage(
   }
 }
 
+export async function enhanceImageForPlateOcr(
+  sourceDataUrl: string,
+  options: {
+    applyContrastBoost?: boolean;
+    sharpen?: boolean;
+    maxDimension?: number;
+  } = {}
+): Promise<string> {
+  const { applyContrastBoost = true, sharpen = true, maxDimension = 1280 } = options;
+
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const origW = img.naturalWidth || img.width;
+        const origH = img.naturalHeight || img.height;
+
+        let targetW = origW;
+        let targetH = origH;
+
+        if (origW > maxDimension || origH > maxDimension) {
+          if (origW > origH) {
+            targetW = maxDimension;
+            targetH = Math.round((origH * maxDimension) / origW);
+          } else {
+            targetH = maxDimension;
+            targetW = Math.round((origW * maxDimension) / origH);
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+        if (!ctx) {
+          return resolve(sourceDataUrl);
+        }
+
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, targetW, targetH);
+
+        // Apply Adaptive Contrast Enhancement if requested (sharpens character edges on reflective plates)
+        if (applyContrastBoost) {
+          try {
+            const imgData = ctx.getImageData(0, 0, targetW, targetH);
+            const data = imgData.data;
+            const len = data.length;
+
+            // Find min/max luminance in the image
+            let minLum = 255;
+            let maxLum = 0;
+
+            for (let i = 0; i < len; i += 16) {
+              const r = data[i];
+              const g = data[i + 1];
+              const b = data[i + 2];
+              const lum = (r * 299 + g * 587 + b * 114) / 1000;
+              if (lum < minLum) minLum = lum;
+              if (lum > maxLum) maxLum = lum;
+            }
+
+            const range = Math.max(20, maxLum - minLum);
+            const contrastFactor = 255 / range;
+
+            for (let i = 0; i < len; i += 4) {
+              // High contrast histogram stretch
+              let r = data[i];
+              let g = data[i + 1];
+              let b = data[i + 2];
+
+              // Stretch
+              r = Math.min(255, Math.max(0, (r - minLum) * contrastFactor));
+              g = Math.min(255, Math.max(0, (g - minLum) * contrastFactor));
+              b = Math.min(255, Math.max(0, (b - minLum) * contrastFactor));
+
+              // Slight unsharp boost
+              data[i] = r;
+              data[i + 1] = g;
+              data[i + 2] = b;
+            }
+
+            ctx.putImageData(imgData, 0, 0);
+          } catch (e) {
+            console.warn('Canvas pixel processing skipped:', e);
+          }
+        }
+
+        resolve(canvas.toDataURL('image/jpeg', 0.92));
+      };
+
+      img.onerror = () => resolve(sourceDataUrl);
+      img.src = sourceDataUrl;
+    } catch {
+      resolve(sourceDataUrl);
+    }
+  });
+}
+
 export async function optimizeImageForOcr(
   sourceDataUrl: string,
   maxDimension: number = 1024,

@@ -17,6 +17,8 @@ import {
   createServerUser,
   resetServerUserPasswordAsync,
   resetServerUserPassword,
+  updateServerUserAsync,
+  updateServerUser,
   toggleServerUserStatusAsync,
   toggleServerUserStatus,
   deleteServerUserAsync,
@@ -252,6 +254,39 @@ async function startServer() {
           syncUserToGoogleSheetWebhook('save_user', { user: updatedUser }).catch(() => {});
         }
         res.json({ success: true, isActive: result.isActive, users });
+      } else {
+        res.status(400).json(result);
+      }
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.put('/api/users/:id', async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { username, name, password, role, whatsapp, isActive } = req.body;
+      const result = await updateServerUserAsync(id, { username, name, password, role, whatsapp, isActive });
+      if (result.success && result.user) {
+        const users = await loadServerUsersAsync();
+        syncUserToGoogleSheetWebhook('save_user', { user: result.user }).catch(() => {});
+        res.json({ success: true, user: result.user, users });
+      } else {
+        res.status(400).json(result);
+      }
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.patch('/api/users/:id', async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const result = await updateServerUserAsync(id, req.body);
+      if (result.success && result.user) {
+        const users = await loadServerUsersAsync();
+        syncUserToGoogleSheetWebhook('save_user', { user: result.user }).catch(() => {});
+        res.json({ success: true, user: result.user, users });
       } else {
         res.status(400).json(result);
       }
@@ -1783,16 +1818,22 @@ async function startServer() {
         },
       });
 
-      // Streamlined prompt optimized for sub-500ms token generation
-      const systemInstruction = `Perito em identificação de placas veiculares brasileiras (Mercosul e Antiga).
-REGRAS ESTRITAS DE ZERO ALUCINAÇÃO:
-1. Extraia os 7 caracteres da chapa da placa do veículo. Se não houver placa visível ou for ilegível, found: false e plate: "".
-2. Ignore marcas do carro, molduras e textos como BRASIL/MERCOSUL.
-3. Formatos:
-   - Mercosul Carro: LLLNLNN (Pos 1-3 Letras; Pos 4 Número; Pos 5 Letra; Pos 6-7 Números)
-   - Mercosul Moto: LLLNNLN (Pos 1-3 Letras; Pos 4-5 Números; Pos 6 Letra; Pos 7 Número)
-   - Placa Antiga: LLLNNNN (Pos 1-3 Letras; Pos 4-7 Números)
-4. Coordenadas da placa no boundingBox [ymin, xmin, ymax, xmax] normalizadas de 0 a 1000.`;
+      // Streamlined prompt optimized for sub-500ms token generation with high-precision character disambiguation
+      const systemInstruction = `Perito em leitura e identificação de placas veiculares brasileiras (Mercosul e Modelo Antigo).
+REGRAS DE LEITURA ÓPTICA DE ALTA PRECISÃO (99.9% ACURÁCIA):
+1. Extraia exatamente os 7 caracteres principais da chapa da placa veicular (sem espaços, sem hífen).
+2. Ignore parafusos, adesivos de concessionária, logotipo da montadora, palavras BRASIL ou MERCOSUL.
+3. REGRAS OBRIGATÓRIAS DE PADRÃO E DESAMBIGUAÇÃO:
+   - Carro Mercosul (LLL-N-L-NN):
+     * Posições 1, 2, 3: OBRIGATORIAMENTE LETRAS (A-Z). Se parecer número, converta (ex: 0->O, 1->I, 8->B, 5->S, 2->Z, 6->G).
+     * Posição 4: OBRIGATORIAMENTE NÚMERO (0-9). Se parecer letra, converta (ex: O/D/Q->0, I/L->1, Z->2, E->3, A->4, S->5, B->8).
+     * Posição 5: OBRIGATORIAMENTE LETRA (A-Z). Se parecer número, converta (ex: 8->B, 0->O, 1->I, 2->Z, 5->S, 6->G, 7->T, 9->P).
+     * Posições 6 e 7: OBRIGATORIAMENTE NÚMEROS (0-9).
+   - Moto Mercosul (LLL-NN-L-N): Pos 1-3 (Letras), Pos 4-5 (Números), Pos 6 (Letra), Pos 7 (Número).
+   - Placa Antiga Cinza (LLL-NNNN): Pos 1-3 (Letras), Pos 4-7 (Números).
+4. Se a placa estiver em ângulo ou com sombra, aplique compensação de perspectiva mental para identificar os traços exatos.
+5. Se não houver veículo ou a placa estiver totalmente ilegível/cortada, retorne found: false e plate: "".
+6. BoundingBox [ymin, xmin, ymax, xmax] normalizado de 0 a 1000 cobrindo a chapa da placa.`;
 
       let lastError: any = null;
 

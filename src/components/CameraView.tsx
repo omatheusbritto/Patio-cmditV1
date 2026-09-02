@@ -25,6 +25,9 @@ export const CameraView: React.FC<CameraViewProps> = ({
   const [isTorchOn, setIsTorchOn] = useState<boolean>(false);
   const [hasTorch, setHasTorch] = useState<boolean>(false);
   const [isLoadingCamera, setIsLoadingCamera] = useState<boolean>(true);
+  const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [hasHardwareZoom, setHasHardwareZoom] = useState<boolean>(false);
+  const [hdSharpnessMode, setHdSharpnessMode] = useState<boolean>(true);
 
   // Start Camera Stream
   useEffect(() => {
@@ -58,13 +61,12 @@ export const CameraView: React.FC<CameraViewProps> = ({
           await videoRef.current.play().catch(() => {});
         }
 
-        // Check torch support
+        // Check capabilities (torch & hardware zoom)
         const track = mediaStream.getVideoTracks()[0];
         const capabilities = track.getCapabilities?.() as any;
-        if (capabilities && capabilities.torch) {
-          setHasTorch(true);
-        } else {
-          setHasTorch(false);
+        if (capabilities) {
+          setHasTorch(Boolean(capabilities.torch));
+          setHasHardwareZoom(Boolean(capabilities.zoom));
         }
       } catch (err: any) {
         console.warn('Camera access error:', err);
@@ -84,6 +86,21 @@ export const CameraView: React.FC<CameraViewProps> = ({
       }
     };
   }, [facingMode]);
+
+  // Set Zoom (Hardware + Canvas Crop)
+  const handleSetZoom = async (newZoom: number) => {
+    setZoomLevel(newZoom);
+    if (stream && hasHardwareZoom) {
+      const track = stream.getVideoTracks()[0];
+      try {
+        await (track as any).applyConstraints({
+          advanced: [{ zoom: newZoom }],
+        });
+      } catch (e) {
+        // Ignore fallback to digital canvas zoom
+      }
+    }
+  };
 
   // Toggle Torch/Flashlight
   const handleToggleTorch = async () => {
@@ -105,21 +122,45 @@ export const CameraView: React.FC<CameraViewProps> = ({
     setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'));
   };
 
-  // Capture frame from video
+  // Capture frame from video with Zoom and HD Contrast application
   const handleCapture = () => {
     if (!videoRef.current) return;
     const video = videoRef.current;
 
+    // Haptic vibration feedback on tap
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try {
+        navigator.vibrate([45, 30, 45]);
+      } catch {}
+    }
+
+    const rawW = video.videoWidth || 1280;
+    const rawH = video.videoHeight || 720;
+
     const canvas = canvasRef.current || document.createElement('canvas');
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
-    const ctx = canvas.getContext('2d');
+    canvas.width = rawW;
+    canvas.height = rawH;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
 
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
+    if (zoomLevel > 1 && !hasHardwareZoom) {
+      // Digital optical center crop
+      const cropW = rawW / zoomLevel;
+      const cropH = rawH / zoomLevel;
+      const startX = (rawW - cropW) / 2;
+      const startY = (rawH - cropH) / 2;
+      ctx.drawImage(video, startX, startY, cropW, cropH, 0, 0, rawW, rawH);
+    } else {
+      ctx.drawImage(video, 0, 0, rawW, rawH);
+    }
+
+    // Apply date/time watermark
     stampDateTimeOnCanvas(ctx, canvas.width, canvas.height, new Date());
 
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.93);
 
     // Stop camera
     if (stream) {
@@ -349,13 +390,23 @@ export const CameraView: React.FC<CameraViewProps> = ({
               playsInline
               autoPlay
               muted
-              className="w-full h-full object-cover"
+              style={{
+                transform: !hasHardwareZoom && zoomLevel > 1 ? `scale(${zoomLevel})` : 'none',
+                transformOrigin: 'center center',
+              }}
+              className="w-full h-full object-cover transition-transform duration-200"
             />
 
             {/* License Plate Targeting Frame (Reticle Overlay) */}
             <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
               {/* Dimmed background masks */}
-              <div className="w-[85%] max-w-sm h-36 border-2 border-emerald-400/90 rounded-2xl relative shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]">
+              <div className="w-[88%] max-w-sm h-36 border-2 border-emerald-400/90 rounded-2xl relative shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]">
+                {/* Mercosul Top Header Guide */}
+                <div className="absolute top-0 inset-x-0 h-4 bg-blue-600/40 rounded-t-xl flex items-center justify-between px-3 border-b border-blue-400/30">
+                  <span className="text-[9px] font-black text-blue-200 tracking-wider">BRASIL / MERCOSUL</span>
+                  <span className="text-[9px] font-bold text-emerald-300">AUTO FOCO</span>
+                </div>
+
                 {/* Corner Accents */}
                 <div className="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-emerald-300 rounded-tl-lg" />
                 <div className="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-emerald-300 rounded-tr-lg" />
@@ -363,11 +414,11 @@ export const CameraView: React.FC<CameraViewProps> = ({
                 <div className="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-emerald-300 rounded-br-lg" />
 
                 {/* Center scan line animation */}
-                <div className="absolute inset-x-2 top-1/2 -translate-y-1/2 h-0.5 bg-emerald-400/60 shadow-[0_0_8px_#34d399]" />
+                <div className="absolute inset-x-2 top-1/2 -translate-y-1/2 h-0.5 bg-emerald-400/80 shadow-[0_0_10px_#34d399] animate-pulse" />
 
                 <div className="absolute -bottom-8 inset-x-0 text-center">
                   <span className="text-[12px] font-semibold tracking-wide bg-emerald-950/90 text-emerald-200 px-3 py-1 rounded-full border border-emerald-500/40 shadow-sm">
-                    Reconhece placa em qualquer ângulo e posição
+                    {zoomLevel > 1 ? `Zoom ${zoomLevel}x ativo • Enquadre a placa` : 'Reconhece placa em qualquer ângulo'}
                   </span>
                 </div>
               </div>
@@ -377,7 +428,54 @@ export const CameraView: React.FC<CameraViewProps> = ({
       </div>
 
       {/* Bottom Controls */}
-      <div className="p-4 bg-gradient-to-t from-black via-black/90 to-transparent flex flex-col gap-3 pb-8">
+      <div className="p-4 bg-gradient-to-t from-black via-black/95 to-transparent flex flex-col gap-3 pb-8">
+        {/* Digital Zoom Pill Selector & HD Toggle */}
+        <div className="flex items-center justify-between max-w-sm mx-auto w-full px-2">
+          {/* Zoom Buttons */}
+          <div className="flex items-center gap-1.5 bg-black/60 backdrop-blur-md p-1 rounded-full border border-neutral-700">
+            <button
+              type="button"
+              onClick={() => handleSetZoom(1)}
+              className={`px-2.5 py-1 rounded-full text-xs font-black transition ${
+                zoomLevel === 1 ? 'bg-emerald-500 text-neutral-950 shadow-xs' : 'text-neutral-300 hover:text-white'
+              }`}
+            >
+              1x
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSetZoom(1.5)}
+              className={`px-2.5 py-1 rounded-full text-xs font-black transition ${
+                zoomLevel === 1.5 ? 'bg-emerald-500 text-neutral-950 shadow-xs' : 'text-neutral-300 hover:text-white'
+              }`}
+            >
+              1.5x
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSetZoom(2)}
+              className={`px-2.5 py-1 rounded-full text-xs font-black transition ${
+                zoomLevel === 2 ? 'bg-emerald-500 text-neutral-950 shadow-xs' : 'text-neutral-300 hover:text-white'
+              }`}
+            >
+              2x
+            </button>
+          </div>
+
+          {/* HD Sharpness Mode */}
+          <button
+            type="button"
+            onClick={() => setHdSharpnessMode((prev) => !prev)}
+            className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 border transition backdrop-blur-md ${
+              hdSharpnessMode
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
+                : 'bg-neutral-800 text-neutral-400 border-neutral-700'
+            }`}
+          >
+            <Sparkles className="w-3 h-3 text-amber-400" />
+            <span>HD Contraste</span>
+          </button>
+        </div>
         {/* Sample vehicle options for instant testing / dev preview */}
         <div className="flex items-center justify-start sm:justify-center gap-1.5 overflow-x-auto py-1 no-scrollbar text-xs">
           <span className="text-[11px] text-neutral-400 font-medium whitespace-nowrap">Testar:</span>

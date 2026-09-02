@@ -25,18 +25,23 @@ import {
   Key,
   User,
   Gauge,
+  Edit3,
+  Plus,
+  Shield,
 } from 'lucide-react';
 import { LocationCode, OperationType, VehicleCharacteristic, VehicleRecord, VehicleStatus } from '../types';
-import { exportRecordsToCsv, SECTORS } from '../utils/storageService';
+import { exportRecordsToCsv, SECTORS, saveRecord } from '../utils/storageService';
 import { formatPlateForDisplay } from '../utils/plateNormalizer';
 import { generateWhatsAppMessage, getEntrySubtypeLabel, getLocationMeaning, openWhatsAppShare, shareToWhatsApp } from '../utils/shareService';
 import { getCurrentSession } from '../utils/authService';
+import { MasterRecordCrudModal } from './MasterRecordCrudModal';
 
 interface SmartHistoryProps {
   records: VehicleRecord[];
   onUpdateStatus: (id: string, status: VehicleStatus) => void;
   onDeleteRecord: (id: string) => void;
   onClearHistory: () => void;
+  onSaveRecord?: (record: VehicleRecord) => Promise<void> | void;
   onOpenSpreadsheetOnline?: () => void;
   initialSectorFilter?: LocationCode;
 }
@@ -46,6 +51,7 @@ export const SmartHistory: React.FC<SmartHistoryProps> = ({
   onUpdateStatus,
   onDeleteRecord,
   onClearHistory,
+  onSaveRecord,
   onOpenSpreadsheetOnline,
   initialSectorFilter,
 }) => {
@@ -59,6 +65,31 @@ export const SmartHistory: React.FC<SmartHistoryProps> = ({
   const [sectorFilter, setSectorFilter] = useState<LocationCode | 'ALL'>(
     initialSectorFilter || 'ALL'
   );
+
+  // Master Record CRUD State
+  const [crudModalOpen, setCrudModalOpen] = useState(false);
+  const [crudMode, setCrudMode] = useState<'create' | 'edit'>('create');
+  const [selectedRecordForCrud, setSelectedRecordForCrud] = useState<VehicleRecord | null>(null);
+
+  const handleOpenCreateRecord = () => {
+    setCrudMode('create');
+    setSelectedRecordForCrud(null);
+    setCrudModalOpen(true);
+  };
+
+  const handleOpenEditRecord = (record: VehicleRecord) => {
+    setCrudMode('edit');
+    setSelectedRecordForCrud(record);
+    setCrudModalOpen(true);
+  };
+
+  const handleSaveCrudRecord = async (savedRec: VehicleRecord) => {
+    if (onSaveRecord) {
+      await onSaveRecord(savedRec);
+    } else {
+      await saveRecord(savedRec);
+    }
+  };
 
   // Preview Photo Modal
   const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
@@ -152,6 +183,17 @@ export const SmartHistory: React.FC<SmartHistoryProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5">
+          {isMaster && (
+            <button
+              onClick={handleOpenCreateRecord}
+              title="Criar novo registro diretamente com privilégios Master"
+              className="py-1.5 px-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-neutral-950 text-xs font-black flex items-center gap-1 active:scale-95 transition shadow-xs"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Novo Registro</span>
+            </button>
+          )}
+
           {isMaster && onOpenSpreadsheetOnline && (
             <button
               onClick={onOpenSpreadsheetOnline}
@@ -639,6 +681,18 @@ export const SmartHistory: React.FC<SmartHistoryProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1.5">
+                    {isMaster && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditRecord(r)}
+                        className="py-1 px-2 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 text-[10px] font-black flex items-center gap-1 transition border border-amber-300 shadow-2xs"
+                        title="Editar Registro Completo (Master CRUD)"
+                      >
+                        <Edit3 className="w-3 h-3 text-amber-800" />
+                        <span>Editar</span>
+                      </button>
+                    )}
+
                     {isParked ? (
                       <button
                         type="button"
@@ -691,6 +745,19 @@ export const SmartHistory: React.FC<SmartHistoryProps> = ({
           </button>
         </div>
       )}
+
+      {/* Master Record CRUD Modal (Create & Edit) */}
+      <MasterRecordCrudModal
+        isOpen={crudModalOpen}
+        mode={crudMode}
+        initialRecord={selectedRecordForCrud}
+        onSave={handleSaveCrudRecord}
+        onDelete={onDeleteRecord}
+        onClose={() => {
+          setCrudModalOpen(false);
+          setSelectedRecordForCrud(null);
+        }}
+      />
 
       {/* Photo Preview Modal */}
       {previewPhotoUrl && (

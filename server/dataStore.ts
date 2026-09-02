@@ -493,6 +493,97 @@ export function createServerUser(
   return { success: true, user: newUser };
 }
 
+export async function updateServerUserAsync(
+  userId: string,
+  updatedData: Partial<UserAccount>
+): Promise<{ success: boolean; error?: string; user?: UserAccount; users?: UserAccount[] }> {
+  const users = await loadServerUsersAsync();
+  const index = users.findIndex((u) => u.id === userId);
+  if (index === -1) {
+    return { success: false, error: 'Usuário não encontrado.' };
+  }
+
+  const current = users[index];
+  const cleanUsername = updatedData.username ? updatedData.username.trim().toLowerCase() : current.username;
+  
+  // Check duplicate username if changed
+  if (cleanUsername !== current.username) {
+    const exists = users.some((u) => u.id !== userId && u.username.toLowerCase() === cleanUsername);
+    if (exists) {
+      return { success: false, error: `O nome de usuário "${cleanUsername}" já pertence a outro colaborador.` };
+    }
+  }
+
+  const updatedUser: UserAccount = {
+    ...current,
+    username: cleanUsername,
+    name: updatedData.name !== undefined ? updatedData.name.trim() : current.name,
+    role: updatedData.role !== undefined ? updatedData.role : current.role,
+    whatsapp: updatedData.whatsapp !== undefined ? (updatedData.whatsapp.trim() || undefined) : current.whatsapp,
+    password: updatedData.password !== undefined && updatedData.password.trim() ? updatedData.password.trim() : current.password,
+    isActive: updatedData.isActive !== undefined ? Boolean(updatedData.isActive) : current.isActive,
+  };
+
+  users[index] = updatedUser;
+  saveServerUsers(users);
+
+  // Sync to PostgreSQL if configured
+  const pg = getPgPool();
+  if (pg) {
+    try {
+      await pg.query(
+        `UPDATE users 
+         SET username = $1, full_name = $2, role = $3, password_hash = $4, is_active = $5, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $6`,
+        [updatedUser.username, updatedUser.name, updatedUser.role, updatedUser.password || '', updatedUser.isActive, userId]
+      );
+    } catch (err: any) {
+      console.warn('Postgres user update error:', err.message);
+    }
+  }
+
+  // Sync to MariaDB if configured
+  const mysqlPool = getDbPool();
+  if (mysqlPool) {
+    try {
+      await mysqlPool.query(
+        `UPDATE users 
+         SET username = ?, full_name = ?, role = ?, password_hash = ?, is_active = ?
+         WHERE id = ?`,
+        [updatedUser.username, updatedUser.name, updatedUser.role, updatedUser.password || '', updatedUser.isActive ? 1 : 0, userId]
+      );
+    } catch (err: any) {
+      console.warn('MariaDB user update error:', err.message);
+    }
+  }
+
+  return { success: true, user: updatedUser, users };
+}
+
+export function updateServerUser(
+  userId: string,
+  updatedData: Partial<UserAccount>
+): { success: boolean; error?: string; user?: UserAccount; users?: UserAccount[] } {
+  const users = loadServerUsers();
+  const index = users.findIndex((u) => u.id === userId);
+  if (index === -1) {
+    return { success: false, error: 'Usuário não encontrado.' };
+  }
+
+  const current = users[index];
+  const updatedUser: UserAccount = {
+    ...current,
+    ...updatedData,
+    username: updatedData.username ? updatedData.username.trim().toLowerCase() : current.username,
+    name: updatedData.name ? updatedData.name.trim() : current.name,
+    password: updatedData.password && updatedData.password.trim() ? updatedData.password.trim() : current.password,
+  };
+
+  users[index] = updatedUser;
+  saveServerUsers(users);
+  return { success: true, user: updatedUser, users };
+}
+
 export async function resetServerUserPasswordAsync(
   userId: string,
   newPassword: string

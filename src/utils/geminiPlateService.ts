@@ -1,6 +1,6 @@
-import { isValidBrazilianPlate, sanitizeRawText, isMercosulFormat } from './plateNormalizer';
+import { isValidBrazilianPlate, sanitizeRawText, isMercosulFormat, tryFixPlateCandidates } from './plateNormalizer';
 import { performLocalOcr } from './ocrService';
-import { optimizeImageForOcr } from './imageOptimizer';
+import { optimizeImageForOcr, enhanceImageForPlateOcr } from './imageOptimizer';
 
 export interface RecognizedCharacter {
   position: number;
@@ -82,8 +82,9 @@ export async function recognizePlateWithGemini(
 ): Promise<PlateRecognitionResult> {
   const clientStart = Date.now();
   try {
-    // 1. Client-Side instant optimization: Scale down 5MB photos to ~90KB for ultra-fast network transfer
-    const optimized = await optimizeImageForOcr(photoDataUrl, 1024, 0.85);
+    // 1. Client-Side instant enhancement: Adaptive Contrast Boost + Downscale
+    const enhancedUrl = await enhanceImageForPlateOcr(photoDataUrl, { applyContrastBoost: true, maxDimension: 1100 });
+    const optimized = await optimizeImageForOcr(enhancedUrl, 1024, 0.88);
 
     const response = await fetch('/api/ocr/gemini-plate', {
       method: 'POST',
@@ -99,7 +100,7 @@ export async function recognizePlateWithGemini(
     }
 
     const data = await response.json();
-    const cleanPlate = sanitizeRawText(data.plate || '');
+    let cleanPlate = sanitizeRawText(data.plate || '');
     const elapsed = Date.now() - clientStart;
 
     let croppedPlateUrl: string | null = null;
@@ -108,6 +109,14 @@ export async function recognizePlateWithGemini(
         photoDataUrl,
         data.boundingBox as [number, number, number, number]
       );
+    }
+
+    // Mathematical pattern validation / disambiguation
+    if (cleanPlate.length === 7 && !isValidBrazilianPlate(cleanPlate)) {
+      const candidates = tryFixPlateCandidates(cleanPlate);
+      if (candidates.length > 0 && isValidBrazilianPlate(candidates[0])) {
+        cleanPlate = candidates[0];
+      }
     }
 
     if (data.found && cleanPlate.length === 7 && isValidBrazilianPlate(cleanPlate)) {
@@ -121,7 +130,7 @@ export async function recognizePlateWithGemini(
         boundingBox: data.boundingBox,
         croppedPlateUrl,
         characters: data.characters || [],
-        analysisNotes: data.analysisNotes || `Reconhecido em ${elapsed}ms`,
+        analysisNotes: data.analysisNotes || `Reconhecido em ${elapsed}ms com IA de Alta Precisão`,
         processingTimeMs: elapsed,
         success: true,
       };

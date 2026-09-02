@@ -23,11 +23,14 @@ import {
   Check,
   Copy,
   HelpCircle,
+  Edit3,
+  Save,
 } from 'lucide-react';
 import {
   getAllUsers,
   fetchServerUsers,
   createNewUser,
+  updateUserAccount,
   resetUserPassword,
   toggleUserStatus,
   deleteUser,
@@ -83,6 +86,33 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
   const [formMsg, setFormMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copiedScript, setCopiedScript] = useState(false);
+
+  // Edit User State
+  const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editUsername, setEditUsername] = useState('');
+  const [editWhatsapp, setEditWhatsapp] = useState('');
+  const [editPassword, setEditPassword] = useState('');
+  const [editRole, setEditRole] = useState<UserRole>('patio');
+  const [editIsActive, setEditIsActive] = useState(true);
+  const [editMsg, setEditMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  const startEditUser = (user: UserAccount) => {
+    setEditingUser(user);
+    setEditName(user.name);
+    setEditUsername(user.username);
+    setEditWhatsapp(user.whatsapp || '');
+    setEditPassword(user.password || '');
+    setEditRole(user.role);
+    setEditIsActive(user.isActive !== false);
+    setEditMsg(null);
+  };
+
+  const cancelEditUser = () => {
+    setEditingUser(null);
+    setEditMsg(null);
+  };
 
   const handleCopyAppsScript = () => {
     const code = getAppsScriptTemplateCode();
@@ -241,6 +271,40 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
     } catch {
       setIsSubmitting(false);
       setFormMsg({ text: 'Erro ao conectar ao servidor.', type: 'error' });
+    }
+  };
+
+  const handleSaveEditUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    setEditMsg(null);
+    setIsUpdating(true);
+
+    try {
+      const res = await updateUserAccount(editingUser.id, {
+        name: editName.trim(),
+        username: editUsername.trim().toLowerCase(),
+        whatsapp: editWhatsapp.trim() || undefined,
+        password: editPassword.trim() || undefined,
+        role: editRole,
+        isActive: editIsActive,
+      });
+
+      setIsUpdating(false);
+      if (res.success) {
+        setEditMsg({ text: '✅ Colaborador atualizado com sucesso e sincronizado!', type: 'success' });
+        await loadData();
+        syncAllUsersToSheet();
+        setTimeout(() => {
+          setEditingUser(null);
+          setEditMsg(null);
+        }, 1200);
+      } else {
+        setEditMsg({ text: res.error || 'Erro ao atualizar colaborador.', type: 'error' });
+      }
+    } catch {
+      setIsUpdating(false);
+      setEditMsg({ text: 'Erro ao salvar alterações no servidor.', type: 'error' });
     }
   };
 
@@ -814,6 +878,16 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                           <div className="flex items-center gap-1.5 shrink-0">
                             <button
                               type="button"
+                              onClick={() => startEditUser(user)}
+                              className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold transition flex items-center gap-1 cursor-pointer border border-emerald-200"
+                              title="Editar Dados Completos do Operador (Master CRUD)"
+                            >
+                              <Edit3 className="w-3.5 h-3.5 text-emerald-700" />
+                              <span className="hidden sm:inline text-[10px]">Editar</span>
+                            </button>
+
+                            <button
+                              type="button"
                               onClick={() => {
                                 setResettingUserId(resettingUserId === user.id ? null : user.id);
                                 setResetNewPassword('');
@@ -891,6 +965,141 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
             </div>
           )}
         </div>
+
+        {/* Modal de Edição Completa de Usuário (Master CRUD) */}
+        {editingUser && (
+          <div className="fixed inset-0 z-60 bg-black/70 backdrop-blur-xs flex items-center justify-center p-3">
+            <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col border border-neutral-200 animate-in fade-in zoom-in-95 duration-150">
+              <div className="p-4 bg-neutral-900 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white font-bold">
+                    <Edit3 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black leading-tight">Editar Colaborador (Master)</h3>
+                    <p className="text-[11px] text-neutral-400">Alteração cadastral com sincronização na planilha</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={cancelEditUser}
+                  className="p-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {editMsg && (
+                <div
+                  className={`p-3 text-xs font-bold flex items-center gap-2 ${
+                    editMsg.type === 'success' ? 'bg-emerald-50 text-emerald-900 border-b border-emerald-200' : 'bg-rose-50 text-rose-900 border-b border-rose-200'
+                  }`}
+                >
+                  {editMsg.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-700" /> : <AlertCircle className="w-4 h-4 text-rose-700" />}
+                  <span>{editMsg.text}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleSaveEditUser} className="p-4 flex flex-col gap-3 bg-neutral-50/50">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-black text-neutral-700">Nome Completo:</label>
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="bg-white border border-neutral-300 rounded-xl px-3 py-2 text-xs font-medium text-neutral-900 focus:border-emerald-600 outline-none"
+                    required
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-black text-neutral-700">Usuário / Matrícula (Login):</label>
+                  <input
+                    type="text"
+                    value={editUsername}
+                    onChange={(e) => setEditUsername(e.target.value)}
+                    className="bg-white border border-neutral-300 rounded-xl px-3 py-2 text-xs font-medium text-neutral-900 focus:border-emerald-600 outline-none"
+                    required
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-black text-neutral-700">Senha de Acesso (Coluna 6):</label>
+                  <input
+                    type="text"
+                    value={editPassword}
+                    onChange={(e) => setEditPassword(e.target.value)}
+                    className="bg-white border border-neutral-300 rounded-xl px-3 py-2 text-xs font-medium text-neutral-900 focus:border-emerald-600 outline-none"
+                    placeholder="Deixe em branco para manter a atual"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-black text-neutral-700 flex items-center justify-between">
+                    <span>WhatsApp / Contato (Coluna 5):</span>
+                    <span className="text-[10px] text-neutral-400">(Opcional)</span>
+                  </label>
+                  <input
+                    type="tel"
+                    value={editWhatsapp}
+                    onChange={(e) => setEditWhatsapp(e.target.value)}
+                    className="bg-white border border-neutral-300 rounded-xl px-3 py-2 text-xs font-medium text-neutral-900 focus:border-emerald-600 outline-none"
+                    placeholder="Ex: (11) 98765-4321"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-black text-neutral-700">Função / Perfil de Acesso:</label>
+                  <select
+                    value={editRole}
+                    onChange={(e) => setEditRole(e.target.value as UserRole)}
+                    className="bg-white border border-neutral-300 rounded-xl px-3 py-2 text-xs font-bold text-neutral-900 focus:border-emerald-600 outline-none"
+                  >
+                    <option value="patio">Operador do Pátio (Todas as operações)</option>
+                    <option value="entrada_saida">Operador Entrada/Saída</option>
+                    <option value="combustivel">Operador Combustível</option>
+                    <option value="pdc">Operador Fila PDC</option>
+                    <option value="qualidade_51">Operador 51 Qualidade</option>
+                    <option value="master">Administrador Master</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-neutral-200 mt-1">
+                  <span className="text-xs font-black text-neutral-700">Status do Operador:</span>
+                  <button
+                    type="button"
+                    onClick={() => setEditIsActive(!editIsActive)}
+                    className={`px-3 py-1 rounded-lg text-xs font-black transition ${
+                      editIsActive
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        : 'bg-rose-100 text-rose-800 border border-rose-300'
+                    }`}
+                  >
+                    {editIsActive ? '🟢 Ativo' : '🔴 Bloqueado'}
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-200 mt-1">
+                  <button
+                    type="button"
+                    onClick={cancelEditUser}
+                    className="px-3.5 py-2 rounded-xl bg-white border border-neutral-300 hover:bg-neutral-50 text-neutral-700 text-xs font-bold"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isUpdating}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center gap-1.5 shadow-xs transition disabled:opacity-50"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>{isUpdating ? 'Salvando...' : 'Salvar Alterações'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
