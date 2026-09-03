@@ -9,7 +9,7 @@ import {
   appendVehicleRecordToSheet,
   initializeAllSpreadsheetTabs,
 } from './server/googleSheetsService';
-import { initDatabase, getActiveDbType } from './server/db';
+import { initDatabase, getActiveDbType, getDatabaseDiagnosticAsync, setRuntimeDatabaseUrl } from './server/db';
 import {
   loadServerUsersAsync,
   loadServerUsers,
@@ -42,6 +42,8 @@ import {
   appendServerLogAsync,
   clearServerLogsAsync,
   restoreLogsFromSpreadsheetAsync,
+  createCompleteBackupAsync,
+  restoreCompleteBackupAsync,
 } from './server/dataStore';
 
 dotenv.config();
@@ -194,6 +196,69 @@ async function startServer() {
       return { success: false, error: err.message };
     }
   }
+
+  // --------------------------------------------------------------------------
+  // DATABASE DIAGNOSTIC, BACKUP & RESTORE (OnRender PostgreSQL & Local Fallback)
+  // --------------------------------------------------------------------------
+  app.get('/api/db/diagnostic', async (req: Request, res: Response) => {
+    try {
+      const diag = await getDatabaseDiagnosticAsync();
+      res.json({
+        success: diag.status === 'connected',
+        ...diag,
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        status: 'disconnected',
+        error: err.message,
+      });
+    }
+  });
+
+  app.post('/api/db/configure', async (req: Request, res: Response) => {
+    try {
+      const { databaseUrl } = req.body;
+      if (!databaseUrl || typeof databaseUrl !== 'string') {
+        res.status(400).json({ success: false, message: 'URL de conexão não fornecida.' });
+        return;
+      }
+      const result = await setRuntimeDatabaseUrl(databaseUrl);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // Download complete system backup JSON to user's computer
+  app.get('/api/db/backup', async (req: Request, res: Response) => {
+    try {
+      const backup = await createCompleteBackupAsync();
+      const dateStr = new Date().toISOString().split('T')[0];
+      const filename = `backup-cmdit-${dateStr}.json`;
+
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.json(backup);
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Restore complete system backup from uploaded JSON
+  app.post('/api/db/restore', async (req: Request, res: Response) => {
+    try {
+      const backupData = req.body;
+      if (!backupData) {
+        res.status(400).json({ success: false, message: 'Nenhum dado de backup enviado.' });
+        return;
+      }
+      const result = await restoreCompleteBackupAsync(backupData);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
 
   // --------------------------------------------------------------------------
   // USER MANAGEMENT & MULTI-DEVICE AUTHENTICATION (Centralized Store + Google Sheet Sync)

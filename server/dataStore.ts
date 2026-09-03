@@ -1840,3 +1840,160 @@ export async function restoreLogsFromSpreadsheetAsync(
     };
   }
 }
+
+// ----------------------------------------------------
+// COMPLETE BACKUP & RESTORE UTILITIES (JSON / SQL)
+// ----------------------------------------------------
+export interface SystemBackupPayload {
+  version: string;
+  exportDate: string;
+  app: string;
+  counts: {
+    users: number;
+    records: number;
+    logs: number;
+  };
+  data: {
+    users: UserAccount[];
+    records: any[];
+    logs: any[];
+    settings: any;
+  };
+}
+
+export async function createCompleteBackupAsync(): Promise<SystemBackupPayload> {
+  const users = await loadServerUsersAsync();
+  const records = await loadServerRecordsAsync();
+  const logs = await loadServerLogsAsync();
+  const settings = await loadServerSettingsAsync();
+
+  return {
+    version: '1.0.0',
+    exportDate: new Date().toISOString(),
+    app: 'CMDIT Frota & Portaria',
+    counts: {
+      users: users.length,
+      records: records.length,
+      logs: logs.length,
+    },
+    data: {
+      users,
+      records,
+      logs,
+      settings,
+    },
+  };
+}
+
+export async function restoreCompleteBackupAsync(
+  backup: any
+): Promise<{ success: boolean; message: string; counts?: { users: number; records: number; logs: number } }> {
+  try {
+    if (!backup || typeof backup !== 'object') {
+      return { success: false, message: 'Arquivo de backup inválido ou corrompido.' };
+    }
+
+    const payloadData = backup.data || backup;
+    const users: UserAccount[] = Array.isArray(payloadData.users) ? payloadData.users : [];
+    const records: any[] = Array.isArray(payloadData.records) ? payloadData.records : [];
+    const logs: any[] = Array.isArray(payloadData.logs) ? payloadData.logs : [];
+    const settings = payloadData.settings || null;
+
+    if (users.length === 0 && records.length === 0 && logs.length === 0) {
+      return {
+        success: false,
+        message: 'Nenhum dado encontrado no arquivo de backup fornecido.',
+      };
+    }
+
+    // 1. Restore to Local JSON Files (Instant fallback guarantee)
+    if (users.length > 0) {
+      saveServerUsers(users);
+    }
+    if (records.length > 0) {
+      saveServerRecords(records);
+    }
+    if (logs.length > 0) {
+      saveServerLogs(logs);
+    }
+    if (settings) {
+      saveServerSettings(settings);
+    }
+
+    // 2. Restore to PostgreSQL (Render / Cloud DB) if connected
+    const pg = getPgPool();
+    if (pg) {
+      try {
+        const client = await pg.connect();
+        try {
+          // Sync Users
+          for (const u of users) {
+            await client.query(
+              `INSERT INTO users (id, username, password_hash, full_name, role, is_active, whatsapp)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)
+               ON CONFLICT (username) DO UPDATE SET
+                 password_hash = EXCLUDED.password_hash,
+                 full_name = EXCLUDED.full_name,
+                 role = EXCLUDED.role,
+                 is_active = EXCLUDED.is_active,
+                 whatsapp = EXCLUDED.whatsapp`,
+              [u.id || `user-${Date.now()}`, u.username.toLowerCase().trim(), u.password || 'user123', u.name, u.role, u.isActive ?? true, u.whatsapp || '-']
+            );
+          }
+
+          // Sync Vehicle Records
+          for (const r of records) {
+            await client.query(
+              `INSERT INTO vehicle_records (id, plate, driver_name, status, notes, raw_data)
+               VALUES ($1, $2, $3, $4, $5, $6)
+               ON CONFLICT (id) DO UPDATE SET
+                 plate = EXCLUDED.plate,
+                 driver_name = EXCLUDED.driver_name,
+                 status = EXCLUDED.status,
+                 notes = EXCLUDED.notes,
+                 raw_data = EXCLUDED.raw_data`,
+              [
+                r.id || `rec-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+                String(r.plate || '').toUpperCase().trim(),
+                r.driverName || r.driver || '-',
+                r.status || 'inside',
+                r.notes || '',
+                JSON.stringify(r),
+              ]
+            );
+          }
+
+          // Sync Settings
+          if (settings) {
+            await client.query(
+              `INSERT INTO app_settings (key, value)
+               VALUES ('general_settings', $1)
+               ON CONFLICT (key) DO UPDATE SET value = $1`,
+              [JSON.stringify(settings)]
+            );
+          }
+        } finally {
+          client.release();
+        }
+      } catch (pgErr: any) {
+        console.warn('PostgreSQL restore sync warning:', pgErr.message);
+      }
+    }
+
+    return {
+      success: true,
+      message: `Backup restaurado com sucesso! ${users.length} usuários, ${records.length} registros e ${logs.length} logs importados.`,
+      counts: {
+        users: users.length,
+        records: records.length,
+        logs: logs.length,
+      },
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: `Erro ao restaurar backup: ${err.message}`,
+    };
+  }
+}
+

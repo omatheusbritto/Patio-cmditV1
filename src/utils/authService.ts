@@ -645,3 +645,60 @@ export async function configureDatabaseUrl(databaseUrl: string): Promise<{ succe
   }
 }
 
+/**
+ * Baixa o arquivo de backup completo (.json) diretamente para o computador do usuário
+ */
+export async function downloadDatabaseBackup(): Promise<{ success: boolean; filename?: string; error?: string }> {
+  try {
+    const res = await fetch('/api/db/backup');
+    if (!res.ok) {
+      throw new Error(`Falha ao obter backup (HTTP ${res.status})`);
+    }
+    const blob = await res.blob();
+    const dateStr = new Date().toISOString().split('T')[0];
+    const filename = `backup-cmdit-${dateStr}.json`;
+
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+
+    return { success: true, filename };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Envia um arquivo de backup (.json) para restaurar os dados no banco de dados e localmente
+ */
+export async function restoreDatabaseBackup(
+  backupData: any
+): Promise<{ success: boolean; message: string; counts?: { users: number; records: number; logs: number } }> {
+  try {
+    const res = await fetch('/api/db/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(backupData),
+    });
+    const data = await res.json();
+    if (data.success) {
+      // Sincroniza cache local de usuários se vier no backup
+      if (backupData.data?.users && Array.isArray(backupData.data.users)) {
+        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(backupData.data.users));
+      }
+    }
+    return data;
+  } catch (err: any) {
+    return {
+      success: false,
+      message: `Erro ao enviar arquivo para restauração: ${err.message}`,
+    };
+  }
+}
+
+
