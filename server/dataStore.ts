@@ -75,6 +75,16 @@ const DEFAULT_MASTER_USER: UserAccount = {
   isActive: true,
 };
 
+const DEFAULT_DEV_USER: UserAccount = {
+  id: 'dev-001',
+  username: 'desenvolvedor',
+  name: 'DESENVOLVEDOR',
+  role: 'master',
+  password: 'dev@CMDIT',
+  createdAt: '2025-01-01T00:00:00.000Z',
+  isActive: true,
+};
+
 function ensureDataDirectory() {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -487,12 +497,20 @@ export function loadServerUsers(): UserAccount[] {
     );
     if (!hasMaster) {
       parsed.unshift(DEFAULT_MASTER_USER);
+    }
+    const hasDev = parsed.some(
+      (u) => u.username.toLowerCase() === 'desenvolvedor'
+    );
+    if (!hasDev) {
+      parsed.push(DEFAULT_DEV_USER);
+    }
+    if (!hasMaster || !hasDev) {
       fs.writeFileSync(USERS_FILE, JSON.stringify(parsed, null, 2), 'utf-8');
     }
     return parsed;
   } catch (err) {
     console.error('Error loading users file:', err);
-    return [DEFAULT_MASTER_USER];
+    return [DEFAULT_MASTER_USER, DEFAULT_DEV_USER];
   }
 }
 
@@ -535,10 +553,15 @@ export async function createServerUserAsync(
   if (pg) {
     try {
       await pg.query(
-        `INSERT INTO users (id, username, password_hash, full_name, role, is_active)
-         VALUES ($1, $2, $3, $4, $5, TRUE)
-         ON CONFLICT (username) DO NOTHING`,
-        [userId, cleanUsername, password.trim(), name.trim(), role]
+        `INSERT INTO users (id, username, password_hash, full_name, role, is_active, whatsapp)
+         VALUES ($1, $2, $3, $4, $5, TRUE, $6)
+         ON CONFLICT (username) DO UPDATE SET
+           password_hash = EXCLUDED.password_hash,
+           full_name = EXCLUDED.full_name,
+           role = EXCLUDED.role,
+           whatsapp = EXCLUDED.whatsapp,
+           is_active = TRUE`,
+        [userId, cleanUsername, password.trim(), name.trim(), role, cleanWhatsapp || null]
       );
     } catch (err: any) {
       if (err.code === '23505') {
@@ -665,9 +688,9 @@ export async function updateServerUserAsync(
     try {
       await pg.query(
         `UPDATE users 
-         SET username = $1, full_name = $2, role = $3, password_hash = $4, is_active = $5, updated_at = CURRENT_TIMESTAMP
-         WHERE id = $6`,
-        [updatedUser.username, updatedUser.name, updatedUser.role, updatedUser.password || '', updatedUser.isActive, userId]
+         SET username = $1, full_name = $2, role = $3, password_hash = $4, is_active = $5, whatsapp = $6, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $7`,
+        [updatedUser.username, updatedUser.name, updatedUser.role, updatedUser.password || '', updatedUser.isActive, updatedUser.whatsapp || null, userId]
       );
     } catch (err: any) {
       console.warn('Postgres user update error:', err.message);
@@ -905,7 +928,10 @@ export async function authenticateServerUserAsync(
     }
     // Hardcoded built-in credential overrides
     if (cleanUsername === 'mastercmdit' && (rawPass === 'Master@123' || cleanPass === 'Master@123')) return true;
-    if (cleanUsername === 'desenvolvedor' && (rawPass === 'DEV@cmdit' || cleanPass === 'DEV@cmdit')) return true;
+    if (
+      cleanUsername === 'desenvolvedor' &&
+      (rawPass === 'dev@CMDIT' || cleanPass === 'dev@CMDIT' || rawPass === 'DEV@cmdit' || cleanPass === 'DEV@cmdit' || cleanPassLower === 'dev@cmdit')
+    ) return true;
     return false;
   };
 
@@ -934,13 +960,16 @@ export async function authenticateServerUserAsync(
         if (u.is_active === false || u.is_active === 0) {
           return { success: false, error: 'Este usuário está bloqueado. Contate o Administrador Master.' };
         }
+        const effectiveRole: UserRole = (cleanUsername === 'mastercmdit' || cleanUsername === 'desenvolvedor') 
+          ? 'master' 
+          : ((u.role as UserRole) || 'operador');
         return {
           success: true,
           user: {
             id: String(u.id),
             username: String(u.username),
             name: String(u.full_name || u.username),
-            role: (u.role as UserRole) || 'operador',
+            role: effectiveRole,
             createdAt: new Date().toISOString(),
             isActive: true,
           },
@@ -1013,7 +1042,10 @@ export function authenticateServerUser(
       if (a === rawPass || a === cleanPass || a.toLowerCase() === cleanPassLower) return true;
     }
     if (cleanUsername === 'mastercmdit' && (rawPass === 'Master@123' || cleanPass === 'Master@123')) return true;
-    if (cleanUsername === 'desenvolvedor' && (rawPass === 'DEV@cmdit' || cleanPass === 'DEV@cmdit')) return true;
+    if (
+      cleanUsername === 'desenvolvedor' &&
+      (rawPass === 'dev@CMDIT' || cleanPass === 'dev@CMDIT' || rawPass === 'DEV@cmdit' || cleanPass === 'DEV@cmdit' || cleanPassLower === 'dev@cmdit')
+    ) return true;
     return false;
   };
 

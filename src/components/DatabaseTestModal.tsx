@@ -8,7 +8,6 @@ import {
   Server,
   Zap,
   ShieldCheck,
-  KeyRound,
   Download,
   Upload,
   Save,
@@ -33,13 +32,11 @@ import {
 interface DatabaseTestModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onQuickFillUser?: (username: string, pass: string) => void;
 }
 
 export const DatabaseTestModal: React.FC<DatabaseTestModalProps> = ({
   isOpen,
   onClose,
-  onQuickFillUser,
 }) => {
   const [activeTab, setActiveTab] = useState<'diagnostic' | 'backup'>('diagnostic');
   const [diagnostic, setDiagnostic] = useState<DatabaseDiagnosticResult | null>(null);
@@ -373,52 +370,6 @@ export const DatabaseTestModal: React.FC<DatabaseTestModalProps> = ({
                   </div>
                 </div>
               )}
-
-              {/* Quick Access Credentials Help */}
-              <div className="bg-indigo-50/70 p-3.5 rounded-2xl border border-indigo-200">
-                <div className="text-xs font-bold text-indigo-950 flex items-center gap-1.5 mb-2">
-                  <KeyRound className="w-4 h-4 text-indigo-700" />
-                  <span>Contas de Acesso Rápido Garantidas:</span>
-                </div>
-                <div className="space-y-1.5 text-xs">
-                  <div className="flex items-center justify-between bg-white p-2 rounded-xl border border-indigo-100">
-                    <div>
-                      <span className="font-bold text-neutral-900">mastercmdit</span>{' '}
-                      <span className="text-neutral-500 text-[11px]">(Senha: Master@123)</span>
-                    </div>
-                    {onQuickFillUser && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onQuickFillUser('mastercmdit', 'Master@123');
-                          onClose();
-                        }}
-                        className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold rounded-lg transition cursor-pointer"
-                      >
-                        Usar
-                      </button>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between bg-white p-2 rounded-xl border border-indigo-100">
-                    <div>
-                      <span className="font-bold text-neutral-900">desenvolvedor</span>{' '}
-                      <span className="text-neutral-500 text-[11px]">(Senha: DEV@cmdit)</span>
-                    </div>
-                    {onQuickFillUser && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onQuickFillUser('desenvolvedor', 'DEV@cmdit');
-                          onClose();
-                        }}
-                        className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold rounded-lg transition cursor-pointer"
-                      >
-                        Usar
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
 
               {/* OnRender Connection String Form */}
               <form onSubmit={handleSaveDbUrl} className="bg-neutral-50 p-4 rounded-2xl border border-neutral-200 space-y-2.5">

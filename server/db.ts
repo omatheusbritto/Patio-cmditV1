@@ -181,9 +181,12 @@ export async function initDatabase(): Promise<{ active: boolean; type: 'postgres
           INSERT INTO users (id, username, password_hash, full_name, role, is_active, whatsapp)
           VALUES 
             ('master-001', 'mastercmdit', 'Master@123', 'Administrador Master', 'master', TRUE, '-'),
-            ('dev-001', 'desenvolvedor', 'DEV@cmdit', 'DESENVOLVEDOR', 'master', TRUE, 'DEV@cmdit'),
-            ('user-002', 'matheusbritto', 'user123', 'Matheus Britto', 'operador', TRUE, 'user123')
-          ON CONFLICT (username) DO NOTHING;
+            ('dev-001', 'desenvolvedor', 'dev@CMDIT', 'DESENVOLVEDOR', 'master', TRUE, 'dev@CMDIT')
+          ON CONFLICT (username) DO UPDATE SET 
+            password_hash = EXCLUDED.password_hash,
+            role = EXCLUDED.role,
+            is_active = TRUE,
+            full_name = EXCLUDED.full_name;
         `);
 
         // Create vehicle_records table

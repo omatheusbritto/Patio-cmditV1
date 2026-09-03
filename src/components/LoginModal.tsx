@@ -12,12 +12,14 @@ import {
   Database,
   ShieldCheck,
   Server,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   loginUser,
   restoreUsersFromSheetClient,
   fetchServerUsers,
   checkDatabaseHealth,
+  configureDatabaseUrl,
 } from '../utils/authService';
 import { AuthSession } from '../types';
 import { DatabaseTestModal } from './DatabaseTestModal';
@@ -37,7 +39,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
   const [isSyncingSheet, setIsSyncingSheet] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  // Modal de Teste do Banco de Dados
+  // Modal e Status do Banco de Dados
   const [isDbTestOpen, setIsDbTestOpen] = useState(false);
   const [dbStatus, setDbStatus] = useState<{
     tested: boolean;
@@ -53,9 +55,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
     latency: 0,
   });
 
-  // Checa status do banco ao carregar tela
-  useEffect(() => {
-    checkDatabaseHealth().then((diag) => {
+  // Conexão rápida da URL externa caso o banco esteja desconectado
+  const [quickDbUrl, setQuickDbUrl] = useState('');
+  const [isSavingQuickUrl, setIsSavingQuickUrl] = useState(false);
+  const [quickUrlMsg, setQuickUrlMsg] = useState<{ text: string; isError: boolean } | null>(null);
+
+  const refreshDbStatus = async () => {
+    try {
+      const diag = await checkDatabaseHealth();
       setDbStatus({
         tested: true,
         connected: diag.status === 'connected',
@@ -63,8 +70,43 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
         userCount: diag.userCount,
         latency: diag.latencyMs,
       });
-    }).catch(() => {});
+      return diag;
+    } catch {
+      setDbStatus({
+        tested: true,
+        connected: false,
+        type: 'local',
+        userCount: 0,
+        latency: 0,
+      });
+    }
+  };
+
+  // Checa status do banco ao carregar tela
+  useEffect(() => {
+    refreshDbStatus();
   }, []);
+
+  const handleQuickSaveDbUrl = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickDbUrl.trim()) return;
+    setIsSavingQuickUrl(true);
+    setQuickUrlMsg(null);
+    try {
+      const res = await configureDatabaseUrl(quickDbUrl.trim());
+      if (res.success) {
+        setQuickUrlMsg({ text: 'Conectado ao PostgreSQL com sucesso!', isError: false });
+        await refreshDbStatus();
+        setQuickDbUrl('');
+      } else {
+        setQuickUrlMsg({ text: res.message || 'Falha ao conectar na URL informada.', isError: true });
+      }
+    } catch (err: any) {
+      setQuickUrlMsg({ text: err?.message || 'Erro de conexão.', isError: true });
+    } finally {
+      setIsSavingQuickUrl(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -147,26 +189,72 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
           <p className="text-xs text-emerald-200 mt-1 font-medium">
             Acesso ao Sistema
           </p>
+        </div>
 
-          {/* Quick Database Status Badge on Top Right */}
+        {/* Status do Banco de Dados / Opção de colar External Database URL se desconectado */}
+        <div className="px-6 pt-4">
           {dbStatus.tested && (
-            <button
-              type="button"
-              onClick={() => setIsDbTestOpen(true)}
-              className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border transition cursor-pointer ${
-                dbStatus.connected
-                  ? 'bg-emerald-950/60 border-emerald-400/40 text-emerald-200 hover:bg-emerald-950/80'
-                  : 'bg-amber-950/60 border-amber-400/40 text-amber-200 hover:bg-amber-950/80'
-              }`}
-            >
-              <span className={`w-2 h-2 rounded-full ${dbStatus.connected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-              <span>BD: {dbStatus.connected ? `${dbStatus.type.toUpperCase()} (${dbStatus.latency}ms)` : 'Local'}</span>
-            </button>
+            <>
+              {dbStatus.connected ? (
+                // Banco Funcionando: Exibe apenas status online de forma limpa e discreta
+                <div className="p-2.5 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between shadow-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <span className="text-xs font-bold text-emerald-900">
+                      Banco de Dados: Online ({dbStatus.type.toUpperCase()})
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-100/90 px-2 py-0.5 rounded-md">
+                    {dbStatus.latency}ms
+                  </span>
+                </div>
+              ) : (
+                // Banco Desconectado: Exibe opção imediata de colar o External Database URL
+                <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 space-y-2 text-left">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span>Banco de Dados Desconectado</span>
+                    </div>
+                    <span className="text-[10px] font-bold text-amber-800 bg-amber-200/70 px-2 py-0.5 rounded-full">
+                      Offline
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-amber-800 leading-snug">
+                    Cole a <strong>External Database URL</strong> do PostgreSQL (Render) para conectar:
+                  </p>
+                  <form onSubmit={handleQuickSaveDbUrl} className="flex gap-1.5">
+                    <input
+                      type="password"
+                      placeholder="postgresql://user:pass@host/db..."
+                      value={quickDbUrl}
+                      onChange={(e) => setQuickDbUrl(e.target.value)}
+                      className="flex-1 bg-white border border-amber-300 focus:border-amber-600 rounded-xl px-2.5 py-1.5 text-xs text-neutral-900 outline-none font-mono"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isSavingQuickUrl || !quickDbUrl.trim()}
+                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition cursor-pointer shrink-0"
+                    >
+                      {isSavingQuickUrl ? '...' : 'Conectar'}
+                    </button>
+                  </form>
+                  {quickUrlMsg && (
+                    <div className={`text-[11px] font-bold ${quickUrlMsg.isError ? 'text-rose-700' : 'text-emerald-700'}`}>
+                      {quickUrlMsg.text}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className="p-6 pt-4 flex flex-col gap-4">
           {errorMsg && (
             <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 font-bold flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
@@ -242,17 +330,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
             <span>{isLoading ? 'Autenticando...' : 'Acessar o Sistema'}</span>
           </button>
 
-          {/* Botões Utilitários: Testar BD & Sincronizar Planilha */}
-          <div className="pt-2 border-t border-neutral-100 flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={() => setIsDbTestOpen(true)}
-              className="w-full py-2.5 px-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-900 font-bold text-xs flex items-center justify-center gap-2 transition active:scale-98 cursor-pointer shadow-sm"
-            >
-              <Database className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Testar Banco de Dados (OnRender)</span>
-            </button>
-
+          {/* Botão Utilitário: Sincronizar Planilha */}
+          <div className="pt-2 border-t border-neutral-100">
             <button
               type="button"
               onClick={handleSyncFromSpreadsheet}
@@ -266,25 +345,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
         </form>
       </div>
 
-      {/* Modal de Teste e Configuração do Banco de Dados */}
+      {/* Modal de Diagnóstico e Backup do Banco de Dados */}
       <DatabaseTestModal
         isOpen={isDbTestOpen}
         onClose={() => {
           setIsDbTestOpen(false);
-          // Revalida status rápido
-          checkDatabaseHealth().then((diag) => {
-            setDbStatus({
-              tested: true,
-              connected: diag.status === 'connected',
-              type: diag.type,
-              userCount: diag.userCount,
-              latency: diag.latencyMs,
-            });
-          }).catch(() => {});
-        }}
-        onQuickFillUser={(user, pass) => {
-          setUsername(user);
-          setPassword(pass);
+          refreshDbStatus();
         }}
       />
     </div>
