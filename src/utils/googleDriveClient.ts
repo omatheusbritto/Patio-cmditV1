@@ -530,20 +530,20 @@ export function getAppsScriptTemplateCode(): string {
 
 /**
  * Template de Script do Google Apps Script para copiar e colar na planilha
- * Consolidação completa: Todas as 6 abas na MESMA planilha oficial única:
- * - 📥 Entrada (12 colunas): Data, Hora, Placa, Condutor, KM odômetro, Nível Combustível, Origem, Destino, Chave reserva, Tipo veículo, Observação, Operador
- * - 📤 Saída (10 colunas): Data, Hora, Placa, Condutor, KM odômetro, Nível Combustível, Destino, Chave reserva, Observação, Operador
- * - 🔍 Qualidade 51 (8 colunas): Data, Hora, Placa, Condutor, Característica do Veículo, Nível Combustível, Destino, Operador
- * - ⛽ Combustível (8 colunas): Data, Hora, Placa, KM odômetro, Nível Combustível, Condutor, Destino, Operador
- * - 📋 Fila PDC (6 colunas): Data, Hora, Placa, Nível Combustível, Observação, Operador
+ * Consolidação completa: Todas as abas na MESMA planilha oficial única:
+ * - 📥 ENTRADAS (12 colunas): DATA, HORA, PLACA, CONDUTOR, KM(ODOMETRO), NIVEL DO COMBUSTIVEL, ORIGEM, DESTINO, CHAVE RESERVA, TIPO DE VEICULO(RAC, GF, LQV, OUTROS), OBSERVAÇÕES, OPERADOR DO REGISTRO
+ * - 📤 SAIDA (11 colunas): DATA, HORA, PLACA, CONDUTOR, KM(ODOMETRO), NIVEL DO COMBUSTIVEL, DESTINO, CHAVE RESERVA, TIPO DE VEICULO(RAC, GF, LQV, OUTROS), OBSERVAÇÕES, OPERADOR DO REGISTRO
+ * - 🔍 QUALIDADE 51 (8 colunas): DATA, HORA, PLACA, CONDUTOR, CARACTERISTICAS DO VEICULO, NIVEL DO COMBUSTIVEL, DESTINO(P1, P2, P3, R1, ADM), OPERADOR DO REGISTRO
+ * - ⛽ COMBUSTIVEL (ABASTECIMENTO) (11 colunas): DATA, HORA, PLACA, KM(ODOMETRO), NIVEL DO COMBUSTIVEL, CONDUTOR, DESTINO, OBSERVAÇÕES, TIPO DE COMBUSTIVEL, LITROS, OPERADOR DO REGISTRO
+ * - 📋 Fila PDC (6 colunas): DATA, HORA, PLACA, NIVEL DO COMBUSTIVEL, OBSERVAÇÕES, CONDUTOR(OPERADOR DO REGISTRO)
  * - 👥 USUARIOS_CMDIT (7 colunas):
- *     Coluna A: Data e Hora da criação do usuario
- *     Coluna B: Matricula/Usuario
- *     Coluna C: Nome do usuario
- *     Coluna D: Senha
- *     Coluna E: Whatsapp
- *     Coluna F: Status
- *     Coluna G: ultimo acesso
+ *     Coluna A: HORA E DATA DE CRIAÇÃO DO USUARIO
+ *     Coluna B: MATRICULA/USUARIO
+ *     Coluna C: NOME DO USUARIO
+ *     Coluna D: SENHA
+ *     Coluna E: WHATSAPP
+ *     Coluna F: STATUS
+ *     Coluna G: ULTIMO ACESSO
  */
 export const GOOGLE_APPS_SCRIPT_TEMPLATE = `// ============================================================================
 // SCRIPT DE GRAVAÇÃO AUTOMÁTICA OFICIAL UNIFICADA - CMDIT CONTROLE DE PÁTIO
@@ -558,94 +558,103 @@ export const GOOGLE_APPS_SCRIPT_TEMPLATE = `// =================================
 
 var TAB_CONFIGS = {
   entrada: {
-    tabName: "📥 Entrada",
+    tabName: "ENTRADAS",
+    aliases: ["entradas", "entrada", "inbound", "📥 entradas", "📥 entrada"],
     headers: [
       "DATA",
       "HORA",
       "PLACA",
       "CONDUTOR",
-      "KM (ODÔMETRO)",
-      "NÍVEL DO COMBUSTÍVEL",
+      "KM(ODOMETRO)",
+      "NIVEL DO COMBUSTIVEL",
       "ORIGEM",
       "DESTINO",
       "CHAVE RESERVA",
-      "TIPO DE VEÍCULO",
-      "OBSERVAÇÃO",
+      "TIPO DE VEICULO(RAC, GF, LQV, OUTROS)",
+      "OBSERVAÇÕES",
       "OPERADOR DO REGISTRO"
     ]
   },
   saida: {
-    tabName: "📤 Saída",
+    tabName: "SAIDA",
+    aliases: ["saida", "saída", "saidas", "outbound", "📤 saida", "📤 saída"],
     headers: [
       "DATA",
       "HORA",
       "PLACA",
       "CONDUTOR",
-      "KM (ODÔMETRO)",
-      "NÍVEL DO COMBUSTÍVEL",
+      "KM(ODOMETRO)",
+      "NIVEL DO COMBUSTIVEL",
       "DESTINO",
       "CHAVE RESERVA",
-      "OBSERVAÇÃO",
+      "TIPO DE VEICULO(RAC, GF, LQV, OUTROS)",
+      "OBSERVAÇÕES",
       "OPERADOR DO REGISTRO"
     ]
   },
   qualidade: {
-    tabName: "🔍 Qualidade 51",
+    tabName: "QUALIDADE 51",
+    aliases: ["qualidade 51", "qualidade", "51", "qualidade51", "🔍 qualidade 51"],
     headers: [
       "DATA",
       "HORA",
       "PLACA",
       "CONDUTOR",
-      "CARACTERÍSTICA DO VEÍCULO",
-      "NÍVEL DO COMBUSTÍVEL",
-      "DESTINO",
+      "CARACTERISTICAS DO VEICULO",
+      "NIVEL DO COMBUSTIVEL",
+      "DESTINO(P1, P2, P3, R1, ADM)",
       "OPERADOR DO REGISTRO"
     ]
   },
   combustivel: {
-    tabName: "⛽ Combustível",
+    tabName: "COMBUSTIVEL (ABASTECIMENTO)",
+    aliases: ["combustivel (abastecimento)", "combustivel", "abastecimento", "abastecimentos", "posto", "⛽ combustivel (abastecimento)"],
     headers: [
       "DATA",
       "HORA",
       "PLACA",
-      "KM (ODÔMETRO)",
-      "NÍVEL DO COMBUSTÍVEL",
+      "KM(ODOMETRO)",
+      "NIVEL DO COMBUSTIVEL",
       "CONDUTOR",
       "DESTINO",
+      "OBSERVAÇÕES",
+      "TIPO DE COMBUSTIVEL",
+      "LITROS",
       "OPERADOR DO REGISTRO"
     ]
   },
   pdc: {
-    tabName: "📋 Fila PDC",
+    tabName: "Fila PDC",
+    aliases: ["fila pdc", "pdc", "fila", "lavagem", "oficina", "📋 fila pdc"],
     headers: [
       "DATA",
       "HORA",
       "PLACA",
-      "NÍVEL DO COMBUSTÍVEL",
-      "OBSERVAÇÃO",
-      "OPERADOR DO REGISTRO"
+      "NIVEL DO COMBUSTIVEL",
+      "OBSERVAÇÕES",
+      "CONDUTOR(OPERADOR DO REGISTRO)"
     ]
   }
 };
 
 // 7 Colunas Oficiais da Aba de Usuários:
-// Coluna A: Data e Hora da criação do usuario
-// Coluna B: Matricula/Usuario
-// Coluna C: Nome do usuario
-// Coluna D: Senha
-// Coluna E: Whatsapp
-// Coluna F: Status
-// Coluna G: ultimo acesso
+// Coluna A: HORA E DATA DE CRIAÇÃO DO USUARIO
+// Coluna B: MATRICULA/USUARIO
+// Coluna C: NOME DO USUARIO
+// Coluna D: SENHA
+// Coluna E: WHATSAPP
+// Coluna F: STATUS
+// Coluna G: ULTIMO ACESSO
 var TAB_USUARIOS = {
   tabName: "USUARIOS_CMDIT",
   headers: [
-    "Data e Hora da criação do usuario",
-    "Matricula/Usuario",
-    "Nome do usuario",
-    "Senha",
-    "Whatsapp",
-    "Status",
-    "ultimo acesso"
+    "HORA E DATA DE CRIAÇÃO DO USUARIO",
+    "MATRICULA/USUARIO",
+    "NOME DO USUARIO",
+    "SENHA",
+    "WHATSAPP",
+    "STATUS",
+    "ULTIMO ACESSO"
   ]
 };
 
@@ -1169,65 +1178,76 @@ function doPost(e) {
     }
     observacoes = observacoes.toUpperCase().trim();
 
+    var tipoCombustivel = String(data.fuelType || data.tipoCombustivel || "-").toUpperCase().trim();
+    var litros = data.liters
+      ? (String(data.liters).replace(/\s*l(itros)?/i, '').toUpperCase().trim() + " L")
+      : (data.litros ? (String(data.litros).toUpperCase().trim() + " L") : "-");
+
+    var condutorOuOperador = (condutor && condutor !== "-") ? (condutor + " (" + operador + ")") : operador;
+
     var customRow = [];
     if (tabCategory === "entrada") {
       customRow = [
-        dateStr,          // Col A: Data
-        timeStr,          // Col B: Hora
-        placa,            // Col C: Placa
-        condutor,         // Col D: Condutor
-        km,               // Col E: KM odômetro
-        nivelCombustivel, // Col F: Nivel do Combustivel
-        origem,           // Col G: Origem
-        destino,          // Col H: Destino
-        chaveReserva,     // Col I: Chave reserva
-        tipoVeiculo,      // Col J: Tipo de veiculo
-        observacoes,      // Col K: Observação
-        operador          // Col L: Operador do registro
+        dateStr,          // Col A: DATA
+        timeStr,          // Col B: HORA
+        placa,            // Col C: PLACA
+        condutor,         // Col D: CONDUTOR
+        km,               // Col E: KM(ODOMETRO)
+        nivelCombustivel, // Col F: NIVEL DO COMBUSTIVEL
+        origem,           // Col G: ORIGEM
+        destino,          // Col H: DESTINO
+        chaveReserva,     // Col I: CHAVE RESERVA
+        tipoVeiculo,      // Col J: TIPO DE VEICULO(RAC, GF, LQV, OUTROS)
+        observacoes,      // Col K: OBSERVAÇÕES
+        operador          // Col L: OPERADOR DO REGISTRO
       ];
     } else if (tabCategory === "saida") {
       customRow = [
-        dateStr,          // Col A: Data
-        timeStr,          // Col B: Hora
-        placa,            // Col C: Placa
-        condutor,         // Col D: Condutor
-        km,               // Col E: KM odômetro
-        nivelCombustivel, // Col F: Nivel do Combustivel
-        destino,          // Col G: Destino
-        chaveReserva,     // Col H: Chave reserva
-        observacoes,      // Col I: Observação
-        operador          // Col J: Operador do registro
+        dateStr,          // Col A: DATA
+        timeStr,          // Col B: HORA
+        placa,            // Col C: PLACA
+        condutor,         // Col D: CONDUTOR
+        km,               // Col E: KM(ODOMETRO)
+        nivelCombustivel, // Col F: NIVEL DO COMBUSTIVEL
+        destino,          // Col G: DESTINO
+        chaveReserva,     // Col H: CHAVE RESERVA
+        tipoVeiculo,      // Col I: TIPO DE VEICULO(RAC, GF, LQV, OUTROS)
+        observacoes,      // Col J: OBSERVAÇÕES
+        operador          // Col K: OPERADOR DO REGISTRO
       ];
     } else if (tabCategory === "qualidade") {
       customRow = [
-        dateStr,          // Col A: Data
-        timeStr,          // Col B: Hora
-        placa,            // Col C: Placa
-        condutor,         // Col D: Condutor
-        caracteristica,   // Col E: Característica do Veículo
-        nivelCombustivel, // Col F: Nivel do Combustivel
-        destino,          // Col G: Destino (P1, P2, P3, ADM, R1, outros)
-        operador          // Col H: Operador do registro
+        dateStr,          // Col A: DATA
+        timeStr,          // Col B: HORA
+        placa,            // Col C: PLACA
+        condutor,         // Col D: CONDUTOR
+        caracteristica,   // Col E: CARACTERISTICAS DO VEICULO
+        nivelCombustivel, // Col F: NIVEL DO COMBUSTIVEL
+        destino,          // Col G: DESTINO(P1, P2, P3, R1, ADM)
+        operador          // Col H: OPERADOR DO REGISTRO
       ];
     } else if (tabCategory === "combustivel") {
       customRow = [
-        dateStr,          // Col A: Data
-        timeStr,          // Col B: Hora
-        placa,            // Col C: Placa
-        km,               // Col D: KM odômetro
-        nivelCombustivel, // Col E: Nivel do Combustivel
-        condutor,         // Col F: Condutor
-        destino,          // Col G: Destino
-        operador          // Col H: Operador do registro
+        dateStr,          // Col A: DATA
+        timeStr,          // Col B: HORA
+        placa,            // Col C: PLACA
+        km,               // Col D: KM(ODOMETRO)
+        nivelCombustivel, // Col E: NIVEL DO COMBUSTIVEL
+        condutor,         // Col F: CONDUTOR
+        destino || "POSTO DE ABASTECIMENTO", // Col G: DESTINO
+        observacoes,      // Col H: OBSERVAÇÕES
+        tipoCombustivel,  // Col I: TIPO DE COMBUSTIVEL
+        litros,           // Col J: LITROS
+        operador          // Col K: OPERADOR DO REGISTRO
       ];
     } else if (tabCategory === "pdc") {
       customRow = [
-        dateStr,          // Col A: Data
-        timeStr,          // Col B: Hora
-        placa,            // Col C: Placa
-        nivelCombustivel, // Col D: Nivel do combustivel
-        observacoes,      // Col E: Observação
-        operador          // Col F: Operador do registro
+        dateStr,             // Col A: DATA
+        timeStr,             // Col B: HORA
+        placa,               // Col C: PLACA
+        nivelCombustivel,    // Col D: NIVEL DO COMBUSTIVEL
+        observacoes,         // Col E: OBSERVAÇÕES
+        condutorOuOperador   // Col F: CONDUTOR(OPERADOR DO REGISTRO)
       ];
     }
 

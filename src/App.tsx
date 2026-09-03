@@ -110,6 +110,7 @@ export default function App() {
   const [entrySubtype, setEntrySubtype] = useState<EntrySubtype | undefined>(undefined);
   const [entryReason, setEntryReason] = useState<string>('');
   const [documentPhotoUrl, setDocumentPhotoUrl] = useState<string>('');
+  const [notes, setNotes] = useState<string>('');
 
   // Fueling specifics
   const [dashboardPhotoUrl, setDashboardPhotoUrl] = useState<string>('');
@@ -186,6 +187,7 @@ export default function App() {
     setEntrySubtype(undefined);
     setEntryReason('');
     setDocumentPhotoUrl('');
+    setNotes('');
 
     setDashboardPhotoUrl('');
     setLiters('');
@@ -321,7 +323,7 @@ export default function App() {
     setCurrentStep('fueling_details');
   };
 
-  // Fueling: submit manual data (KM, Fuel level, Liters, Fuel type, Driver, Destination)
+  // Fueling: submit manual data (KM, Fuel level, Liters, Fuel type, Driver, Destination, Notes)
   const handleSubmitFuelingDetails = (data: {
     km: string;
     fuel: FuelLevel;
@@ -329,6 +331,7 @@ export default function App() {
     fuelType?: string;
     driverName?: string;
     destination?: string;
+    notes?: string;
   }) => {
     setKm(data.km);
     setFuel(data.fuel);
@@ -336,6 +339,7 @@ export default function App() {
     if (data.fuelType !== undefined) setFuelType(data.fuelType);
     if (data.driverName !== undefined) setDriverName(data.driverName);
     if (data.destination !== undefined) setDestination(data.destination);
+    if (data.notes !== undefined) setNotes(data.notes);
     setCurrentStep('review');
   };
 
@@ -688,6 +692,7 @@ export default function App() {
                 initialFuelType={fuelType}
                 initialDriverName={driverName}
                 initialDestination={destination}
+                initialNotes={notes}
                 onRetakeDashboardPhoto={() => setCurrentStep('dashboard_camera')}
                 onUpdatePlate={(newPlate) => setPlate(newPlate)}
                 onSubmit={handleSubmitFuelingDetails}

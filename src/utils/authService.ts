@@ -636,13 +636,18 @@ export async function checkDatabaseHealth(): Promise<DatabaseDiagnosticResult> {
 
 /**
  * Permite configurar/alterar a URL do banco PostgreSQL em tempo de execução
+ * Requer autenticação com a senha de usuário Master
  */
-export async function configureDatabaseUrl(databaseUrl: string): Promise<{ success: boolean; message: string; diagnostic?: any }> {
+export async function configureDatabaseUrl(
+  databaseUrl: string,
+  masterPassword?: string,
+  masterUsername?: string
+): Promise<{ success: boolean; message: string; diagnostic?: any }> {
   try {
     const res = await fetch('/api/db/configure', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ databaseUrl }),
+      body: JSON.stringify({ databaseUrl, masterPassword, masterUsername }),
     });
     return await res.json();
   } catch (err: any) {

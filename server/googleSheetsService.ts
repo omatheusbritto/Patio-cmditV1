@@ -27,18 +27,37 @@ export interface SheetVehiclePayload {
 const SPREADSHEET_TITLE = 'Controle de Frota & Pátio CMDIT';
 
 // Header specifications per tab customized strictly as requested (no unnecessary fields):
+export const HEADERS_USUARIOS = [
+  'HORA E DATA DE CRIAÇÃO DO USUARIO',
+  'MATRICULA/USUARIO',
+  'NOME DO USUARIO',
+  'SENHA',
+  'WHATSAPP',
+  'STATUS',
+  'ULTIMO ACESSO',
+];
+
+export const HEADERS_PDC = [
+  'DATA',
+  'HORA',
+  'PLACA',
+  'NIVEL DO COMBUSTIVEL',
+  'OBSERVAÇÕES',
+  'CONDUTOR(OPERADOR DO REGISTRO)',
+];
+
 export const HEADERS_ENTRADA = [
   'DATA',
   'HORA',
   'PLACA',
   'CONDUTOR',
-  'KM (ODÔMETRO)',
-  'NÍVEL DO COMBUSTÍVEL',
+  'KM(ODOMETRO)',
+  'NIVEL DO COMBUSTIVEL',
   'ORIGEM',
   'DESTINO',
   'CHAVE RESERVA',
-  'TIPO DE VEÍCULO',
-  'OBSERVAÇÃO',
+  'TIPO DE VEICULO(RAC, GF, LQV, OUTROS)',
+  'OBSERVAÇÕES',
   'OPERADOR DO REGISTRO',
 ];
 
@@ -47,11 +66,12 @@ export const HEADERS_SAIDA = [
   'HORA',
   'PLACA',
   'CONDUTOR',
-  'KM (ODÔMETRO)',
-  'NÍVEL DO COMBUSTÍVEL',
+  'KM(ODOMETRO)',
+  'NIVEL DO COMBUSTIVEL',
   'DESTINO',
   'CHAVE RESERVA',
-  'OBSERVAÇÃO',
+  'TIPO DE VEICULO(RAC, GF, LQV, OUTROS)',
+  'OBSERVAÇÕES',
   'OPERADOR DO REGISTRO',
 ];
 
@@ -60,9 +80,9 @@ export const HEADERS_QUALIDADE = [
   'HORA',
   'PLACA',
   'CONDUTOR',
-  'CARACTERÍSTICA DO VEÍCULO',
-  'NÍVEL DO COMBUSTÍVEL',
-  'DESTINO',
+  'CARACTERISTICAS DO VEICULO',
+  'NIVEL DO COMBUSTIVEL',
+  'DESTINO(P1, P2, P3, R1, ADM)',
   'OPERADOR DO REGISTRO',
 ];
 
@@ -70,19 +90,13 @@ export const HEADERS_COMBUSTIVEL = [
   'DATA',
   'HORA',
   'PLACA',
-  'KM (ODÔMETRO)',
-  'NÍVEL DO COMBUSTÍVEL',
+  'KM(ODOMETRO)',
+  'NIVEL DO COMBUSTIVEL',
   'CONDUTOR',
   'DESTINO',
-  'OPERADOR DO REGISTRO',
-];
-
-export const HEADERS_PDC = [
-  'DATA',
-  'HORA',
-  'PLACA',
-  'NÍVEL DO COMBUSTÍVEL',
-  'OBSERVAÇÃO',
+  'OBSERVAÇÕES',
+  'TIPO DE COMBUSTIVEL',
+  'LITROS',
   'OPERADOR DO REGISTRO',
 ];
 
@@ -95,34 +109,40 @@ export const TAB_DEFINITIONS = {
     headers: HEADERS_ENTRADA,
   },
   entrada: {
-    title: '📥 Entrada',
-    aliases: ['entrada', 'entradas', 'chegada', 'inbound', 'in'],
+    title: 'ENTRADAS',
+    aliases: ['entradas', 'entrada', 'chegada', 'inbound', 'in', '📥 entradas', '📥 entrada'],
     color: { red: 0.13, green: 0.69, blue: 0.3 },
     headers: HEADERS_ENTRADA,
   },
   saida: {
-    title: '📤 Saída',
-    aliases: ['saida', 'saidas', 'liberacao', 'outbound', 'out'],
+    title: 'SAIDA',
+    aliases: ['saida', 'saída', 'saidas', 'liberacao', 'outbound', 'out', '📤 saida', '📤 saída'],
     color: { red: 0.88, green: 0.25, blue: 0.25 },
     headers: HEADERS_SAIDA,
   },
   combustivel: {
-    title: '⛽ Combustível',
-    aliases: ['combustivel', 'abastecimento', 'abastecimentos', 'abastec', 'posto', 'gasolina', 'diesel'],
+    title: 'COMBUSTIVEL (ABASTECIMENTO)',
+    aliases: ['combustivel (abastecimento)', 'combustivel', 'abastecimento', 'abastecimentos', 'abastec', 'posto', 'gasolina', 'diesel', '⛽ combustivel (abastecimento)', '⛽ combustível'],
     color: { red: 0.06, green: 0.73, blue: 0.85 },
     headers: HEADERS_COMBUSTIVEL,
   },
   pdc: {
-    title: '📋 Fila PDC',
-    aliases: ['fila pdc', 'pdc', 'fila_pdc', 'fila', 'lavagem', 'oficina'],
+    title: 'Fila PDC',
+    aliases: ['fila pdc', 'pdc', 'fila_pdc', 'fila', 'lavagem', 'oficina', '📋 fila pdc'],
     color: { red: 0.95, green: 0.55, blue: 0.1 },
     headers: HEADERS_PDC,
   },
   qualidade: {
-    title: '🔍 Qualidade 51',
-    aliases: ['qualidade 51', 'qualidade', '51 (qualidade)', '51', 'vistoria', 'inspecao'],
+    title: 'QUALIDADE 51',
+    aliases: ['qualidade 51', 'qualidade', '51 (qualidade)', '51', 'vistoria', 'inspecao', '🔍 qualidade 51', 'qualidade51'],
     color: { red: 0.39, green: 0.36, blue: 0.93 },
     headers: HEADERS_QUALIDADE,
+  },
+  usuarios: {
+    title: 'USUARIOS_CMDIT',
+    aliases: ['usuarios_cmdit', 'usuarios', 'usuários', 'users', 'operadores'],
+    color: { red: 0.2, green: 0.25, blue: 0.35 },
+    headers: HEADERS_USUARIOS,
   },
 };
 
@@ -559,6 +579,17 @@ export async function appendVehicleRecordToSheet(
   const chaveReserva = formatSpareKey(record.hasSpareKey);
   const tipoVeiculo = String(record.fleetType || 'GF').toUpperCase().trim();
   const observacoes = String(record.notes || record.description || '-').toUpperCase().trim();
+  const tipoCombustivel = String(record.fuelType || (record as any).tipoCombustivel || '-').toUpperCase().trim();
+  const litros =
+    record.liters !== undefined && record.liters !== null && String(record.liters).trim() !== ''
+      ? `${String(record.liters).trim().replace(/\s*l(itros)?/i, '').toUpperCase()} L`
+      : (record as any).litros ? String((record as any).litros).toUpperCase() : '-';
+
+  const condutorOuOperador =
+    condutor && condutor !== '-'
+      ? `${condutor} (${operador})`
+      : operador;
+
   const rawChar = record.characteristic || (record as any).caracteristica || (record as any).tipoCaracteristica || '-';
   const formatCharWithEmoji = (val: string) => {
     if (!val || val === '-') return '-';
@@ -577,7 +608,7 @@ export async function appendVehicleRecordToSheet(
 
   if (record.operationType === 'saida') {
     categoryKey = 'saida';
-    // 10 Colunas: Data, Hora, Placa, Condutor, KM, Nível Combustível, Destino, Chave Reserva, Observação, Operador
+    // 11 Colunas: A:DATA | B:HORA | C:PLACA | D:CONDUTOR | E:KM(ODOMETRO) | F:NIVEL DO COMBUSTIVEL | G:DESTINO | H:CHAVE RESERVA | I:TIPO DE VEICULO(RAC, GF, LQV, OUTROS) | J:OBSERVAÇÕES | K:OPERADOR DO REGISTRO
     customRow = [
       dateStr,
       timeStr,
@@ -587,12 +618,13 @@ export async function appendVehicleRecordToSheet(
       nivelCombustivel,
       destino,
       chaveReserva,
+      tipoVeiculo,
       observacoes,
       operador,
     ];
   } else if (record.operationType === 'abastecimento') {
     categoryKey = 'combustivel';
-    // 8 Colunas: Data, Hora, Placa, KM, Nível Combustível, Condutor, Destino, Operador
+    // 11 Colunas: A:DATA | B:HORA | C:PLACA | D:KM(ODOMETRO) | E:NIVEL DO COMBUSTIVEL | F:CONDUTOR | G:DESTINO | H:OBSERVAÇÕES | I:TIPO DE COMBUSTIVEL | J:LITROS | K:OPERADOR DO REGISTRO
     customRow = [
       dateStr,
       timeStr,
@@ -601,22 +633,25 @@ export async function appendVehicleRecordToSheet(
       nivelCombustivel,
       condutor,
       destino || 'POSTO DE ABASTECIMENTO',
+      observacoes,
+      tipoCombustivel,
+      litros,
       operador,
     ];
   } else if (record.operationType === 'pdc') {
     categoryKey = 'pdc';
-    // 6 Colunas: Data, Hora, Placa, Nível Combustível, Observação, Operador
+    // 6 Colunas: A:DATA | B:HORA | C:PLACA | D:NIVEL DO COMBUSTIVEL | E:OBSERVAÇÕES | F:CONDUTOR(OPERADOR DO REGISTRO)
     customRow = [
       dateStr,
       timeStr,
       placa,
       nivelCombustivel,
       observacoes,
-      operador,
+      condutorOuOperador,
     ];
   } else if (record.operationType === 'qualidade_51') {
     categoryKey = 'qualidade';
-    // 8 Colunas: Data, Hora, Placa, Condutor, Característica do Veículo, Nível Combustível, Destino, Operador
+    // 8 Colunas: A:DATA | B:HORA | C:PLACA | D:CONDUTOR | E:CARACTERISTICAS DO VEICULO | F:NIVEL DO COMBUSTIVEL | G:DESTINO(P1, P2, P3, R1, ADM) | H:OPERADOR DO REGISTRO
     customRow = [
       dateStr,
       timeStr,
@@ -629,7 +664,7 @@ export async function appendVehicleRecordToSheet(
     ];
   } else {
     categoryKey = 'entrada';
-    // 12 Colunas: Data, Hora, Placa, Condutor, KM, Nível Combustível, Origem, Destino, Chave Reserva, Tipo Veículo, Observação, Operador
+    // 12 Colunas: A:DATA | B:HORA | C:PLACA | D:CONDUTOR | E:KM(ODOMETRO) | F:NIVEL DO COMBUSTIVEL | G:ORIGEM | H:DESTINO | I:CHAVE RESERVA | J:TIPO DE VEICULO(RAC, GF, LQV, OUTROS) | K:OBSERVAÇÕES | L:OPERADOR DO REGISTRO
     customRow = [
       dateStr,
       timeStr,
@@ -680,6 +715,8 @@ export async function appendVehicleRecordToSheet(
             mappedRow[idx] = dateStr;
           } else if (hdr.includes('hora') || hdr === 'hr' || hdr.includes('horario') || hdr.includes('time')) {
             mappedRow[idx] = timeStr;
+          } else if (hdr.includes('condutor(operador') || hdr.includes('condutor (operador') || (categoryKey === 'pdc' && (hdr.includes('condut') || hdr.includes('operad')))) {
+            mappedRow[idx] = condutorOuOperador;
           } else if (hdr.includes('operad') || hdr.includes('audit')) {
             mappedRow[idx] = operador;
           } else if (hdr.includes('condut') || hdr.includes('motor') || hdr.includes('driver')) {
@@ -699,6 +736,14 @@ export async function appendVehicleRecordToSheet(
             hdr.includes('quilomet')
           ) {
             mappedRow[idx] = kmClean;
+          } else if (
+            hdr.includes('tipo de combustivel') ||
+            hdr.includes('tipo combustivel') ||
+            (hdr.includes('combust') && hdr.includes('tipo'))
+          ) {
+            mappedRow[idx] = tipoCombustivel;
+          } else if (hdr.includes('litro') || hdr.includes('qtd') || hdr.includes('quantidade')) {
+            mappedRow[idx] = litros;
           } else if (
             hdr.includes('nivel') ||
             hdr.includes('marcad') ||

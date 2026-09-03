@@ -29,6 +29,7 @@ interface FuelingDetailsFormProps {
   initialFuelType?: string;
   initialDriverName?: string;
   initialDestination?: string;
+  initialNotes?: string;
   onRetakeDashboardPhoto?: () => void;
   onUpdatePlate?: (newPlate: string) => void;
   onSubmit: (data: {
@@ -38,6 +39,7 @@ interface FuelingDetailsFormProps {
     fuelType?: string;
     driverName?: string;
     destination?: string;
+    notes?: string;
   }) => void;
   onBack: () => void;
 }
@@ -75,6 +77,7 @@ export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
   initialFuelType = '',
   initialDriverName = '',
   initialDestination = '',
+  initialNotes = '',
   onRetakeDashboardPhoto,
   onUpdatePlate,
   onSubmit,
@@ -86,6 +89,7 @@ export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
   const [fuelType, setFuelType] = useState<string>(initialFuelType || '');
   const [driverName, setDriverName] = useState<string>(initialDriverName || '');
   const [destination, setDestination] = useState<string>(initialDestination || '');
+  const [notes, setNotes] = useState<string>(initialNotes || '');
   const [error, setError] = useState<string | null>(null);
   const [isEditPlateOpen, setIsEditPlateOpen] = useState<boolean>(false);
 
@@ -121,6 +125,7 @@ export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
       driverName: driverName.trim().toUpperCase(),
       liters: liters.trim().toUpperCase(),
       fuelType: fuelType.trim().toUpperCase(),
+      notes: notes.trim().toUpperCase(),
     });
   };
 
@@ -472,6 +477,23 @@ export const FuelingDetailsForm: React.FC<FuelingDetailsFormProps> = ({
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Observações / Notas */}
+          <div className="pt-2 border-t border-neutral-100 flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-neutral-700">
+                Observações (Opcional):
+              </label>
+              <span className="text-[10px] text-neutral-400">Gravado na Coluna H</span>
+            </div>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Ex: Abastecimento autorizado pela gerência, bomba 02..."
+              rows={2}
+              className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-xs text-neutral-900 placeholder:text-neutral-400 focus:outline-hidden focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500 resize-none font-medium"
+            />
           </div>
         </div>
 

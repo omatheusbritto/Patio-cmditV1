@@ -20,6 +20,8 @@ import {
   HardDrive,
   HelpCircle,
   FileText,
+  Lock,
+  KeyRound,
 } from 'lucide-react';
 import {
   checkDatabaseHealth,
@@ -42,6 +44,7 @@ export const DatabaseTestModal: React.FC<DatabaseTestModalProps> = ({
   const [diagnostic, setDiagnostic] = useState<DatabaseDiagnosticResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [customDbUrl, setCustomDbUrl] = useState('');
+  const [masterPasswordForDb, setMasterPasswordForDb] = useState('');
   const [savingUrl, setSavingUrl] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ text: string; isError: boolean } | null>(null);
 
@@ -92,10 +95,18 @@ export const DatabaseTestModal: React.FC<DatabaseTestModalProps> = ({
     e.preventDefault();
     if (!customDbUrl.trim()) return;
 
+    if (!masterPasswordForDb.trim()) {
+      setSaveMessage({
+        text: 'Acesso restrito: Digite a senha de usuário Master para autorizar.',
+        isError: true,
+      });
+      return;
+    }
+
     setSavingUrl(true);
     setSaveMessage(null);
     try {
-      const res = await configureDatabaseUrl(customDbUrl.trim());
+      const res = await configureDatabaseUrl(customDbUrl.trim(), masterPasswordForDb.trim());
       if (res.success) {
         setSaveMessage({ text: res.message || 'Banco conectado com sucesso!', isError: false });
         if (res.diagnostic) {
@@ -104,6 +115,7 @@ export const DatabaseTestModal: React.FC<DatabaseTestModalProps> = ({
           runTest();
         }
         setCustomDbUrl('');
+        setMasterPasswordForDb('');
       } else {
         setSaveMessage({ text: res.message || 'Falha ao conectar na URL fornecida.', isError: true });
       }
@@ -378,6 +390,9 @@ export const DatabaseTestModal: React.FC<DatabaseTestModalProps> = ({
                     <Database className="w-3.5 h-3.5 text-indigo-600" />
                     <span>Configurar URL do PostgreSQL (Render):</span>
                   </label>
+                  <span className="text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <Lock className="w-2.5 h-2.5" /> Requer Senha Master
+                  </span>
                 </div>
                 <input
                   type="text"
@@ -386,6 +401,21 @@ export const DatabaseTestModal: React.FC<DatabaseTestModalProps> = ({
                   onChange={(e) => setCustomDbUrl(e.target.value)}
                   className="w-full bg-white border border-neutral-300 focus:border-indigo-600 rounded-xl px-3 py-2 text-xs font-mono text-neutral-900 outline-none transition"
                 />
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-[11px] font-bold text-neutral-700 flex items-center gap-1.5">
+                    <KeyRound className="w-3 h-3 text-amber-600" />
+                    <span>Senha de Usuário Master:</span>
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="Digite a senha de usuário Master para autorizar"
+                    value={masterPasswordForDb}
+                    onChange={(e) => setMasterPasswordForDb(e.target.value)}
+                    className="w-full bg-white border border-neutral-300 focus:border-indigo-600 rounded-xl px-3 py-2 text-xs text-neutral-900 outline-none transition"
+                  />
+                </div>
+
                 {saveMessage && (
                   <div
                     className={`p-2 rounded-lg text-xs font-bold flex items-center gap-1.5 ${
@@ -404,11 +434,11 @@ export const DatabaseTestModal: React.FC<DatabaseTestModalProps> = ({
                   </span>
                   <button
                     type="submit"
-                    disabled={savingUrl || !customDbUrl.trim()}
+                    disabled={savingUrl || !customDbUrl.trim() || !masterPasswordForDb.trim()}
                     className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition cursor-pointer"
                   >
                     <Save className="w-3.5 h-3.5" />
-                    <span>{savingUrl ? 'Conectando...' : 'Conectar Banco'}</span>
+                    <span>{savingUrl ? 'Conectando...' : 'Conectar Banco (Master)'}</span>
                   </button>
                 </div>
               </form>

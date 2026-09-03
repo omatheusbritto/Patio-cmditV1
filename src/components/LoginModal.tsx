@@ -55,8 +55,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
     latency: 0,
   });
 
-  // Conexão rápida da URL externa caso o banco esteja desconectado
+  // Conexão rápida da URL externa (Protegida por senha de usuário Master)
   const [quickDbUrl, setQuickDbUrl] = useState('');
+  const [masterPasswordForDb, setMasterPasswordForDb] = useState('');
+  const [showMasterPasswordForDb, setShowMasterPasswordForDb] = useState(false);
+  const [showExternalUrlForm, setShowExternalUrlForm] = useState(false);
   const [isSavingQuickUrl, setIsSavingQuickUrl] = useState(false);
   const [quickUrlMsg, setQuickUrlMsg] = useState<{ text: string; isError: boolean } | null>(null);
 
@@ -89,15 +92,30 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
 
   const handleQuickSaveDbUrl = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!quickDbUrl.trim()) return;
-    setIsSavingQuickUrl(true);
     setQuickUrlMsg(null);
+
+    if (!quickDbUrl.trim()) {
+      setQuickUrlMsg({ text: 'Informe a URL EXTERNAL do PostgreSQL.', isError: true });
+      return;
+    }
+
+    if (!masterPasswordForDb.trim()) {
+      setQuickUrlMsg({
+        text: 'Acesso restrito: Digite a senha de usuário Master para autorizar.',
+        isError: true,
+      });
+      return;
+    }
+
+    setIsSavingQuickUrl(true);
     try {
-      const res = await configureDatabaseUrl(quickDbUrl.trim());
+      const res = await configureDatabaseUrl(quickDbUrl.trim(), masterPasswordForDb.trim());
       if (res.success) {
         setQuickUrlMsg({ text: 'Conectado ao PostgreSQL com sucesso!', isError: false });
         await refreshDbStatus();
         setQuickDbUrl('');
+        setMasterPasswordForDb('');
+        setShowExternalUrlForm(false);
       } else {
         setQuickUrlMsg({ text: res.message || 'Falha ao conectar na URL informada.', isError: true });
       }
@@ -196,55 +214,118 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
           {dbStatus.tested && (
             <>
               {dbStatus.connected ? (
-                // Banco Funcionando: Exibe apenas status online de forma limpa e discreta
-                <div className="p-2.5 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between shadow-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                    </span>
-                    <span className="text-xs font-bold text-emerald-900">
-                      Banco de Dados: Online ({dbStatus.type.toUpperCase()})
-                    </span>
-                  </div>
-                  <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-100/90 px-2 py-0.5 rounded-md">
-                    {dbStatus.latency}ms
-                  </span>
-                </div>
-              ) : (
-                // Banco Desconectado: Exibe opção imediata de colar o External Database URL
-                <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 space-y-2 text-left">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900">
-                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                      <span>Banco de Dados Desconectado</span>
+                // Banco Funcionando: Exibe status online limpo e opção de alterar sob senha Master
+                <div className="space-y-2">
+                  <div className="p-2.5 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between shadow-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                      </span>
+                      <span className="text-xs font-bold text-emerald-900">
+                        Banco de Dados: Online ({dbStatus.type.toUpperCase()})
+                      </span>
                     </div>
-                    <span className="text-[10px] font-bold text-amber-800 bg-amber-200/70 px-2 py-0.5 rounded-full">
-                      Offline
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-100/90 px-2 py-0.5 rounded-md">
+                        {dbStatus.latency}ms
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowExternalUrlForm(!showExternalUrlForm)}
+                        title="Alterar ligação do banco (Requer Senha Master)"
+                        className="text-[10px] font-extrabold text-emerald-800 hover:text-emerald-950 underline cursor-pointer"
+                      >
+                        {showExternalUrlForm ? 'Fechar' : 'Alterar'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Formulário de Ligação da URL EXTERNAL - Exibido se desconectado ou se solicitado alteração */}
+              {(!dbStatus.connected || showExternalUrlForm) && (
+                <div className="p-3.5 rounded-2xl bg-amber-50/90 border border-amber-300 space-y-2.5 text-left mt-2 shadow-xs animate-in fade-in duration-150">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs font-black text-amber-950">
+                      <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>Ligação do Banco de Dados</span>
+                    </div>
+                    <span className="text-[10px] font-extrabold text-amber-900 bg-amber-200/90 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <Lock className="w-2.5 h-2.5" />
+                      Requer Senha Master
                     </span>
                   </div>
-                  <p className="text-[11px] text-amber-800 leading-snug">
-                    Cole a <strong>External Database URL</strong> do PostgreSQL (Render) para conectar:
+
+                  <p className="text-[11px] text-amber-900 leading-snug">
+                    A ligação do banco de dados (<strong>URL EXTERNAL</strong>) só é permitida mediante autorização com a <strong>senha de usuário Master</strong>:
                   </p>
-                  <form onSubmit={handleQuickSaveDbUrl} className="flex gap-1.5">
-                    <input
-                      type="password"
-                      placeholder="postgresql://user:pass@host/db..."
-                      value={quickDbUrl}
-                      onChange={(e) => setQuickDbUrl(e.target.value)}
-                      className="flex-1 bg-white border border-amber-300 focus:border-amber-600 rounded-xl px-2.5 py-1.5 text-xs text-neutral-900 outline-none font-mono"
-                    />
+
+                  <form onSubmit={handleQuickSaveDbUrl} className="flex flex-col gap-2">
+                    {/* Campo 1: URL EXTERNAL */}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] font-bold text-amber-950 uppercase tracking-wider flex items-center gap-1">
+                        <Database className="w-3 h-3 text-amber-700 shrink-0" />
+                        <span>URL EXTERNAL (PostgreSQL / Render):</span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="postgresql://user:pass@dpg-xxx.render.com/db..."
+                        value={quickDbUrl}
+                        onChange={(e) => setQuickDbUrl(e.target.value)}
+                        className="w-full bg-white border border-amber-300 focus:border-amber-600 focus:ring-1 focus:ring-amber-500 rounded-xl px-2.5 py-1.5 text-xs text-neutral-900 outline-none font-mono placeholder:text-neutral-400"
+                      />
+                    </div>
+
+                    {/* Campo 2: Senha de Usuário Master */}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] font-bold text-amber-950 uppercase tracking-wider flex items-center gap-1">
+                        <KeyRound className="w-3 h-3 text-amber-700 shrink-0" />
+                        <span>Senha de Usuário Master:</span>
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showMasterPasswordForDb ? 'text' : 'password'}
+                          placeholder="Digite a senha do usuário Master"
+                          value={masterPasswordForDb}
+                          onChange={(e) => setMasterPasswordForDb(e.target.value)}
+                          className="w-full bg-white border border-amber-300 focus:border-amber-600 focus:ring-1 focus:ring-amber-500 rounded-xl pl-2.5 pr-8 py-1.5 text-xs text-neutral-900 outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowMasterPasswordForDb(!showMasterPasswordForDb)}
+                          className="absolute right-2.5 top-2 text-neutral-400 hover:text-neutral-600 cursor-pointer"
+                        >
+                          {showMasterPasswordForDb ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Botão de Ação */}
                     <button
                       type="submit"
-                      disabled={isSavingQuickUrl || !quickDbUrl.trim()}
-                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition cursor-pointer shrink-0"
+                      disabled={isSavingQuickUrl || !quickDbUrl.trim() || !masterPasswordForDb.trim()}
+                      className="w-full mt-1 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-black rounded-xl transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
                     >
-                      {isSavingQuickUrl ? '...' : 'Conectar'}
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>{isSavingQuickUrl ? 'Validando e Conectando...' : 'Autorizar e Ligar Banco (Master)'}</span>
                     </button>
                   </form>
+
                   {quickUrlMsg && (
-                    <div className={`text-[11px] font-bold ${quickUrlMsg.isError ? 'text-rose-700' : 'text-emerald-700'}`}>
-                      {quickUrlMsg.text}
+                    <div
+                      className={`p-2.5 rounded-xl text-[11px] font-bold flex items-start gap-1.5 ${
+                        quickUrlMsg.isError
+                          ? 'bg-rose-100/90 border border-rose-300 text-rose-800'
+                          : 'bg-emerald-100/90 border border-emerald-300 text-emerald-800'
+                      }`}
+                    >
+                      {quickUrlMsg.isError ? (
+                        <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 mt-0.5" />
+                      )}
+                      <span className="leading-snug">{quickUrlMsg.text}</span>
                     </div>
                   )}
                 </div>

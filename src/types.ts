@@ -10,7 +10,7 @@ export type OperationType = 'entrada' | 'saida' | 'abastecimento' | 'pdc' | 'qua
 
 export type EntrySubtype = 'bolsao_40' | 'retorno' | 'recusa' | 'remocao_adesivos';
 
-export type VehicleFleetType = 'GF' | 'RAC' | 'OUTROS' | string;
+export type VehicleFleetType = 'GF' | 'RAC' | 'LQV' | 'OUTROS' | string;
 
 export type VehicleStatus = 'parked' | 'released';
 
