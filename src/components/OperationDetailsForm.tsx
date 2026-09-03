@@ -244,7 +244,7 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
     }
   };
 
-  const handleToggleFleetType = (type: 'GF' | 'RAC' | 'LQV' | 'OUTROS') => {
+  const handleToggleFleetType = (type: 'GF' | 'RAC' | 'OUTROS') => {
     if (fleetType === type) {
       setFleetType(undefined);
       setCustomFleetType('');
@@ -674,21 +674,8 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
             </span>
           </div>
 
-          {/* 4 Opções: RAC | GF | LQV | OUTROS */}
-          <div className="grid grid-cols-4 gap-2">
-            <button
-              type="button"
-              onClick={() => handleToggleFleetType('RAC')}
-              className={`py-2.5 rounded-xl text-xs font-bold transition active:scale-95 flex items-center justify-center gap-1 border cursor-pointer ${
-                fleetType === 'RAC'
-                  ? 'bg-blue-700 text-white border-blue-800 shadow-sm ring-2 ring-blue-500/20'
-                  : 'bg-neutral-50 text-neutral-700 border-neutral-200 hover:bg-neutral-100'
-              }`}
-            >
-              {fleetType === 'RAC' && <Check className="w-3.5 h-3.5" />}
-              <span>RAC</span>
-            </button>
-
+          {/* 3 Opções: GF | RAC | OUTROS */}
+          <div className="grid grid-cols-3 gap-2">
             <button
               type="button"
               onClick={() => handleToggleFleetType('GF')}
@@ -704,15 +691,15 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
 
             <button
               type="button"
-              onClick={() => handleToggleFleetType('LQV')}
+              onClick={() => handleToggleFleetType('RAC')}
               className={`py-2.5 rounded-xl text-xs font-bold transition active:scale-95 flex items-center justify-center gap-1 border cursor-pointer ${
-                fleetType === 'LQV'
-                  ? 'bg-emerald-700 text-white border-emerald-800 shadow-sm ring-2 ring-emerald-500/20'
+                fleetType === 'RAC'
+                  ? 'bg-blue-700 text-white border-blue-800 shadow-sm ring-2 ring-blue-500/20'
                   : 'bg-neutral-50 text-neutral-700 border-neutral-200 hover:bg-neutral-100'
               }`}
             >
-              {fleetType === 'LQV' && <Check className="w-3.5 h-3.5" />}
-              <span>LQV</span>
+              {fleetType === 'RAC' && <Check className="w-3.5 h-3.5" />}
+              <span>RAC</span>
             </button>
 
             <button

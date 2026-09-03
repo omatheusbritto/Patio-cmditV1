@@ -326,11 +326,6 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
   };
 
   const handleToggleStatus = async (userId: string) => {
-    const target = users.find((u) => u.id === userId);
-    if (target && (target.username.toLowerCase() === 'mastercmdit' || target.username.toLowerCase() === 'desenvolvedor')) {
-      alert('Não é permitido desativar as contas essenciais de sistema (Master e Desenvolvedor).');
-      return;
-    }
     const res = await toggleUserStatus(userId);
     if (res.success) {
       await loadData();
@@ -339,12 +334,8 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
   };
 
   const handleDeleteUser = async (user: UserAccount) => {
-    if (
-      user.role === 'master' ||
-      user.username.toLowerCase() === 'mastercmdit' ||
-      user.username.toLowerCase() === 'desenvolvedor'
-    ) {
-      alert('Não é permitido excluir os usuários de sistema Master e Desenvolvedor.');
+    if (user.role === 'master' || user.username.toLowerCase() === 'mastercmdit') {
+      alert('Não é permitido excluir o usuário Master principal.');
       return;
     }
     if (confirm(`Tem certeza que deseja excluir o operador "${user.name}" (${user.username})?`)) {

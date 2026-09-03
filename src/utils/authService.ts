@@ -22,9 +22,9 @@ const DEFAULT_MASTER_USER: UserAccount = {
 const DEFAULT_DEV_USER: UserAccount = {
   id: 'dev-001',
   username: 'desenvolvedor',
-  name: 'DESENVOLVEDOR',
+  name: 'Desenvolvedor CMDIT',
   role: 'master',
-  password: 'dev@CMDIT',
+  password: 'DEV@cmdit',
   createdAt: new Date().toISOString(),
   isActive: true,
 };
@@ -416,13 +416,9 @@ export async function loginUser(
     // Se o servidor retornou erro 401 ou usuário não encontrado, verifica se temos o usuário no localStorage
     const localUsers = getAllUsers();
     const localUser = localUsers.find(
-      (u) => {
-        const matchesUsername = u.username.toLowerCase() === cleanUsername || u.name.toLowerCase().trim() === cleanUsername;
-        if (!matchesUsername) return false;
-        if (cleanUsername === 'mastercmdit' && (password === 'Master@123' || cleanPassword === 'Master@123')) return true;
-        if (cleanUsername === 'desenvolvedor' && (cleanPassword === 'dev@cmdit' || cleanPassword === 'dev@CMDIT' || cleanPassword === 'DEV@cmdit' || password.toLowerCase() === 'dev@cmdit')) return true;
-        return u.password === password || u.password?.trim() === cleanPassword || u.password?.trim().toLowerCase() === cleanPassword.toLowerCase();
-      }
+      (u) =>
+        (u.username.toLowerCase() === cleanUsername || u.name.toLowerCase().trim() === cleanUsername) &&
+        (u.password === password || u.password?.trim() === cleanPassword || u.password?.trim().toLowerCase() === cleanPassword.toLowerCase())
     );
 
     if (localUser) {
@@ -469,13 +465,9 @@ export async function loginUser(
   // Fallback offline local
   const users = getAllUsers();
   const user = users.find(
-    (u) => {
-      const matchesUsername = u.username.toLowerCase() === cleanUsername || u.name.toLowerCase().trim() === cleanUsername;
-      if (!matchesUsername) return false;
-      if (cleanUsername === 'mastercmdit' && (password === 'Master@123' || cleanPassword === 'Master@123')) return true;
-      if (cleanUsername === 'desenvolvedor' && (cleanPassword === 'dev@cmdit' || cleanPassword === 'dev@CMDIT' || cleanPassword === 'DEV@cmdit' || password.toLowerCase() === 'dev@cmdit')) return true;
-      return u.password === password || u.password?.trim() === cleanPassword || u.password?.trim().toLowerCase() === cleanPassword.toLowerCase();
-    }
+    (u) =>
+      (u.username.toLowerCase() === cleanUsername || u.name.toLowerCase().trim() === cleanUsername) &&
+      (u.password === password || u.password?.trim() === cleanPassword || u.password?.trim().toLowerCase() === cleanPassword.toLowerCase())
   );
 
   if (!user) {
@@ -636,18 +628,13 @@ export async function checkDatabaseHealth(): Promise<DatabaseDiagnosticResult> {
 
 /**
  * Permite configurar/alterar a URL do banco PostgreSQL em tempo de execução
- * Requer autenticação com a senha de usuário Master
  */
-export async function configureDatabaseUrl(
-  databaseUrl: string,
-  masterPassword?: string,
-  masterUsername?: string
-): Promise<{ success: boolean; message: string; diagnostic?: any }> {
+export async function configureDatabaseUrl(databaseUrl: string): Promise<{ success: boolean; message: string; diagnostic?: any }> {
   try {
     const res = await fetch('/api/db/configure', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ databaseUrl, masterPassword, masterUsername }),
+      body: JSON.stringify({ databaseUrl }),
     });
     return await res.json();
   } catch (err: any) {
@@ -657,61 +644,4 @@ export async function configureDatabaseUrl(
     };
   }
 }
-
-/**
- * Baixa o arquivo de backup completo (.json) diretamente para o computador do usuário
- */
-export async function downloadDatabaseBackup(): Promise<{ success: boolean; filename?: string; error?: string }> {
-  try {
-    const res = await fetch('/api/db/backup');
-    if (!res.ok) {
-      throw new Error(`Falha ao obter backup (HTTP ${res.status})`);
-    }
-    const blob = await res.blob();
-    const dateStr = new Date().toISOString().split('T')[0];
-    const filename = `backup-cmdit-${dateStr}.json`;
-
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
-
-    return { success: true, filename };
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
-}
-
-/**
- * Envia um arquivo de backup (.json) para restaurar os dados no banco de dados e localmente
- */
-export async function restoreDatabaseBackup(
-  backupData: any
-): Promise<{ success: boolean; message: string; counts?: { users: number; records: number; logs: number } }> {
-  try {
-    const res = await fetch('/api/db/restore', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(backupData),
-    });
-    const data = await res.json();
-    if (data.success) {
-      // Sincroniza cache local de usuários se vier no backup
-      if (backupData.data?.users && Array.isArray(backupData.data.users)) {
-        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(backupData.data.users));
-      }
-    }
-    return data;
-  } catch (err: any) {
-    return {
-      success: false,
-      message: `Erro ao enviar arquivo para restauração: ${err.message}`,
-    };
-  }
-}
-
 

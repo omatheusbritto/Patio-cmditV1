@@ -75,16 +75,6 @@ const DEFAULT_MASTER_USER: UserAccount = {
   isActive: true,
 };
 
-const DEFAULT_DEV_USER: UserAccount = {
-  id: 'dev-001',
-  username: 'desenvolvedor',
-  name: 'DESENVOLVEDOR',
-  role: 'master',
-  password: 'dev@CMDIT',
-  createdAt: '2025-01-01T00:00:00.000Z',
-  isActive: true,
-};
-
 function ensureDataDirectory() {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -497,20 +487,12 @@ export function loadServerUsers(): UserAccount[] {
     );
     if (!hasMaster) {
       parsed.unshift(DEFAULT_MASTER_USER);
-    }
-    const hasDev = parsed.some(
-      (u) => u.username.toLowerCase() === 'desenvolvedor'
-    );
-    if (!hasDev) {
-      parsed.push(DEFAULT_DEV_USER);
-    }
-    if (!hasMaster || !hasDev) {
       fs.writeFileSync(USERS_FILE, JSON.stringify(parsed, null, 2), 'utf-8');
     }
     return parsed;
   } catch (err) {
     console.error('Error loading users file:', err);
-    return [DEFAULT_MASTER_USER, DEFAULT_DEV_USER];
+    return [DEFAULT_MASTER_USER];
   }
 }
 
@@ -553,15 +535,10 @@ export async function createServerUserAsync(
   if (pg) {
     try {
       await pg.query(
-        `INSERT INTO users (id, username, password_hash, full_name, role, is_active, whatsapp)
-         VALUES ($1, $2, $3, $4, $5, TRUE, $6)
-         ON CONFLICT (username) DO UPDATE SET
-           password_hash = EXCLUDED.password_hash,
-           full_name = EXCLUDED.full_name,
-           role = EXCLUDED.role,
-           whatsapp = EXCLUDED.whatsapp,
-           is_active = TRUE`,
-        [userId, cleanUsername, password.trim(), name.trim(), role, cleanWhatsapp || null]
+        `INSERT INTO users (id, username, password_hash, full_name, role, is_active)
+         VALUES ($1, $2, $3, $4, $5, TRUE)
+         ON CONFLICT (username) DO NOTHING`,
+        [userId, cleanUsername, password.trim(), name.trim(), role]
       );
     } catch (err: any) {
       if (err.code === '23505') {
@@ -688,9 +665,9 @@ export async function updateServerUserAsync(
     try {
       await pg.query(
         `UPDATE users 
-         SET username = $1, full_name = $2, role = $3, password_hash = $4, is_active = $5, whatsapp = $6, updated_at = CURRENT_TIMESTAMP
-         WHERE id = $7`,
-        [updatedUser.username, updatedUser.name, updatedUser.role, updatedUser.password || '', updatedUser.isActive, updatedUser.whatsapp || null, userId]
+         SET username = $1, full_name = $2, role = $3, password_hash = $4, is_active = $5, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $6`,
+        [updatedUser.username, updatedUser.name, updatedUser.role, updatedUser.password || '', updatedUser.isActive, userId]
       );
     } catch (err: any) {
       console.warn('Postgres user update error:', err.message);
@@ -928,10 +905,7 @@ export async function authenticateServerUserAsync(
     }
     // Hardcoded built-in credential overrides
     if (cleanUsername === 'mastercmdit' && (rawPass === 'Master@123' || cleanPass === 'Master@123')) return true;
-    if (
-      cleanUsername === 'desenvolvedor' &&
-      (rawPass === 'dev@CMDIT' || cleanPass === 'dev@CMDIT' || rawPass === 'DEV@cmdit' || cleanPass === 'DEV@cmdit' || cleanPassLower === 'dev@cmdit')
-    ) return true;
+    if (cleanUsername === 'desenvolvedor' && (rawPass === 'DEV@cmdit' || cleanPass === 'DEV@cmdit')) return true;
     return false;
   };
 
@@ -960,16 +934,13 @@ export async function authenticateServerUserAsync(
         if (u.is_active === false || u.is_active === 0) {
           return { success: false, error: 'Este usuário está bloqueado. Contate o Administrador Master.' };
         }
-        const effectiveRole: UserRole = (cleanUsername === 'mastercmdit' || cleanUsername === 'desenvolvedor') 
-          ? 'master' 
-          : ((u.role as UserRole) || 'operador');
         return {
           success: true,
           user: {
             id: String(u.id),
             username: String(u.username),
             name: String(u.full_name || u.username),
-            role: effectiveRole,
+            role: (u.role as UserRole) || 'operador',
             createdAt: new Date().toISOString(),
             isActive: true,
           },
@@ -1042,10 +1013,7 @@ export function authenticateServerUser(
       if (a === rawPass || a === cleanPass || a.toLowerCase() === cleanPassLower) return true;
     }
     if (cleanUsername === 'mastercmdit' && (rawPass === 'Master@123' || cleanPass === 'Master@123')) return true;
-    if (
-      cleanUsername === 'desenvolvedor' &&
-      (rawPass === 'dev@CMDIT' || cleanPass === 'dev@CMDIT' || rawPass === 'DEV@cmdit' || cleanPass === 'DEV@cmdit' || cleanPassLower === 'dev@cmdit')
-    ) return true;
+    if (cleanUsername === 'desenvolvedor' && (rawPass === 'DEV@cmdit' || cleanPass === 'DEV@cmdit')) return true;
     return false;
   };
 
@@ -1872,160 +1840,3 @@ export async function restoreLogsFromSpreadsheetAsync(
     };
   }
 }
-
-// ----------------------------------------------------
-// COMPLETE BACKUP & RESTORE UTILITIES (JSON / SQL)
-// ----------------------------------------------------
-export interface SystemBackupPayload {
-  version: string;
-  exportDate: string;
-  app: string;
-  counts: {
-    users: number;
-    records: number;
-    logs: number;
-  };
-  data: {
-    users: UserAccount[];
-    records: any[];
-    logs: any[];
-    settings: any;
-  };
-}
-
-export async function createCompleteBackupAsync(): Promise<SystemBackupPayload> {
-  const users = await loadServerUsersAsync();
-  const records = await loadServerRecordsAsync();
-  const logs = await loadServerLogsAsync();
-  const settings = await loadServerSettingsAsync();
-
-  return {
-    version: '1.0.0',
-    exportDate: new Date().toISOString(),
-    app: 'CMDIT Frota & Portaria',
-    counts: {
-      users: users.length,
-      records: records.length,
-      logs: logs.length,
-    },
-    data: {
-      users,
-      records,
-      logs,
-      settings,
-    },
-  };
-}
-
-export async function restoreCompleteBackupAsync(
-  backup: any
-): Promise<{ success: boolean; message: string; counts?: { users: number; records: number; logs: number } }> {
-  try {
-    if (!backup || typeof backup !== 'object') {
-      return { success: false, message: 'Arquivo de backup inválido ou corrompido.' };
-    }
-
-    const payloadData = backup.data || backup;
-    const users: UserAccount[] = Array.isArray(payloadData.users) ? payloadData.users : [];
-    const records: any[] = Array.isArray(payloadData.records) ? payloadData.records : [];
-    const logs: any[] = Array.isArray(payloadData.logs) ? payloadData.logs : [];
-    const settings = payloadData.settings || null;
-
-    if (users.length === 0 && records.length === 0 && logs.length === 0) {
-      return {
-        success: false,
-        message: 'Nenhum dado encontrado no arquivo de backup fornecido.',
-      };
-    }
-
-    // 1. Restore to Local JSON Files (Instant fallback guarantee)
-    if (users.length > 0) {
-      saveServerUsers(users);
-    }
-    if (records.length > 0) {
-      saveServerRecords(records);
-    }
-    if (logs.length > 0) {
-      saveServerLogs(logs);
-    }
-    if (settings) {
-      saveServerSettings(settings);
-    }
-
-    // 2. Restore to PostgreSQL (Render / Cloud DB) if connected
-    const pg = getPgPool();
-    if (pg) {
-      try {
-        const client = await pg.connect();
-        try {
-          // Sync Users
-          for (const u of users) {
-            await client.query(
-              `INSERT INTO users (id, username, password_hash, full_name, role, is_active, whatsapp)
-               VALUES ($1, $2, $3, $4, $5, $6, $7)
-               ON CONFLICT (username) DO UPDATE SET
-                 password_hash = EXCLUDED.password_hash,
-                 full_name = EXCLUDED.full_name,
-                 role = EXCLUDED.role,
-                 is_active = EXCLUDED.is_active,
-                 whatsapp = EXCLUDED.whatsapp`,
-              [u.id || `user-${Date.now()}`, u.username.toLowerCase().trim(), u.password || 'user123', u.name, u.role, u.isActive ?? true, u.whatsapp || '-']
-            );
-          }
-
-          // Sync Vehicle Records
-          for (const r of records) {
-            await client.query(
-              `INSERT INTO vehicle_records (id, plate, driver_name, status, notes, raw_data)
-               VALUES ($1, $2, $3, $4, $5, $6)
-               ON CONFLICT (id) DO UPDATE SET
-                 plate = EXCLUDED.plate,
-                 driver_name = EXCLUDED.driver_name,
-                 status = EXCLUDED.status,
-                 notes = EXCLUDED.notes,
-                 raw_data = EXCLUDED.raw_data`,
-              [
-                r.id || `rec-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-                String(r.plate || '').toUpperCase().trim(),
-                r.driverName || r.driver || '-',
-                r.status || 'inside',
-                r.notes || '',
-                JSON.stringify(r),
-              ]
-            );
-          }
-
-          // Sync Settings
-          if (settings) {
-            await client.query(
-              `INSERT INTO app_settings (key, value)
-               VALUES ('general_settings', $1)
-               ON CONFLICT (key) DO UPDATE SET value = $1`,
-              [JSON.stringify(settings)]
-            );
-          }
-        } finally {
-          client.release();
-        }
-      } catch (pgErr: any) {
-        console.warn('PostgreSQL restore sync warning:', pgErr.message);
-      }
-    }
-
-    return {
-      success: true,
-      message: `Backup restaurado com sucesso! ${users.length} usuários, ${records.length} registros e ${logs.length} logs importados.`,
-      counts: {
-        users: users.length,
-        records: records.length,
-        logs: logs.length,
-      },
-    };
-  } catch (err: any) {
-    return {
-      success: false,
-      message: `Erro ao restaurar backup: ${err.message}`,
-    };
-  }
-}
-

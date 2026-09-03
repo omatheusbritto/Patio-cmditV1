@@ -9,7 +9,7 @@ import {
   appendVehicleRecordToSheet,
   initializeAllSpreadsheetTabs,
 } from './server/googleSheetsService';
-import { initDatabase, getActiveDbType, getDatabaseDiagnosticAsync, setRuntimeDatabaseUrl } from './server/db';
+import { initDatabase, getActiveDbType } from './server/db';
 import {
   loadServerUsersAsync,
   loadServerUsers,
@@ -42,8 +42,6 @@ import {
   appendServerLogAsync,
   clearServerLogsAsync,
   restoreLogsFromSpreadsheetAsync,
-  createCompleteBackupAsync,
-  restoreCompleteBackupAsync,
 } from './server/dataStore';
 
 dotenv.config();
@@ -132,17 +130,12 @@ async function startServer() {
     action: 'save_user' | 'delete_user' | 'sync_all_users',
     payload: any,
     customWebhookUrl?: string
-  ): Promise<{ success: boolean; data?: any; error?: string; reason?: string; status?: number }> {
+  ) {
     try {
       const settings = await loadServerSettingsAsync();
       const webhookUrl = customWebhookUrl || settings.sheetsWebhookUrl;
       if (!webhookUrl || !webhookUrl.startsWith('http')) {
-        return { success: false, reason: 'Nenhuma URL de Webhook da planilha configurada.' };
-      }
-
-      // Persiste a URL da planilha caso tenha sido informada na requisição
-      if (customWebhookUrl && customWebhookUrl.startsWith('http') && customWebhookUrl !== settings.sheetsWebhookUrl) {
-        updateServerSettingsAsync({ sheetsWebhookUrl: customWebhookUrl }).catch(() => {});
+        return { success: false, reason: 'No webhook configured' };
       }
 
       const bodyData = {
@@ -151,17 +144,12 @@ async function startServer() {
         timestamp: new Date().toISOString(),
       };
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 7500);
-
       const resp = await fetch(webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(bodyData),
         redirect: 'follow',
-        signal: controller.signal,
       });
-      clearTimeout(timeoutId);
 
       if (resp.ok) {
         const data = await resp.json().catch(() => ({ success: true }));
@@ -206,137 +194,6 @@ async function startServer() {
       return { success: false, error: err.message };
     }
   }
-
-  // --------------------------------------------------------------------------
-  // DATABASE DIAGNOSTIC, BACKUP & RESTORE (OnRender PostgreSQL & Local Fallback)
-  // --------------------------------------------------------------------------
-  app.get('/api/db/diagnostic', async (req: Request, res: Response) => {
-    try {
-      const diag = await getDatabaseDiagnosticAsync();
-      res.json({
-        success: diag.status === 'connected',
-        ...diag,
-      });
-    } catch (err: any) {
-      res.status(500).json({
-        success: false,
-        status: 'disconnected',
-        error: err.message,
-      });
-    }
-  });
-
-  app.post('/api/db/configure', async (req: Request, res: Response) => {
-    try {
-      const { databaseUrl, masterPassword, masterUsername } = req.body;
-      if (!databaseUrl || typeof databaseUrl !== 'string') {
-        res.status(400).json({ success: false, message: 'URL de conexão não fornecida.' });
-        return;
-      }
-
-      // Validação estrita: ligação do banco de dados só permitida com senha de usuário MASTER
-      if (!masterPassword || typeof masterPassword !== 'string' || !masterPassword.trim()) {
-        res.status(401).json({
-          success: false,
-          message: 'Acesso negado: Senha de usuário Master é obrigatória para autorizar a ligação do banco de dados.',
-        });
-        return;
-      }
-
-      const cleanPass = masterPassword.trim();
-      const cleanUser = typeof masterUsername === 'string' ? masterUsername.trim().toLowerCase() : '';
-
-      let isMasterAuthorized = false;
-
-      // 1. Verificação com senhas de contingência do sistema
-      if (
-        cleanPass === 'Master@123' ||
-        cleanPass === 'dev@CMDIT' ||
-        cleanPass === 'DEV@cmdit' ||
-        cleanPass.toLowerCase() === 'dev@cmdit'
-      ) {
-        isMasterAuthorized = true;
-      }
-
-      // 2. Se informado usuário, valida pelo autenticador do servidor
-      if (!isMasterAuthorized && cleanUser) {
-        const authRes = await authenticateServerUserAsync(cleanUser, cleanPass);
-        if (
-          authRes.success &&
-          (authRes.user?.role === 'master' ||
-            authRes.user?.username.toLowerCase() === 'mastercmdit' ||
-            authRes.user?.username.toLowerCase() === 'desenvolvedor')
-        ) {
-          isMasterAuthorized = true;
-        }
-      }
-
-      // 3. Verificação contra os usuários com perfil Master ativos
-      if (!isMasterAuthorized) {
-        try {
-          const users = await loadServerUsersAsync();
-          const masterAccounts = users.filter(
-            (u) =>
-              (u.role === 'master' ||
-                u.username.toLowerCase() === 'mastercmdit' ||
-                u.username.toLowerCase() === 'desenvolvedor') &&
-              u.isActive
-          );
-
-          for (const m of masterAccounts) {
-            const mPass = String(m.password || '').trim();
-            if (mPass && (mPass === cleanPass || mPass.toLowerCase() === cleanPass.toLowerCase())) {
-              isMasterAuthorized = true;
-              break;
-            }
-          }
-        } catch {}
-      }
-
-      if (!isMasterAuthorized) {
-        res.status(403).json({
-          success: false,
-          message: 'Senha de usuário Master incorreta! Permissão negada para alterar ou ligar o banco de dados.',
-        });
-        return;
-      }
-
-      const result = await setRuntimeDatabaseUrl(databaseUrl);
-      res.json(result);
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
-    }
-  });
-
-  // Download complete system backup JSON to user's computer
-  app.get('/api/db/backup', async (req: Request, res: Response) => {
-    try {
-      const backup = await createCompleteBackupAsync();
-      const dateStr = new Date().toISOString().split('T')[0];
-      const filename = `backup-cmdit-${dateStr}.json`;
-
-      res.setHeader('Content-Type', 'application/json');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.json(backup);
-    } catch (err: any) {
-      res.status(500).json({ success: false, error: err.message });
-    }
-  });
-
-  // Restore complete system backup from uploaded JSON
-  app.post('/api/db/restore', async (req: Request, res: Response) => {
-    try {
-      const backupData = req.body;
-      if (!backupData) {
-        res.status(400).json({ success: false, message: 'Nenhum dado de backup enviado.' });
-        return;
-      }
-      const result = await restoreCompleteBackupAsync(backupData);
-      res.json(result);
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
-    }
-  });
 
   // --------------------------------------------------------------------------
   // USER MANAGEMENT & MULTI-DEVICE AUTHENTICATION (Centralized Store + Google Sheet Sync)
@@ -753,20 +610,20 @@ async function startServer() {
       // Normalize operationType and category for webhook
       const rawOp = String(record.operationType || '').toLowerCase().trim();
       let normalizedCategory = 'entrada';
-      let expectedTabName = 'ENTRADAS';
+      let expectedTabName = '📥 Entrada';
 
       if (rawOp === 'saida' || rawOp === 'saída' || rawOp.includes('said')) {
         normalizedCategory = 'saida';
-        expectedTabName = 'SAIDA';
+        expectedTabName = '📤 Saída';
       } else if (rawOp === 'abastecimento' || rawOp === 'combustivel' || rawOp.includes('abastec') || rawOp.includes('combust')) {
-        normalizedCategory = 'combustivel';
-        expectedTabName = 'COMBUSTIVEL (ABASTECIMENTO)';
+        normalizedCategory = 'abastecimento';
+        expectedTabName = '⛽ Combustível';
       } else if (rawOp === 'qualidade_51' || rawOp === 'qualidade51' || rawOp === 'qualidade' || rawOp.includes('51') || rawOp.includes('qualidade')) {
         normalizedCategory = 'qualidade';
-        expectedTabName = 'QUALIDADE 51';
+        expectedTabName = '🔍 Qualidade 51';
       } else if (rawOp === 'pdc' || rawOp.includes('pdc') || rawOp.includes('fila')) {
         normalizedCategory = 'pdc';
-        expectedTabName = 'Fila PDC';
+        expectedTabName = '📋 Fila PDC';
       }
 
       // Helper for clean fuel level formatting (prevents Excel from auto-converting fractions like 4/8 into dates)
@@ -861,10 +718,6 @@ async function startServer() {
         odometro: km,
         nivelCombustivel,
         fuel: nivelCombustivel,
-        tipoCombustivel: record.fuelType || record.tipoCombustivel || '-',
-        fuelType: record.fuelType || record.tipoCombustivel || '-',
-        litros: record.liters || record.litros || '-',
-        liters: record.liters || record.litros || '-',
         tipoVeiculo,
         fleetType: tipoVeiculo,
         chaveReserva,

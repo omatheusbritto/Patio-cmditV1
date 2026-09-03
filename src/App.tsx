@@ -49,7 +49,6 @@ import { UserManagementModal } from './components/UserManagementModal';
 import { MyShiftHistoryModal } from './components/MyShiftHistoryModal';
 import { OnlineSpreadsheetViewerModal } from './components/OnlineSpreadsheetViewerModal';
 import { AccessLogsTab } from './components/AccessLogsTab';
-import { DatabaseTestModal } from './components/DatabaseTestModal';
 import {
   getCurrentSession,
   logoutUser,
@@ -60,7 +59,7 @@ import {
   setAutoPlateReadPreference,
 } from './utils/preferencesService';
 import { AuthSession } from './types';
-import { ShieldCheck, Clock, History, LogOut, AlertTriangle, FileSpreadsheet, Database } from 'lucide-react';
+import { ShieldCheck, Clock, History, LogOut, AlertTriangle, FileSpreadsheet } from 'lucide-react';
 
 export default function App() {
   // Authentication & Shift Session State (8 hours)
@@ -68,7 +67,6 @@ export default function App() {
   const [showUserManagement, setShowUserManagement] = useState(false);
   const [showMyShiftModal, setShowMyShiftModal] = useState(false);
   const [isSpreadsheetModalOpen, setIsSpreadsheetModalOpen] = useState(false);
-  const [showDatabaseModal, setShowDatabaseModal] = useState(false);
   const [sessionTimeText, setSessionTimeText] = useState<string>('');
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
 
@@ -110,7 +108,6 @@ export default function App() {
   const [entrySubtype, setEntrySubtype] = useState<EntrySubtype | undefined>(undefined);
   const [entryReason, setEntryReason] = useState<string>('');
   const [documentPhotoUrl, setDocumentPhotoUrl] = useState<string>('');
-  const [notes, setNotes] = useState<string>('');
 
   // Fueling specifics
   const [dashboardPhotoUrl, setDashboardPhotoUrl] = useState<string>('');
@@ -187,7 +184,6 @@ export default function App() {
     setEntrySubtype(undefined);
     setEntryReason('');
     setDocumentPhotoUrl('');
-    setNotes('');
 
     setDashboardPhotoUrl('');
     setLiters('');
@@ -323,7 +319,7 @@ export default function App() {
     setCurrentStep('fueling_details');
   };
 
-  // Fueling: submit manual data (KM, Fuel level, Liters, Fuel type, Driver, Destination, Notes)
+  // Fueling: submit manual data (KM, Fuel level, Liters, Fuel type, Driver, Destination)
   const handleSubmitFuelingDetails = (data: {
     km: string;
     fuel: FuelLevel;
@@ -331,7 +327,6 @@ export default function App() {
     fuelType?: string;
     driverName?: string;
     destination?: string;
-    notes?: string;
   }) => {
     setKm(data.km);
     setFuel(data.fuel);
@@ -339,7 +334,6 @@ export default function App() {
     if (data.fuelType !== undefined) setFuelType(data.fuelType);
     if (data.driverName !== undefined) setDriverName(data.driverName);
     if (data.destination !== undefined) setDestination(data.destination);
-    if (data.notes !== undefined) setNotes(data.notes);
     setCurrentStep('review');
   };
 
@@ -533,15 +527,6 @@ export default function App() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowDatabaseModal(true)}
-                  className="px-2 py-1 bg-indigo-900/60 hover:bg-indigo-800 text-indigo-200 rounded-lg text-[11px] font-bold flex items-center gap-1 transition cursor-pointer border border-indigo-500/40"
-                  title="Diagnóstico de Banco & Backups Manuais"
-                >
-                  <Database className="w-3.5 h-3.5 text-indigo-400" />
-                  <span className="hidden sm:inline">BD & Backup</span>
-                </button>
-                <button
-                  type="button"
                   onClick={() => setShowUserManagement(true)}
                   className="px-2 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-lg text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"
                   title="Gerenciar Usuários (Apenas Master)"
@@ -692,7 +677,6 @@ export default function App() {
                 initialFuelType={fuelType}
                 initialDriverName={driverName}
                 initialDestination={destination}
-                initialNotes={notes}
                 onRetakeDashboardPhoto={() => setCurrentStep('dashboard_camera')}
                 onUpdatePlate={(newPlate) => setPlate(newPlate)}
                 onSubmit={handleSubmitFuelingDetails}
@@ -882,12 +866,6 @@ export default function App() {
             alert(`${importedList.length} registros foram sincronizados com sucesso no sistema!`);
           }
         }}
-      />
-
-      {/* Modal de Diagnóstico do Banco & Backups Manuais */}
-      <DatabaseTestModal
-        isOpen={showDatabaseModal}
-        onClose={() => setShowDatabaseModal(false)}
       />
     </div>
   );
