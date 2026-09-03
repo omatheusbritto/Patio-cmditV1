@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Lock,
   User,
@@ -9,10 +9,18 @@ import {
   EyeOff,
   RefreshCw,
   CheckCircle2,
-  FileSpreadsheet,
+  Database,
+  ShieldCheck,
+  Server,
 } from 'lucide-react';
-import { loginUser, restoreUsersFromSheetClient, fetchServerUsers } from '../utils/authService';
+import {
+  loginUser,
+  restoreUsersFromSheetClient,
+  fetchServerUsers,
+  checkDatabaseHealth,
+} from '../utils/authService';
 import { AuthSession } from '../types';
+import { DatabaseTestModal } from './DatabaseTestModal';
 
 interface LoginModalProps {
   onLoginSuccess: (session: AuthSession) => void;
@@ -28,6 +36,35 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
   // Sincronização direta com a Planilha Google
   const [isSyncingSheet, setIsSyncingSheet] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  // Modal de Teste do Banco de Dados
+  const [isDbTestOpen, setIsDbTestOpen] = useState(false);
+  const [dbStatus, setDbStatus] = useState<{
+    tested: boolean;
+    connected: boolean;
+    type: string;
+    userCount: number;
+    latency: number;
+  }>({
+    tested: false,
+    connected: false,
+    type: '',
+    userCount: 0,
+    latency: 0,
+  });
+
+  // Checa status do banco ao carregar tela
+  useEffect(() => {
+    checkDatabaseHealth().then((diag) => {
+      setDbStatus({
+        tested: true,
+        connected: diag.status === 'connected',
+        type: diag.type,
+        userCount: diag.userCount,
+        latency: diag.latencyMs,
+      });
+    }).catch(() => {});
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,7 +136,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-neutral-950/85 backdrop-blur-md flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 bg-neutral-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
       <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl border border-neutral-200 animate-in fade-in zoom-in-95 duration-200">
         {/* Top Header Card */}
         <div className="bg-gradient-to-br from-emerald-800 via-emerald-700 to-emerald-900 p-6 text-white text-center relative">
@@ -110,6 +147,22 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
           <p className="text-xs text-emerald-200 mt-1 font-medium">
             Acesso ao Sistema
           </p>
+
+          {/* Quick Database Status Badge on Top Right */}
+          {dbStatus.tested && (
+            <button
+              type="button"
+              onClick={() => setIsDbTestOpen(true)}
+              className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border transition cursor-pointer ${
+                dbStatus.connected
+                  ? 'bg-emerald-950/60 border-emerald-400/40 text-emerald-200 hover:bg-emerald-950/80'
+                  : 'bg-amber-950/60 border-amber-400/40 text-amber-200 hover:bg-amber-950/80'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${dbStatus.connected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+              <span>BD: {dbStatus.connected ? `${dbStatus.type.toUpperCase()} (${dbStatus.latency}ms)` : 'Local'}</span>
+            </button>
+          )}
         </div>
 
         {/* Form Body */}
@@ -189,13 +242,22 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
             <span>{isLoading ? 'Autenticando...' : 'Acessar o Sistema'}</span>
           </button>
 
-          {/* Botão de Sincronizar Dados da Planilha */}
+          {/* Botões Utilitários: Testar BD & Sincronizar Planilha */}
           <div className="pt-2 border-t border-neutral-100 flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => setIsDbTestOpen(true)}
+              className="w-full py-2.5 px-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-900 font-bold text-xs flex items-center justify-center gap-2 transition active:scale-98 cursor-pointer shadow-sm"
+            >
+              <Database className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Testar Banco de Dados (OnRender)</span>
+            </button>
+
             <button
               type="button"
               onClick={handleSyncFromSpreadsheet}
               disabled={isSyncingSheet || isLoading}
-              className="w-full py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-bold text-xs flex items-center justify-center gap-2 transition active:scale-98 disabled:opacity-60 cursor-pointer"
+              className="w-full py-2 px-3 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-medium text-xs flex items-center justify-center gap-2 transition active:scale-98 disabled:opacity-60 cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 text-emerald-700 ${isSyncingSheet ? 'animate-spin' : ''}`} />
               <span>{isSyncingSheet ? 'Sincronizando com a Planilha...' : 'Sincronizar Dados (Planilha)'}</span>
@@ -203,6 +265,29 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
           </div>
         </form>
       </div>
+
+      {/* Modal de Teste e Configuração do Banco de Dados */}
+      <DatabaseTestModal
+        isOpen={isDbTestOpen}
+        onClose={() => {
+          setIsDbTestOpen(false);
+          // Revalida status rápido
+          checkDatabaseHealth().then((diag) => {
+            setDbStatus({
+              tested: true,
+              connected: diag.status === 'connected',
+              type: diag.type,
+              userCount: diag.userCount,
+              latency: diag.latencyMs,
+            });
+          }).catch(() => {});
+        }}
+        onQuickFillUser={(user, pass) => {
+          setUsername(user);
+          setPassword(pass);
+        }}
+      />
     </div>
   );
 };
+

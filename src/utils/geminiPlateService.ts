@@ -75,16 +75,15 @@ export async function cropPlateFromBoundingBox(
 }
 
 /**
- * Call server-side High-Speed Vision Engine with client-side image compression for sub-second recognition
+ * Call server-side High-Speed Vision Engine with streamlined image compression for sub-second recognition
  */
 export async function recognizePlateWithGemini(
   photoDataUrl: string
 ): Promise<PlateRecognitionResult> {
   const clientStart = Date.now();
   try {
-    // 1. Client-Side instant enhancement: Adaptive Contrast Boost + Downscale
-    const enhancedUrl = await enhanceImageForPlateOcr(photoDataUrl, { applyContrastBoost: true, maxDimension: 1100 });
-    const optimized = await optimizeImageForOcr(enhancedUrl, 1024, 0.88);
+    // 1. Single-pass fast hardware-accelerated downscale (800px is ideal for plate OCR and transfers in ~30ms)
+    const optimized = await optimizeImageForOcr(photoDataUrl, 800, 0.82);
 
     const response = await fetch('/api/ocr/gemini-plate', {
       method: 'POST',

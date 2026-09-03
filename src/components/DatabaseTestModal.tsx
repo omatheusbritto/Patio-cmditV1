@@ -1,0 +1,365 @@
+import React, { useState, useEffect } from 'react';
+import {
+  Database,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
+  RefreshCw,
+  Server,
+  Zap,
+  ShieldCheck,
+  KeyRound,
+  ExternalLink,
+  Save,
+  Check,
+  X,
+  Info,
+  Layers,
+  Users,
+} from 'lucide-react';
+import {
+  checkDatabaseHealth,
+  configureDatabaseUrl,
+  DatabaseDiagnosticResult,
+} from '../utils/authService';
+
+interface DatabaseTestModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onQuickFillUser?: (username: string, pass: string) => void;
+}
+
+export const DatabaseTestModal: React.FC<DatabaseTestModalProps> = ({
+  isOpen,
+  onClose,
+  onQuickFillUser,
+}) => {
+  const [diagnostic, setDiagnostic] = useState<DatabaseDiagnosticResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [customDbUrl, setCustomDbUrl] = useState('');
+  const [savingUrl, setSavingUrl] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<{ text: string; isError: boolean } | null>(null);
+
+  const runTest = async () => {
+    setLoading(true);
+    setSaveMessage(null);
+    try {
+      const data = await checkDatabaseHealth();
+      setDiagnostic(data);
+    } catch (err: any) {
+      setDiagnostic({
+        success: false,
+        status: 'disconnected',
+        type: 'json',
+        provider: 'Falha de Conexão',
+        isRenderPostgres: false,
+        latencyMs: 0,
+        userCount: 0,
+        connectionUrlMasked: 'Desconectado',
+        message: err.message || 'Erro ao testar banco de dados',
+        timestamp: new Date().toISOString(),
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      runTest();
+    }
+  }, [isOpen]);
+
+  const handleSaveDbUrl = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customDbUrl.trim()) return;
+
+    setSavingUrl(true);
+    setSaveMessage(null);
+    try {
+      const res = await configureDatabaseUrl(customDbUrl.trim());
+      if (res.success) {
+        setSaveMessage({ text: res.message || 'Banco conectado com sucesso!', isError: false });
+        if (res.diagnostic) {
+          setDiagnostic(res.diagnostic);
+        } else {
+          runTest();
+        }
+        setCustomDbUrl('');
+      } else {
+        setSaveMessage({ text: res.message || 'Falha ao conectar na URL fornecida.', isError: true });
+      }
+    } catch (err: any) {
+      setSaveMessage({ text: err.message || 'Erro ao conectar.', isError: true });
+    } finally {
+      setSavingUrl(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  const isConnected = diagnostic?.status === 'connected';
+  const isPostgres = diagnostic?.type === 'postgres';
+
+  return (
+    <div className="fixed inset-0 z-50 bg-neutral-950/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
+      <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl border border-neutral-200 flex flex-col max-h-[90vh]">
+        {/* Modal Header */}
+        <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white p-5 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-400">
+              <Database className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-base tracking-tight">Diagnóstico do Banco de Dados</h3>
+              <p className="text-xs text-slate-300">Conexão OnRender / PostgreSQL & Autenticação</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 hover:text-white transition cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Modal Content */}
+        <div className="p-5 overflow-y-auto space-y-4 text-neutral-800">
+          {/* Status Banner */}
+          <div
+            className={`p-4 rounded-2xl border flex items-start gap-3.5 transition ${
+              loading
+                ? 'bg-neutral-50 border-neutral-200 text-neutral-700'
+                : isConnected
+                ? 'bg-emerald-50/90 border-emerald-300 text-emerald-950'
+                : 'bg-amber-50/90 border-amber-300 text-amber-950'
+            }`}
+          >
+            {loading ? (
+              <RefreshCw className="w-6 h-6 text-neutral-500 animate-spin shrink-0 mt-0.5" />
+            ) : isConnected ? (
+              <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0 mt-0.5" />
+            ) : (
+              <AlertTriangle className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
+            )}
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-black tracking-tight">
+                  {loading
+                    ? 'Testando conexão com o banco...'
+                    : isConnected
+                    ? isPostgres
+                      ? 'Banco PostgreSQL (Render) Ativo e Operacional'
+                      : 'Banco de Dados Conectado'
+                    : 'Modo Local / Aguardando Configuração do Banco'}
+                </span>
+                {diagnostic && !loading && (
+                  <span
+                    className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                      isConnected
+                        ? 'bg-emerald-200 text-emerald-900'
+                        : 'bg-amber-200 text-amber-900'
+                    }`}
+                  >
+                    {diagnostic.type.toUpperCase()}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs mt-1 leading-relaxed opacity-90">
+                {loading
+                  ? 'Aguardando resposta do servidor...'
+                  : diagnostic?.message || 'Status verificado.'}
+              </p>
+            </div>
+          </div>
+
+          {/* Diagnostic Metrics Grid */}
+          {diagnostic && !loading && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+              <div className="bg-neutral-50 p-3 rounded-xl border border-neutral-200">
+                <div className="text-[11px] font-semibold text-neutral-500 flex items-center gap-1">
+                  <Server className="w-3.5 h-3.5 text-indigo-500" /> Provedor
+                </div>
+                <div className="text-xs font-black text-neutral-900 mt-1 truncate">
+                  {diagnostic.provider}
+                </div>
+              </div>
+
+              <div className="bg-neutral-50 p-3 rounded-xl border border-neutral-200">
+                <div className="text-[11px] font-semibold text-neutral-500 flex items-center gap-1">
+                  <Zap className="w-3.5 h-3.5 text-amber-500" /> Latência
+                </div>
+                <div className="text-xs font-black text-neutral-900 mt-1">
+                  {diagnostic.latencyMs} ms
+                </div>
+              </div>
+
+              <div className="bg-neutral-50 p-3 rounded-xl border border-neutral-200 col-span-2 sm:col-span-1">
+                <div className="text-[11px] font-semibold text-neutral-500 flex items-center gap-1">
+                  <Users className="w-3.5 h-3.5 text-emerald-500" /> Usuários no BD
+                </div>
+                <div className="text-xs font-black text-neutral-900 mt-1">
+                  {diagnostic.userCount} cadastrados
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Table Verification Badges */}
+          {diagnostic?.tables && (
+            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+              <div className="text-xs font-bold text-slate-700 flex items-center gap-1.5 mb-2.5">
+                <Layers className="w-4 h-4 text-indigo-600" />
+                <span>Integridade das Tabelas do Sistema:</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="flex items-center gap-1.5 font-medium">
+                  {diagnostic.tables.users ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  ) : (
+                    <X className="w-3.5 h-3.5 text-rose-500" />
+                  )}
+                  <span>users (Usuários & Senhas)</span>
+                </div>
+                <div className="flex items-center gap-1.5 font-medium">
+                  {diagnostic.tables.vehicle_records ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  ) : (
+                    <X className="w-3.5 h-3.5 text-rose-500" />
+                  )}
+                  <span>vehicle_records (Pátio)</span>
+                </div>
+                <div className="flex items-center gap-1.5 font-medium">
+                  {diagnostic.tables.access_logs ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  ) : (
+                    <X className="w-3.5 h-3.5 text-rose-500" />
+                  )}
+                  <span>access_logs (Auditoria)</span>
+                </div>
+                <div className="flex items-center gap-1.5 font-medium">
+                  {diagnostic.tables.app_settings ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  ) : (
+                    <X className="w-3.5 h-3.5 text-rose-500" />
+                  )}
+                  <span>app_settings (Configurações)</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Quick Access Credentials Help */}
+          <div className="bg-indigo-50/70 p-3.5 rounded-2xl border border-indigo-200">
+            <div className="text-xs font-bold text-indigo-950 flex items-center gap-1.5 mb-2">
+              <KeyRound className="w-4 h-4 text-indigo-700" />
+              <span>Contas de Acesso Rápido Garantidas:</span>
+            </div>
+            <div className="space-y-1.5 text-xs">
+              <div className="flex items-center justify-between bg-white p-2 rounded-xl border border-indigo-100">
+                <div>
+                  <span className="font-bold text-neutral-900">mastercmdit</span>{' '}
+                  <span className="text-neutral-500 text-[11px]">(Senha: Master@123)</span>
+                </div>
+                {onQuickFillUser && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onQuickFillUser('mastercmdit', 'Master@123');
+                      onClose();
+                    }}
+                    className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold rounded-lg transition cursor-pointer"
+                  >
+                    Usar
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center justify-between bg-white p-2 rounded-xl border border-indigo-100">
+                <div>
+                  <span className="font-bold text-neutral-900">desenvolvedor</span>{' '}
+                  <span className="text-neutral-500 text-[11px]">(Senha: DEV@cmdit)</span>
+                </div>
+                {onQuickFillUser && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onQuickFillUser('desenvolvedor', 'DEV@cmdit');
+                      onClose();
+                    }}
+                    className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold rounded-lg transition cursor-pointer"
+                  >
+                    Usar
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* OnRender Connection String Form */}
+          <form onSubmit={handleSaveDbUrl} className="bg-neutral-50 p-4 rounded-2xl border border-neutral-200 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-neutral-800 flex items-center gap-1.5">
+                <Database className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Configurar URL do PostgreSQL (Render):</span>
+              </label>
+            </div>
+            <input
+              type="text"
+              placeholder="postgresql://user:pass@dpg-xxxx.render.com/dbname"
+              value={customDbUrl}
+              onChange={(e) => setCustomDbUrl(e.target.value)}
+              className="w-full bg-white border border-neutral-300 focus:border-indigo-600 rounded-xl px-3 py-2 text-xs font-mono text-neutral-900 outline-none transition"
+            />
+            {saveMessage && (
+              <div
+                className={`p-2 rounded-lg text-xs font-bold flex items-center gap-1.5 ${
+                  saveMessage.isError
+                    ? 'bg-rose-50 border border-rose-200 text-rose-800'
+                    : 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                }`}
+              >
+                <Info className="w-3.5 h-3.5 shrink-0" />
+                <span>{saveMessage.text}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-[10px] text-neutral-500">
+                Ou configure no Render na variável <code className="font-bold">DATABASE_URL</code>
+              </span>
+              <button
+                type="submit"
+                disabled={savingUrl || !customDbUrl.trim()}
+                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>{savingUrl ? 'Conectando...' : 'Conectar Banco'}</span>
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* Modal Footer */}
+        <div className="p-4 bg-neutral-50 border-t border-neutral-200 flex items-center justify-between gap-3 shrink-0">
+          <button
+            type="button"
+            onClick={runTest}
+            disabled={loading}
+            className="px-4 py-2 bg-white hover:bg-neutral-100 border border-neutral-300 text-neutral-800 text-xs font-bold rounded-xl flex items-center gap-2 transition cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-indigo-600 ${loading ? 'animate-spin' : ''}`} />
+            <span>{loading ? 'Testando...' : 'Testar Novamente'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 py-2 bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-bold rounded-xl transition cursor-pointer"
+          >
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};

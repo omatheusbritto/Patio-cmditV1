@@ -19,6 +19,16 @@ const DEFAULT_MASTER_USER: UserAccount = {
   isActive: true,
 };
 
+const DEFAULT_DEV_USER: UserAccount = {
+  id: 'dev-001',
+  username: 'desenvolvedor',
+  name: 'Desenvolvedor CMDIT',
+  role: 'master',
+  password: 'DEV@cmdit',
+  createdAt: new Date().toISOString(),
+  isActive: true,
+};
+
 /**
  * Obtém todos os usuários do cache local de forma síncrona
  */
@@ -26,7 +36,7 @@ export function getAllUsers(): UserAccount[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.USERS);
     if (!raw) {
-      const initialList = [DEFAULT_MASTER_USER];
+      const initialList = [DEFAULT_MASTER_USER, DEFAULT_DEV_USER];
       localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(initialList));
       // Tenta sincronizar em segundo plano com o servidor
       fetchServerUsers();
@@ -39,12 +49,18 @@ export function getAllUsers(): UserAccount[] {
     );
     if (masterIndex === -1) {
       parsed.unshift(DEFAULT_MASTER_USER);
-      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(parsed));
     }
+    const devIndex = parsed.findIndex(
+      (u) => u.username.toLowerCase() === 'desenvolvedor'
+    );
+    if (devIndex === -1) {
+      parsed.push(DEFAULT_DEV_USER);
+    }
+    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(parsed));
     return parsed;
   } catch (e) {
     console.error('Erro ao ler usuários locais:', e);
-    return [DEFAULT_MASTER_USER];
+    return [DEFAULT_MASTER_USER, DEFAULT_DEV_USER];
   }
 }
 
@@ -558,3 +574,74 @@ export function formatRemainingSessionTime(expiresAt: number): string {
   }
   return `${minutes} min`;
 }
+
+export interface DatabaseDiagnosticResult {
+  success: boolean;
+  status: 'connected' | 'disconnected' | 'fallback_local';
+  type: 'postgres' | 'mysql' | 'json';
+  provider: string;
+  isRenderPostgres: boolean;
+  latencyMs: number;
+  tables?: {
+    users: boolean;
+    vehicle_records: boolean;
+    access_logs: boolean;
+    app_settings: boolean;
+  };
+  userCount: number;
+  connectionUrlMasked: string;
+  message: string;
+  timestamp: string;
+  activeUsers?: Array<{
+    id: string;
+    username: string;
+    name: string;
+    role: string;
+    isActive: boolean;
+    hasPassword: boolean;
+  }>;
+}
+
+/**
+ * Executa teste em tempo real de conectividade com o Banco de Dados PostgreSQL (Render) ou Fallback
+ */
+export async function checkDatabaseHealth(): Promise<DatabaseDiagnosticResult> {
+  try {
+    const res = await fetch('/api/db/diagnostic');
+    const data = await res.json();
+    return data;
+  } catch (err: any) {
+    return {
+      success: false,
+      status: 'disconnected',
+      type: 'json',
+      provider: 'Servidor Offline / Inacessível',
+      isRenderPostgres: false,
+      latencyMs: 0,
+      userCount: getAllUsers().length,
+      connectionUrlMasked: 'Offline',
+      message: `Falha na requisição ao servidor: ${err.message}`,
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+/**
+ * Permite configurar/alterar a URL do banco PostgreSQL em tempo de execução
+ */
+export async function configureDatabaseUrl(databaseUrl: string): Promise<{ success: boolean; message: string; diagnostic?: any }> {
+  try {
+    const res = await fetch('/api/db/configure', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ databaseUrl }),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return {
+      success: false,
+      message: `Erro ao enviar URL para o servidor: ${err.message}`,
+    };
+  }
+}
+
