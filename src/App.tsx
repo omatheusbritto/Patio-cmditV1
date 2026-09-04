@@ -49,6 +49,7 @@ import { UserManagementModal } from './components/UserManagementModal';
 import { MyShiftHistoryModal } from './components/MyShiftHistoryModal';
 import { OnlineSpreadsheetViewerModal } from './components/OnlineSpreadsheetViewerModal';
 import { AccessLogsTab } from './components/AccessLogsTab';
+import { DatabaseTestModal } from './components/DatabaseTestModal';
 import {
   getCurrentSession,
   logoutUser,
@@ -59,7 +60,7 @@ import {
   setAutoPlateReadPreference,
 } from './utils/preferencesService';
 import { AuthSession } from './types';
-import { ShieldCheck, Clock, History, LogOut, AlertTriangle, FileSpreadsheet } from 'lucide-react';
+import { ShieldCheck, Clock, History, LogOut, AlertTriangle, FileSpreadsheet, Database } from 'lucide-react';
 
 export default function App() {
   // Authentication & Shift Session State (8 hours)
@@ -67,6 +68,7 @@ export default function App() {
   const [showUserManagement, setShowUserManagement] = useState(false);
   const [showMyShiftModal, setShowMyShiftModal] = useState(false);
   const [isSpreadsheetModalOpen, setIsSpreadsheetModalOpen] = useState(false);
+  const [isDbTestOpen, setIsDbTestOpen] = useState(false);
   const [sessionTimeText, setSessionTimeText] = useState<string>('');
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
 
@@ -460,6 +462,9 @@ export default function App() {
 
   // Handle Tab Switch
   const handleSelectTab = (tab: NavTab) => {
+    if (tab === 'logs' && authSession?.user.role !== 'master') {
+      return;
+    }
     setActiveTab(tab);
   };
 
@@ -516,6 +521,15 @@ export default function App() {
 
             {authSession.user.role === 'master' && (
               <>
+                <button
+                  type="button"
+                  onClick={() => setIsDbTestOpen(true)}
+                  className="px-2 py-1 bg-indigo-950/80 hover:bg-indigo-900 text-indigo-200 rounded-lg text-[11px] font-bold flex items-center gap-1 transition cursor-pointer border border-indigo-700/50"
+                  title="Configurar & Testar Conexão PostgreSQL (Render)"
+                >
+                  <Database className="w-3.5 h-3.5 text-indigo-400" />
+                  <span className="hidden sm:inline">Banco de Dados</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => setIsSpreadsheetModalOpen(true)}
@@ -826,6 +840,15 @@ export default function App() {
           onSelectTab={handleSelectTab}
           parkedCount={patioMetrics.totalParked}
           historyCount={records.length}
+          isMaster={authSession?.user.role === 'master'}
+        />
+      )}
+
+      {/* Database Diagnostic & Configuration Modal (Master Only) */}
+      {authSession?.user.role === 'master' && (
+        <DatabaseTestModal
+          isOpen={isDbTestOpen}
+          onClose={() => setIsDbTestOpen(false)}
         />
       )}
 

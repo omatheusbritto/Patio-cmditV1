@@ -7,20 +7,14 @@ import {
   LogIn,
   Eye,
   EyeOff,
-  RefreshCw,
-  CheckCircle2,
   Database,
-  ShieldCheck,
-  Server,
+  CheckCircle2,
 } from 'lucide-react';
 import {
   loginUser,
-  restoreUsersFromSheetClient,
-  fetchServerUsers,
   checkDatabaseHealth,
 } from '../utils/authService';
 import { AuthSession } from '../types';
-import { DatabaseTestModal } from './DatabaseTestModal';
 
 interface LoginModalProps {
   onLoginSuccess: (session: AuthSession) => void;
@@ -33,43 +27,43 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Sincronização direta com a Planilha Google
-  const [isSyncingSheet, setIsSyncingSheet] = useState(false);
-  const [syncFeedback, setSyncFeedback] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
-
-  // Modal de Teste do Banco de Dados
-  const [isDbTestOpen, setIsDbTestOpen] = useState(false);
+  // Status da Conexão com o Banco de Dados
   const [dbStatus, setDbStatus] = useState<{
     tested: boolean;
     connected: boolean;
     type: string;
-    userCount: number;
     latency: number;
   }>({
     tested: false,
     connected: false,
     type: '',
-    userCount: 0,
     latency: 0,
   });
 
-  // Checa status do banco ao carregar tela
+  // Checa conexão com o banco ao carregar tela
   useEffect(() => {
-    checkDatabaseHealth().then((diag) => {
-      setDbStatus({
-        tested: true,
-        connected: diag.status === 'connected',
-        type: diag.type,
-        userCount: diag.userCount,
-        latency: diag.latencyMs,
+    checkDatabaseHealth()
+      .then((diag) => {
+        setDbStatus({
+          tested: true,
+          connected: diag.status === 'connected',
+          type: diag.type,
+          latency: diag.latencyMs,
+        });
+      })
+      .catch(() => {
+        setDbStatus({
+          tested: true,
+          connected: false,
+          type: 'local',
+          latency: 0,
+        });
       });
-    }).catch(() => {});
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
-    setSyncFeedback(null);
 
     if (!username.trim()) {
       setErrorMsg('Informe o usuário ou matrícula.');
@@ -96,45 +90,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
     }
   };
 
-  const handleSyncFromSpreadsheet = async () => {
-    setErrorMsg(null);
-    setSyncFeedback(null);
-    setIsSyncingSheet(true);
-
-    try {
-      // 1. Tenta restaurar diretamente da aba USUARIOS_CMDIT da Planilha Google
-      const result = await restoreUsersFromSheetClient();
-      
-      if (result.success) {
-        setSyncFeedback({
-          text: `✅ ${result.totalRestored || 'Todos os'} usuários e senhas sincronizados direto da planilha!`,
-          type: 'success',
-        });
-      } else {
-        // Fallback: sincroniza com o servidor central
-        const serverUsers = await fetchServerUsers();
-        if (serverUsers && serverUsers.length > 0) {
-          setSyncFeedback({
-            text: `✅ ${serverUsers.length} usuários sincronizados com sucesso!`,
-            type: 'success',
-          });
-        } else {
-          setSyncFeedback({
-            text: result.error || 'Não foi possível buscar os dados da planilha. Verifique a conexão.',
-            type: 'error',
-          });
-        }
-      }
-    } catch (err: any) {
-      setSyncFeedback({
-        text: err.message || 'Erro ao sincronizar com a planilha.',
-        type: 'error',
-      });
-    } finally {
-      setIsSyncingSheet(false);
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-50 bg-neutral-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
       <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl border border-neutral-200 animate-in fade-in zoom-in-95 duration-200">
@@ -148,46 +103,33 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
             Acesso ao Sistema
           </p>
 
-          {/* Quick Database Status Badge on Top Right */}
-          {dbStatus.tested && (
-            <button
-              type="button"
-              onClick={() => setIsDbTestOpen(true)}
-              className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border transition cursor-pointer ${
+          {/* Database Connection Status Badge */}
+          <div className="mt-3.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-emerald-950/60 border border-emerald-400/30 text-emerald-100 shadow-inner">
+            <span
+              className={`w-2 h-2 rounded-full shrink-0 ${
                 dbStatus.connected
-                  ? 'bg-emerald-950/60 border-emerald-400/40 text-emerald-200 hover:bg-emerald-950/80'
-                  : 'bg-amber-950/60 border-amber-400/40 text-amber-200 hover:bg-amber-950/80'
+                  ? 'bg-emerald-400 animate-pulse'
+                  : dbStatus.tested
+                  ? 'bg-amber-400'
+                  : 'bg-neutral-400 animate-ping'
               }`}
-            >
-              <span className={`w-2 h-2 rounded-full ${dbStatus.connected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-              <span>BD: {dbStatus.connected ? `${dbStatus.type.toUpperCase()} (${dbStatus.latency}ms)` : 'Local'}</span>
-            </button>
-          )}
+            />
+            <span>
+              {dbStatus.tested
+                ? dbStatus.connected
+                  ? `Banco de Dados Conectado (${dbStatus.type === 'postgres' ? 'PostgreSQL / Render' : dbStatus.type.toUpperCase()})`
+                  : 'Banco Local Ativo'
+                : 'Verificando banco de dados...'}
+            </span>
+          </div>
         </div>
 
-        {/* Form Body */}
+        {/* Form Body - Somente Usuário, Senha e Botão de Acesso */}
         <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4">
           {errorMsg && (
             <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 font-bold flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{errorMsg}</span>
-            </div>
-          )}
-
-          {syncFeedback && (
-            <div
-              className={`p-3 rounded-xl text-xs font-bold flex items-center gap-2 ${
-                syncFeedback.type === 'success'
-                  ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
-                  : 'bg-amber-50 border border-amber-200 text-amber-800'
-              }`}
-            >
-              {syncFeedback.type === 'success' ? (
-                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
-              ) : (
-                <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
-              )}
-              <span>{syncFeedback.text}</span>
             </div>
           )}
 
@@ -235,58 +177,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
           {/* Botão de Login Principal */}
           <button
             type="submit"
-            disabled={isLoading || isSyncingSheet}
+            disabled={isLoading}
             className="w-full mt-2 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition active:scale-98 disabled:opacity-70 cursor-pointer"
           >
             <LogIn className="w-4 h-4" />
             <span>{isLoading ? 'Autenticando...' : 'Acessar o Sistema'}</span>
           </button>
-
-          {/* Botões Utilitários: Testar BD & Sincronizar Planilha */}
-          <div className="pt-2 border-t border-neutral-100 flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={() => setIsDbTestOpen(true)}
-              className="w-full py-2.5 px-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-900 font-bold text-xs flex items-center justify-center gap-2 transition active:scale-98 cursor-pointer shadow-sm"
-            >
-              <Database className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Testar Banco de Dados (OnRender)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleSyncFromSpreadsheet}
-              disabled={isSyncingSheet || isLoading}
-              className="w-full py-2 px-3 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-medium text-xs flex items-center justify-center gap-2 transition active:scale-98 disabled:opacity-60 cursor-pointer"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 text-emerald-700 ${isSyncingSheet ? 'animate-spin' : ''}`} />
-              <span>{isSyncingSheet ? 'Sincronizando com a Planilha...' : 'Sincronizar Dados (Planilha)'}</span>
-            </button>
-          </div>
         </form>
       </div>
-
-      {/* Modal de Teste e Configuração do Banco de Dados */}
-      <DatabaseTestModal
-        isOpen={isDbTestOpen}
-        onClose={() => {
-          setIsDbTestOpen(false);
-          // Revalida status rápido
-          checkDatabaseHealth().then((diag) => {
-            setDbStatus({
-              tested: true,
-              connected: diag.status === 'connected',
-              type: diag.type,
-              userCount: diag.userCount,
-              latency: diag.latencyMs,
-            });
-          }).catch(() => {});
-        }}
-        onQuickFillUser={(user, pass) => {
-          setUsername(user);
-          setPassword(pass);
-        }}
-      />
     </div>
   );
 };

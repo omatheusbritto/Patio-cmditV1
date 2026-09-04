@@ -7,6 +7,7 @@ interface AndroidBottomNavProps {
   onSelectTab: (tab: NavTab) => void;
   parkedCount: number;
   historyCount: number;
+  isMaster?: boolean;
 }
 
 export const AndroidBottomNav: React.FC<AndroidBottomNavProps> = ({
@@ -14,33 +15,40 @@ export const AndroidBottomNav: React.FC<AndroidBottomNavProps> = ({
   onSelectTab,
   parkedCount,
   historyCount,
+  isMaster = false,
 }) => {
-  const tabs = [
+  const allTabs = [
     {
       id: 'register' as NavTab,
       label: 'Registrar',
       icon: Camera,
       badge: null,
+      masterOnly: false,
     },
     {
       id: 'patio' as NavTab,
       label: 'Pátio & Vagas',
       icon: Layers,
       badge: parkedCount > 0 ? parkedCount : null,
+      masterOnly: false,
     },
     {
       id: 'history' as NavTab,
       label: 'Histórico & Busca',
       icon: History,
       badge: historyCount > 0 ? historyCount : null,
+      masterOnly: false,
     },
     {
       id: 'logs' as NavTab,
       label: 'Logs & Acesso',
       icon: ShieldCheck,
       badge: null,
+      masterOnly: true,
     },
   ];
+
+  const tabs = allTabs.filter((tab) => !tab.masterOnly || isMaster);
 
   return (
     <nav className="fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-neutral-200/80 shadow-lg select-none pb-[env(safe-area-inset-bottom)]">

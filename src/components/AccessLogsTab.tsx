@@ -49,8 +49,9 @@ export const AccessLogsTab: React.FC<AccessLogsTabProps> = ({
 
   const isMaster = currentSession?.user?.role === 'master';
 
-  // Load logs on mount
+  // Load logs on mount (Master only)
   const loadLogs = async (showRefreshIndicator = false) => {
+    if (!isMaster) return;
     if (showRefreshIndicator) setIsRefreshing(true);
     else setIsLoading(true);
 
@@ -68,8 +69,26 @@ export const AccessLogsTab: React.FC<AccessLogsTabProps> = ({
   };
 
   useEffect(() => {
-    loadLogs();
-  }, []);
+    if (isMaster) {
+      loadLogs();
+    } else {
+      setIsLoading(false);
+    }
+  }, [isMaster]);
+
+  if (!isMaster) {
+    return (
+      <div className="max-w-md mx-auto my-12 p-6 bg-white rounded-3xl border border-neutral-200 shadow-xl text-center space-y-3 animate-in fade-in zoom-in-95">
+        <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-800 mx-auto flex items-center justify-center">
+          <ShieldCheck className="w-6 h-6" />
+        </div>
+        <h2 className="text-lg font-black text-neutral-900">Acesso Restrito ao Master</h2>
+        <p className="text-xs text-neutral-600">
+          Apenas usuários administradores com perfil Master têm permissão para visualizar os relatórios e logs de auditoria do sistema.
+        </p>
+      </div>
+    );
+  }
 
   // Restore logs from Google Sheets
   const handleRestoreFromSheet = async () => {

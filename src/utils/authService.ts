@@ -191,7 +191,10 @@ export async function createNewUser(
   try {
     const res = await fetch('/api/users', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+      },
       body: JSON.stringify({
         username: cleanUsername,
         name: name.trim(),
@@ -250,7 +253,10 @@ export async function resetUserPassword(
   try {
     const res = await fetch('/api/users/reset-password', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+      },
       body: JSON.stringify({ userId, newPassword: newPassword.trim() }),
     });
     const data = await res.json();
@@ -283,7 +289,10 @@ export async function toggleUserStatus(
   try {
     const res = await fetch('/api/users/toggle-status', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+      },
       body: JSON.stringify({ userId }),
     });
     const data = await res.json();
@@ -317,7 +326,10 @@ export async function updateUserAccount(
   try {
     const res = await fetch(`/api/users/${userId}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+      },
       body: JSON.stringify(updatedData),
     });
     const data = await res.json();
@@ -362,6 +374,9 @@ export async function deleteUser(userId: string): Promise<{ success: boolean; er
   try {
     const res = await fetch(`/api/users/${userId}`, {
       method: 'DELETE',
+      headers: {
+        ...getAuthHeaders(),
+      },
     });
     const data = await res.json();
     if (res.ok && data.success) {
@@ -526,6 +541,23 @@ export function getCurrentSession(): AuthSession | null {
 }
 
 /**
+ * Retorna os headers de autenticação para requisições seguras ao servidor (RBAC)
+ */
+export function getAuthHeaders(): Record<string, string> {
+  try {
+    const session = getCurrentSession();
+    if (session && session.user) {
+      return {
+        'x-user-role': session.user.role || 'operador',
+        'x-user-username': session.user.username || '',
+        'x-user-id': session.user.id || '',
+      };
+    }
+  } catch {}
+  return {};
+}
+
+/**
  * Encerra a sessão e registra o evento de LOGOUT
  */
 export function logoutUser(reason: string = 'Logout manual'): void {
@@ -607,7 +639,11 @@ export interface DatabaseDiagnosticResult {
  */
 export async function checkDatabaseHealth(): Promise<DatabaseDiagnosticResult> {
   try {
-    const res = await fetch('/api/db/diagnostic');
+    const res = await fetch('/api/db/diagnostic', {
+      headers: {
+        ...getAuthHeaders(),
+      },
+    });
     const data = await res.json();
     return data;
   } catch (err: any) {
@@ -633,7 +669,10 @@ export async function configureDatabaseUrl(databaseUrl: string): Promise<{ succe
   try {
     const res = await fetch('/api/db/configure', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+      },
       body: JSON.stringify({ databaseUrl }),
     });
     return await res.json();

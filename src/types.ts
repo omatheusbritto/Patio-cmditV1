@@ -10,7 +10,7 @@ export type OperationType = 'entrada' | 'saida' | 'abastecimento' | 'pdc' | 'qua
 
 export type EntrySubtype = 'bolsao_40' | 'retorno' | 'recusa' | 'remocao_adesivos';
 
-export type VehicleFleetType = 'GF' | 'RAC' | 'OUTROS' | string;
+export type VehicleFleetType = 'RAC' | 'GF' | 'LQV' | 'OUTROS' | string;
 
 export type VehicleStatus = 'parked' | 'released';
 
@@ -85,6 +85,8 @@ export interface VehicleRecord {
   status: VehicleStatus;
   releasedAt?: number;
   notes?: string;
+  operatorName?: string;
+  username?: string;
 }
 
 export interface SectorConfig {

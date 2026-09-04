@@ -314,55 +314,109 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
 
   // Merge server records, online sheet records, and uploaded excel tabs
   const normalizedTabsData = useMemo(() => {
-    const STANDARD_11_HEADERS = [
-      'DATA',
-      'HORA',
-      'OPERADOR (AUDITORIA)',
-      'PLACA',
-      'CONDUTOR',
-      'KM (ODÔMETRO)',
-      'NÍVEL DO COMBUSTÍVEL',
-      'LITROS ABASTECIDOS',
-      'TIPO DE COMBUSTÍVEL',
-      'DESTINO',
-      'OBSERVAÇÕES',
-    ];
-
     const result: Record<string, SheetTabInfo> = {
       entrada: {
-        name: '📥 Entrada',
+        name: 'ENTRADAS',
         category: 'entrada',
-        headers: [...STANDARD_11_HEADERS],
+        headers: [
+          'DATA',
+          'HORA',
+          'PLACA',
+          'CONDUTOR',
+          'KM(ODOMETRO)',
+          'NIVEL DO COMBUSTIVEL',
+          'ORIGEM',
+          'DESTINO',
+          'CHAVE RESERVA',
+          'TIPO DE VEICULO(RAC, GF, LQV, OUTROS)',
+          'FOTO DO DOCUMENTO',
+          'OBSERVAÇÕES',
+          'OPERADOR DO REGISTRO',
+        ],
         rows: [],
       },
       saida: {
-        name: '📤 Saída',
+        name: 'SAIDA',
         category: 'saida',
-        headers: [...STANDARD_11_HEADERS],
+        headers: [
+          'DATA',
+          'HORA',
+          'PLACA',
+          'CONDUTOR',
+          'KM(ODOMETRO)',
+          'NIVEL DO COMBUSTIVEL',
+          'DESTINO',
+          'CHAVE RESERVA',
+          'FOTO DO DOCUMENTO',
+          'TIPO DE VEICULO(RAC, GF, LQV, OUTROS)',
+          'OBSERVAÇÕES',
+          'OPERADOR DO REGISTRO',
+        ],
         rows: [],
       },
       combustivel: {
-        name: '⛽ Combustível',
+        name: 'COMBUSTIVEL',
         category: 'combustivel',
-        headers: [...STANDARD_11_HEADERS],
+        headers: [
+          'DATA',
+          'HORA',
+          'PLACA',
+          'KM ODOMETRO',
+          'NIVEL DO COMBUSTIVEL',
+          'CONDUTOR',
+          'DESTINO',
+          'OBSERVAÇÕES',
+          'TIPO DE COMBUSTIVEL',
+          'LITROS ABASTECIDOS',
+          'OPERADOR DO REGISTRO',
+        ],
         rows: [],
       },
       qualidade51: {
-        name: '🔍 Qualidade 51',
+        name: 'QUALIDADE 51',
         category: 'qualidade51',
-        headers: [...STANDARD_11_HEADERS],
+        headers: [
+          'DATA',
+          'HORA',
+          'PLACA',
+          'CONDUTOR',
+          'CARACTERISTICAS DO VEICULO',
+          'NIVEL DO COMBUSTIVEL',
+          'DESTINO(P1, P2, P3, R1, ADM)',
+          'OPERADOR DO REGISTRO',
+        ],
         rows: [],
       },
       pdc: {
-        name: '📋 Fila PDC',
+        name: 'Fila PDC',
         category: 'pdc',
-        headers: [...STANDARD_11_HEADERS],
+        headers: [
+          'DATA',
+          'HORA',
+          'PLACA',
+          'NIVEL DO COMBUSTIVEL',
+          'OBSERVAÇÕES',
+          'CONDUTOR(OPERADOR DO REGISTRO)',
+        ],
         rows: [],
       },
       all: {
         name: '📊 Todos os Registros',
         category: 'all',
-        headers: [...STANDARD_11_HEADERS],
+        headers: [
+          'DATA',
+          'HORA',
+          'PLACA',
+          'CONDUTOR',
+          'KM(ODOMETRO)',
+          'NIVEL DO COMBUSTIVEL',
+          'ORIGEM',
+          'DESTINO',
+          'CHAVE RESERVA',
+          'TIPO DE VEICULO',
+          'OBSERVAÇÕES',
+          'OPERADOR DO REGISTRO',
+        ],
         rows: [],
       },
     };
@@ -383,7 +437,7 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
           result[cat] = {
             name: tabName,
             category: cat,
-            headers: tabContent.headers || [...STANDARD_11_HEADERS],
+            headers: tabContent.headers || [...result.entrada.headers],
             rows: [],
           };
         }
@@ -409,79 +463,130 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
         const timeStr = dateObj.toLocaleTimeString('pt-BR');
         const op = rec.operationType || 'entrada';
 
-        const operador = rec.operatorName || 'Operador';
+        const operador = rec.operatorName || 'OPERADOR';
         const condutor = rec.driverName || rec.condutor || '-';
         const placa = (rec.plate || '').toUpperCase().trim();
         const destino =
           rec.destination ||
           (op === 'pdc'
-            ? 'Fila PDC (Lavagem/Oficina)'
+            ? 'FILA PDC (LAVAGEM/OFICINA)'
             : op === 'qualidade_51' && rec.location
             ? `Pátio ${rec.location}`
             : '-');
-        const km = rec.km ? `${String(rec.km).replace(/\s*km/i, '')} km` : '-';
+        const km = rec.km ? `${String(rec.km).replace(/\s*km/i, '')} KM` : '-';
         
         let nivelCombustivel = rec.fuel || '-';
-        if (nivelCombustivel === '1/8') nivelCombustivel = '1/8 (Reserva)';
+        if (nivelCombustivel === '1/8') nivelCombustivel = '1/8 (RESERVA)';
         else if (nivelCombustivel === '2/8') nivelCombustivel = '2/8 (1/4)';
         else if (nivelCombustivel === '3/8') nivelCombustivel = '3/8';
         else if (nivelCombustivel === '4/8' || nivelCombustivel === '4/8 • 1/2' || nivelCombustivel === 'Meio Tanque (1/2)') nivelCombustivel = '4/8 (1/2)';
         else if (nivelCombustivel === '5/8') nivelCombustivel = '5/8';
         else if (nivelCombustivel === '6/8') nivelCombustivel = '6/8 (3/4)';
         else if (nivelCombustivel === '7/8') nivelCombustivel = '7/8';
-        else if (nivelCombustivel === '8/8' || nivelCombustivel === '8/8 • Cheio' || nivelCombustivel === 'Tanque Cheio') nivelCombustivel = '8/8 (Cheio)';
+        else if (nivelCombustivel === '8/8' || nivelCombustivel === '8/8 • Cheio' || nivelCombustivel === 'Tanque Cheio') nivelCombustivel = '8/8 (CHEIO)';
 
-        const litrosAbastecidos = rec.liters ? `${String(rec.liters).replace(/\s*l/i, '')} L` : (op === 'abastecimento' ? '-' : '-');
-        const tipoCombustivel = rec.fuelType || (op === 'abastecimento' ? 'DIESEL S10' : '-');
-
-        const extras: string[] = [];
-        if (rec.hasSpareKey !== undefined && rec.hasSpareKey !== null) {
-          extras.push(`Chave: ${rec.hasSpareKey ? 'SIM' : 'NÃO'}`);
-        }
-        if (rec.fleetType) extras.push(`Frota: ${rec.fleetType}`);
-        if (rec.entrySubtype) extras.push(`Subtipo: ${rec.entrySubtype}`);
-        if (rec.entryReason) extras.push(`Motivo: ${rec.entryReason}`);
-        if (rec.characteristic) extras.push(`Caract: ${rec.characteristic}`);
-        if (rec.location) extras.push(`Local: ${rec.location}`);
-        if (rec.origin) extras.push(`Origem: ${rec.origin}`);
-
-        let observacoes = rec.notes || rec.description || '';
-        if (extras.length > 0) {
-          const extraStr = `[${extras.join(' | ')}]`;
-          observacoes = observacoes ? `${extraStr} ${observacoes}` : extraStr;
-        }
-        if (!observacoes) observacoes = '-';
-
-        const standardRowObj = {
-          DATA: dateStr,
-          HORA: timeStr,
-          'OPERADOR (AUDITORIA)': operador,
-          PLACA: placa,
-          CONDUTOR: condutor,
-          'KM (ODÔMETRO)': km,
-          'NÍVEL DO COMBUSTÍVEL': nivelCombustivel,
-          'LITROS ABASTECIDOS': litrosAbastecidos,
-          'TIPO DE COMBUSTÍVEL': tipoCombustivel,
-          DESTINO: destino,
-          OBSERVAÇÕES: observacoes,
-          _rawDate: rec.createdAt,
-          _plate: placa,
-        };
+        const litrosAbastecidos = rec.liters ? `${String(rec.liters).replace(/\s*l/i, '')} L` : '-';
+        const tipoCombustivel = rec.fuelType || (op === 'abastecimento' ? 'DIESEL' : '-');
+        const chaveReserva = rec.hasSpareKey === true ? 'SIM' : (rec.hasSpareKey === false ? 'NÃO' : '-');
+        const tipoVeiculo = (rec.fleetType || 'GF').toUpperCase();
+        const fotoDoc = rec.hasDocumentPhoto || rec.documentPhotoUrl ? 'SIM (REGISTRADA)' : 'NÃO';
+        const observacoes = (rec.notes || rec.description || '-').toUpperCase();
+        const caracteristica = (rec.characteristic || '-').toUpperCase();
 
         if (op === 'saida') {
-          result.saida.rows.push(standardRowObj);
+          result.saida.rows.push({
+            DATA: dateStr,
+            HORA: timeStr,
+            PLACA: placa,
+            CONDUTOR: condutor,
+            'KM(ODOMETRO)': km,
+            'NIVEL DO COMBUSTIVEL': nivelCombustivel,
+            DESTINO: destino,
+            'CHAVE RESERVA': chaveReserva,
+            'FOTO DO DOCUMENTO': fotoDoc,
+            'TIPO DE VEICULO(RAC, GF, LQV, OUTROS)': tipoVeiculo,
+            'OBSERVAÇÕES': observacoes,
+            'OPERADOR DO REGISTRO': operador,
+            _rawDate: rec.createdAt,
+            _plate: placa,
+          });
         } else if (op === 'abastecimento') {
-          result.combustivel.rows.push(standardRowObj);
+          result.combustivel.rows.push({
+            DATA: dateStr,
+            HORA: timeStr,
+            PLACA: placa,
+            'KM ODOMETRO': km,
+            'NIVEL DO COMBUSTIVEL': nivelCombustivel,
+            CONDUTOR: condutor,
+            DESTINO: destino || 'POSTO DE ABASTECIMENTO',
+            'OBSERVAÇÕES': observacoes,
+            'TIPO DE COMBUSTIVEL': tipoCombustivel,
+            'LITROS ABASTECIDOS': litrosAbastecidos,
+            'OPERADOR DO REGISTRO': operador,
+            _rawDate: rec.createdAt,
+            _plate: placa,
+          });
         } else if (op === 'qualidade_51') {
-          result.qualidade51.rows.push(standardRowObj);
+          result.qualidade51.rows.push({
+            DATA: dateStr,
+            HORA: timeStr,
+            PLACA: placa,
+            CONDUTOR: condutor,
+            'CARACTERISTICAS DO VEICULO': caracteristica,
+            'NIVEL DO COMBUSTIVEL': nivelCombustivel,
+            'DESTINO(P1, P2, P3, R1, ADM)': destino || 'P1',
+            'OPERADOR DO REGISTRO': operador,
+            _rawDate: rec.createdAt,
+            _plate: placa,
+          });
         } else if (op === 'pdc') {
-          result.pdc.rows.push(standardRowObj);
+          result.pdc.rows.push({
+            DATA: dateStr,
+            HORA: timeStr,
+            PLACA: placa,
+            'NIVEL DO COMBUSTIVEL': nivelCombustivel,
+            'OBSERVAÇÕES': observacoes,
+            'CONDUTOR(OPERADOR DO REGISTRO)': condutor && condutor !== '-' ? `${condutor} (${operador})` : operador,
+            _rawDate: rec.createdAt,
+            _plate: placa,
+          });
         } else {
-          result.entrada.rows.push(standardRowObj);
+          result.entrada.rows.push({
+            DATA: dateStr,
+            HORA: timeStr,
+            PLACA: placa,
+            CONDUTOR: condutor,
+            'KM(ODOMETRO)': km,
+            'NIVEL DO COMBUSTIVEL': nivelCombustivel,
+            ORIGEM: (rec.origin || 'PÁTIO PRINCIPAL').toUpperCase(),
+            DESTINO: destino,
+            'CHAVE RESERVA': chaveReserva,
+            'TIPO DE VEICULO(RAC, GF, LQV, OUTROS)': tipoVeiculo,
+            'FOTO DO DOCUMENTO': fotoDoc,
+            'OBSERVAÇÕES': observacoes,
+            'OPERADOR DO REGISTRO': operador,
+            _rawDate: rec.createdAt,
+            _plate: placa,
+          });
         }
 
         // All tab
-        result.all.rows.push(standardRowObj);
+        result.all.rows.push({
+          DATA: dateStr,
+          HORA: timeStr,
+          PLACA: placa,
+          CONDUTOR: condutor,
+          'KM(ODOMETRO)': km,
+          'NIVEL DO COMBUSTIVEL': nivelCombustivel,
+          ORIGEM: (rec.origin || 'PÁTIO PRINCIPAL').toUpperCase(),
+          DESTINO: destino,
+          'CHAVE RESERVA': chaveReserva,
+          'TIPO DE VEICULO': tipoVeiculo,
+          'OBSERVAÇÕES': observacoes,
+          'OPERADOR DO REGISTRO': operador,
+          _rawDate: rec.createdAt,
+          _plate: placa,
+        });
       });
     }
 

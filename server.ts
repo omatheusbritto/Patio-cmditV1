@@ -9,7 +9,12 @@ import {
   appendVehicleRecordToSheet,
   initializeAllSpreadsheetTabs,
 } from './server/googleSheetsService';
-import { initDatabase, getActiveDbType } from './server/db';
+import {
+  initDatabase,
+  getActiveDbType,
+  getDatabaseDiagnosticAsync,
+  setRuntimeDatabaseUrl,
+} from './server/db';
 import {
   loadServerUsersAsync,
   loadServerUsers,
@@ -196,6 +201,72 @@ async function startServer() {
   }
 
   // --------------------------------------------------------------------------
+  // ROLE-BASED ACCESS CONTROL (RBAC) MIDDLEWARE: MASTER-ONLY PRIVILEGES
+  // --------------------------------------------------------------------------
+  const requireMaster = (req: Request, res: Response, next: express.NextFunction): void => {
+    const roleHeader =
+      (req.headers['x-user-role'] as string) ||
+      (req.query?.role as string) ||
+      (req.body?.userRole as string);
+    const usernameHeader =
+      (req.headers['x-user-username'] as string) ||
+      (req.query?.username as string) ||
+      (req.body?.requestUsername as string);
+
+    const isMaster =
+      roleHeader === 'master' ||
+      (usernameHeader &&
+        ['mastercmdit', 'desenvolvedor'].includes(usernameHeader.toLowerCase().trim()));
+
+    if (!isMaster) {
+      res.status(403).json({
+        success: false,
+        error: 'Acesso restrito: Esta operação requer privilégios de Administrador Master.',
+      });
+      return;
+    }
+    next();
+  };
+
+  // --------------------------------------------------------------------------
+  // DATABASE DIAGNOSTIC & RUNTIME CONFIGURATION API (Master Only for changes)
+  // --------------------------------------------------------------------------
+  app.get('/api/db/diagnostic', async (req: Request, res: Response) => {
+    try {
+      const customUrl = (req.query?.customUrl as string) || undefined;
+      const diagnostic = await getDatabaseDiagnosticAsync(customUrl);
+      res.json(diagnostic);
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        status: 'disconnected',
+        type: 'json',
+        provider: 'Servidor Offline',
+        isRenderPostgres: false,
+        latencyMs: 0,
+        userCount: 0,
+        connectionUrlMasked: 'Desconectado',
+        message: err.message,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  });
+
+  app.post('/api/db/configure', requireMaster, async (req: Request, res: Response) => {
+    try {
+      const { databaseUrl } = req.body;
+      if (!databaseUrl || typeof databaseUrl !== 'string') {
+        res.status(400).json({ success: false, message: 'URL de conexão inválida.' });
+        return;
+      }
+      const result = await setRuntimeDatabaseUrl(databaseUrl);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // --------------------------------------------------------------------------
   // USER MANAGEMENT & MULTI-DEVICE AUTHENTICATION (Centralized Store + Google Sheet Sync)
   // --------------------------------------------------------------------------
   app.get('/api/users', async (req: Request, res: Response) => {
@@ -207,7 +278,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/users', async (req: Request, res: Response) => {
+  app.post('/api/users', requireMaster, async (req: Request, res: Response) => {
     try {
       const { username, name, password, role, whatsapp } = req.body;
       const result = await createServerUserAsync(username, name, password, role, whatsapp);
@@ -224,7 +295,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/users/reset-password', async (req: Request, res: Response) => {
+  app.post('/api/users/reset-password', requireMaster, async (req: Request, res: Response) => {
     try {
       const { userId, newPassword } = req.body;
       const result = await resetServerUserPasswordAsync(userId, newPassword);
@@ -243,7 +314,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/users/toggle-status', async (req: Request, res: Response) => {
+  app.post('/api/users/toggle-status', requireMaster, async (req: Request, res: Response) => {
     try {
       const { userId } = req.body;
       const result = await toggleServerUserStatusAsync(userId);
@@ -262,7 +333,7 @@ async function startServer() {
     }
   });
 
-  app.put('/api/users/:id', async (req: Request, res: Response) => {
+  app.put('/api/users/:id', requireMaster, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const { username, name, password, role, whatsapp, isActive } = req.body;
@@ -279,7 +350,7 @@ async function startServer() {
     }
   });
 
-  app.patch('/api/users/:id', async (req: Request, res: Response) => {
+  app.patch('/api/users/:id', requireMaster, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const result = await updateServerUserAsync(id, req.body);
@@ -295,7 +366,7 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/users/:id', async (req: Request, res: Response) => {
+  app.delete('/api/users/:id', requireMaster, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const allUsersBefore = await loadServerUsersAsync();
@@ -317,7 +388,7 @@ async function startServer() {
   });
 
   // API Route: Sincronizar todos os usuários com a planilha (Aba USUARIOS_CMDIT)
-  app.post('/api/users/sync-sheet', async (req: Request, res: Response) => {
+  app.post('/api/users/sync-sheet', requireMaster, async (req: Request, res: Response) => {
     try {
       const { webhookUrl, users: requestedUsers } = req.body;
       const usersToSync = Array.isArray(requestedUsers) && requestedUsers.length > 0
@@ -358,7 +429,7 @@ async function startServer() {
   });
 
   // API Route: Restaurar operadores diretamente da aba USUARIOS_CMDIT do Google Sheets
-  app.all('/api/users/restore-from-sheet', async (req: Request, res: Response) => {
+  app.all('/api/users/restore-from-sheet', requireMaster, async (req: Request, res: Response) => {
     try {
       const webhookUrl = req.body?.webhookUrl || (req.query?.webhookUrl as string) || undefined;
       const result = await restoreUsersFromSpreadsheetAsync(webhookUrl);
@@ -461,7 +532,7 @@ async function startServer() {
   // --------------------------------------------------------------------------
   // ACCESS & AUDIT LOGS API (RASTREAMENTO DE LOGIN / LOGOUT / PLANILHA)
   // --------------------------------------------------------------------------
-  app.get('/api/logs', async (req: Request, res: Response) => {
+  app.get('/api/logs', requireMaster, async (req: Request, res: Response) => {
     try {
       const logs = await loadServerLogsAsync();
       res.json({ success: true, logs });
@@ -503,7 +574,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/logs/restore-from-sheet', async (req: Request, res: Response) => {
+  app.post('/api/logs/restore-from-sheet', requireMaster, async (req: Request, res: Response) => {
     try {
       const webhookUrl = req.body?.webhookUrl || (req.query?.webhookUrl as string) || undefined;
       const result = await restoreLogsFromSpreadsheetAsync(webhookUrl);
@@ -513,7 +584,7 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/logs', async (req: Request, res: Response) => {
+  app.delete('/api/logs', requireMaster, async (req: Request, res: Response) => {
     try {
       await clearServerLogsAsync();
       res.json({ success: true, message: 'Histórico de logs limpo com sucesso.' });
@@ -579,7 +650,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/settings/sheets', async (req: Request, res: Response) => {
+  app.post('/api/settings/sheets', requireMaster, async (req: Request, res: Response) => {
     try {
       const { sheetsWebhookUrl, spreadsheetId, spreadsheetUrl, autoSync } = req.body;
       const updated = await saveServerSettingsAsync({

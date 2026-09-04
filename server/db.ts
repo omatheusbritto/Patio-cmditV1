@@ -1,11 +1,58 @@
 import { Pool as PgPool } from 'pg';
 import mysql, { Pool as MySqlPool } from 'mysql2/promise';
+import fs from 'fs';
+import path from 'path';
 
 let pgPool: PgPool | null = null;
 let mysqlPool: MySqlPool | null = null;
 let activeDbType: 'postgres' | 'mysql' | 'json' = 'json';
 let isDbAvailable: boolean = false;
 let configuredDatabaseUrl: string | null = null;
+
+const DATA_DIR = path.join(process.cwd(), 'data');
+const DB_CONFIG_FILE = path.join(DATA_DIR, 'db-config.json');
+
+/**
+ * Loads persisted database URL from data/db-config.json if available
+ */
+export function loadSavedDbUrl(): string | null {
+  try {
+    if (fs.existsSync(DB_CONFIG_FILE)) {
+      const content = fs.readFileSync(DB_CONFIG_FILE, 'utf-8');
+      const parsed = JSON.parse(content);
+      if (parsed && typeof parsed.databaseUrl === 'string' && parsed.databaseUrl.trim()) {
+        return parsed.databaseUrl.trim();
+      }
+    }
+  } catch (err) {
+    console.warn('Notice: db-config.json could not be read:', err);
+  }
+  return null;
+}
+
+/**
+ * Saves database URL to data/db-config.json for automatic reconnects across server restarts
+ */
+export function saveDatabaseUrl(url: string | null): void {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(
+      DB_CONFIG_FILE,
+      JSON.stringify(
+        {
+          databaseUrl: url ? url.trim() : null,
+          savedAt: new Date().toISOString(),
+        },
+        null,
+        2
+      )
+    );
+  } catch (err) {
+    console.warn('Notice: db-config.json could not be written:', err);
+  }
+}
 
 export interface DatabaseDiagnostic {
   status: 'connected' | 'disconnected' | 'fallback_local';
@@ -45,8 +92,10 @@ export function getPgPool(customUrl?: string): PgPool | null {
   const databaseUrl =
     customUrl ||
     configuredDatabaseUrl ||
-    process.env.AUTH_DATABASE_URL ||
+    loadSavedDbUrl() ||
+    process.env.INTERNAL_DATABASE_URL ||
     process.env.DATABASE_URL ||
+    process.env.AUTH_DATABASE_URL ||
     process.env.POSTGRES_URL ||
     process.env.RENDER_DATABASE_URL ||
     process.env.RENDER_DB_URL ||
@@ -107,7 +156,9 @@ export async function setRuntimeDatabaseUrl(url: string): Promise<{ success: boo
     } catch {}
     pgPool = null;
   }
-  configuredDatabaseUrl = url.trim() || null;
+  const cleanUrl = url.trim() || null;
+  configuredDatabaseUrl = cleanUrl;
+  saveDatabaseUrl(cleanUrl);
   await initDatabase();
   const diag = await getDatabaseDiagnosticAsync();
   return {

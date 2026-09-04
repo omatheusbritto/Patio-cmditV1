@@ -26,19 +26,20 @@ export interface SheetVehiclePayload {
 
 const SPREADSHEET_TITLE = 'Controle de Frota & Pátio CMDIT';
 
-// Header specifications per tab customized strictly as requested (no unnecessary fields):
+// Header specifications per tab customized strictly as requested by user (100% faithful to CMDIT specifications):
 export const HEADERS_ENTRADA = [
   'DATA',
   'HORA',
   'PLACA',
   'CONDUTOR',
-  'KM (ODÔMETRO)',
-  'NÍVEL DO COMBUSTÍVEL',
+  'KM(ODOMETRO)',
+  'NIVEL DO COMBUSTIVEL',
   'ORIGEM',
   'DESTINO',
   'CHAVE RESERVA',
-  'TIPO DE VEÍCULO',
-  'OBSERVAÇÃO',
+  'TIPO DE VEICULO(RAC, GF, LQV, OUTROS)',
+  'FOTO DO DOCUMENTO',
+  'OBSERVAÇÕES',
   'OPERADOR DO REGISTRO',
 ];
 
@@ -47,11 +48,13 @@ export const HEADERS_SAIDA = [
   'HORA',
   'PLACA',
   'CONDUTOR',
-  'KM (ODÔMETRO)',
-  'NÍVEL DO COMBUSTÍVEL',
+  'KM(ODOMETRO)',
+  'NIVEL DO COMBUSTIVEL',
   'DESTINO',
   'CHAVE RESERVA',
-  'OBSERVAÇÃO',
+  'FOTO DO DOCUMENTO',
+  'TIPO DE VEICULO(RAC, GF, LQV, OUTROS)',
+  'OBSERVAÇÕES',
   'OPERADOR DO REGISTRO',
 ];
 
@@ -60,9 +63,9 @@ export const HEADERS_QUALIDADE = [
   'HORA',
   'PLACA',
   'CONDUTOR',
-  'CARACTERÍSTICA DO VEÍCULO',
-  'NÍVEL DO COMBUSTÍVEL',
-  'DESTINO',
+  'CARACTERISTICAS DO VEICULO',
+  'NIVEL DO COMBUSTIVEL',
+  'DESTINO(P1, P2, P3, R1, ADM)',
   'OPERADOR DO REGISTRO',
 ];
 
@@ -70,10 +73,13 @@ export const HEADERS_COMBUSTIVEL = [
   'DATA',
   'HORA',
   'PLACA',
-  'KM (ODÔMETRO)',
-  'NÍVEL DO COMBUSTÍVEL',
+  'KM ODOMETRO',
+  'NIVEL DO COMBUSTIVEL',
   'CONDUTOR',
   'DESTINO',
+  'OBSERVAÇÕES',
+  'TIPO DE COMBUSTIVEL',
+  'LITROS ABASTECIDOS',
   'OPERADOR DO REGISTRO',
 ];
 
@@ -81,48 +87,64 @@ export const HEADERS_PDC = [
   'DATA',
   'HORA',
   'PLACA',
-  'NÍVEL DO COMBUSTÍVEL',
-  'OBSERVAÇÃO',
-  'OPERADOR DO REGISTRO',
+  'NIVEL DO COMBUSTIVEL',
+  'OBSERVAÇÕES',
+  'CONDUTOR(OPERADOR DO REGISTRO)',
 ];
 
-// Standard tab specifications
+export const HEADERS_USUARIOS = [
+  'HORA E DATA DE CRIAÇÃO DO USUARIO',
+  'MATRICULA/USUARIO',
+  'NOME DO USUARIO',
+  'SENHA',
+  'WHATSAPP',
+  'STATUS',
+  'ULTIMO ACESSO',
+];
+
+// Standard tab specifications with exact tab names requested by the user
 export const TAB_DEFINITIONS = {
   geral: {
-    title: '📊 Geral',
-    aliases: ['geral', 'todos', 'registros', 'movimentacoes', 'consolidado', 'sheet1', 'planilha1', 'página1'],
+    title: 'ENTRADAS',
+    aliases: ['entradas', 'entrada', 'geral', 'todos', 'registros', 'movimentacoes', 'sheet1', 'planilha1'],
     color: { red: 0.15, green: 0.2, blue: 0.3 },
     headers: HEADERS_ENTRADA,
   },
   entrada: {
-    title: '📥 Entrada',
-    aliases: ['entrada', 'entradas', 'chegada', 'inbound', 'in'],
+    title: 'ENTRADAS',
+    aliases: ['entradas', 'entrada', '📥 entrada', 'chegada', 'inbound', 'in'],
     color: { red: 0.13, green: 0.69, blue: 0.3 },
     headers: HEADERS_ENTRADA,
   },
   saida: {
-    title: '📤 Saída',
-    aliases: ['saida', 'saidas', 'liberacao', 'outbound', 'out'],
+    title: 'SAIDA',
+    aliases: ['saida', 'saída', 'saidas', 'saídas', '📤 saída', 'liberacao', 'outbound', 'out'],
     color: { red: 0.88, green: 0.25, blue: 0.25 },
     headers: HEADERS_SAIDA,
   },
   combustivel: {
-    title: '⛽ Combustível',
-    aliases: ['combustivel', 'abastecimento', 'abastecimentos', 'abastec', 'posto', 'gasolina', 'diesel'],
+    title: 'COMBUSTIVEL',
+    aliases: ['combustivel', 'combustível', '⛽ combustível', 'abastecimento', 'abastecimentos', 'posto'],
     color: { red: 0.06, green: 0.73, blue: 0.85 },
     headers: HEADERS_COMBUSTIVEL,
   },
   pdc: {
-    title: '📋 Fila PDC',
-    aliases: ['fila pdc', 'pdc', 'fila_pdc', 'fila', 'lavagem', 'oficina'],
+    title: 'Fila PDC',
+    aliases: ['fila pdc', 'pdc', '📋 fila pdc', 'fila', 'lavagem', 'oficina'],
     color: { red: 0.95, green: 0.55, blue: 0.1 },
     headers: HEADERS_PDC,
   },
   qualidade: {
-    title: '🔍 Qualidade 51',
-    aliases: ['qualidade 51', 'qualidade', '51 (qualidade)', '51', 'vistoria', 'inspecao'],
+    title: 'QUALIDADE 51',
+    aliases: ['qualidade 51', 'qualidade51', '🔍 qualidade 51', 'qualidade', '51', 'vistoria', 'inspecao'],
     color: { red: 0.39, green: 0.36, blue: 0.93 },
     headers: HEADERS_QUALIDADE,
+  },
+  usuarios: {
+    title: 'USUARIOS_CMDIT',
+    aliases: ['usuarios_cmdit', 'usuarios', 'usuários', 'users'],
+    color: { red: 0.2, green: 0.4, blue: 0.8 },
+    headers: HEADERS_USUARIOS,
   },
 };
 
@@ -189,6 +211,13 @@ export async function createStandardFleetSpreadsheet(accessToken: string): Promi
             tabColor: TAB_DEFINITIONS.qualidade.color,
           },
         },
+        {
+          properties: {
+            title: TAB_DEFINITIONS.usuarios.title,
+            gridProperties: { rowCount: 1000, columnCount: TAB_DEFINITIONS.usuarios.headers.length + 2 },
+            tabColor: TAB_DEFINITIONS.usuarios.color,
+          },
+        },
       ],
     }),
   });
@@ -234,6 +263,10 @@ async function initializeSpreadsheetHeaders(spreadsheetId: string, accessToken: 
       values: [TAB_DEFINITIONS.qualidade.headers],
     },
     {
+      range: `'${TAB_DEFINITIONS.usuarios.title}'!A1:${String.fromCharCode(64 + TAB_DEFINITIONS.usuarios.headers.length)}1`,
+      values: [TAB_DEFINITIONS.usuarios.headers],
+    },
+    {
       range: "'📊 Visão Geral'!A1:G11",
       values: [
         ['PAINEL DE CONTROLE DE FROTA - CMDIT', '', '', '', '', '', ''],
@@ -272,7 +305,7 @@ async function initializeSpreadsheetHeaders(spreadsheetId: string, accessToken: 
  */
 async function ensureTargetTab(
   spreadsheetId: string,
-  categoryKey: 'entrada' | 'saida' | 'combustivel' | 'pdc' | 'qualidade',
+  categoryKey: 'entrada' | 'saida' | 'combustivel' | 'pdc' | 'qualidade' | 'usuarios',
   accessToken: string
 ): Promise<{ title: string; sheetId?: number }> {
   const tabDef = TAB_DEFINITIONS[categoryKey];
@@ -408,7 +441,7 @@ export async function initializeAllSpreadsheetTabs(
   spreadsheetId: string,
   accessToken: string
 ): Promise<{ success: boolean; tabs: string[] }> {
-  const tabs = ['entrada', 'saida', 'combustivel', 'pdc', 'qualidade'] as const;
+  const tabs = ['entrada', 'saida', 'combustivel', 'pdc', 'qualidade', 'usuarios'] as const;
   const createdOrFoundTabs: string[] = [];
 
   for (const cat of tabs) {
@@ -559,6 +592,9 @@ export async function appendVehicleRecordToSheet(
   const chaveReserva = formatSpareKey(record.hasSpareKey);
   const tipoVeiculo = String(record.fleetType || 'GF').toUpperCase().trim();
   const observacoes = String(record.notes || record.description || '-').toUpperCase().trim();
+  const hasDoc = (record as any).hasDocumentPhoto === true || String((record as any).hasDocumentPhoto).toLowerCase() === 'true' || !!(record as any).documentPhotoUrl;
+  const fotoDoc = hasDoc ? 'SIM (REGISTRADA)' : 'NÃO';
+
   const rawChar = record.characteristic || (record as any).caracteristica || (record as any).tipoCaracteristica || '-';
   const formatCharWithEmoji = (val: string) => {
     if (!val || val === '-') return '-';
@@ -572,12 +608,18 @@ export async function appendVehicleRecordToSheet(
   };
   const caracteristica = formatCharWithEmoji(String(rawChar));
 
+  const tipoCombustivel = String(record.fuelType || (record as any).tipoCombustivel || 'DIESEL').toUpperCase().trim();
+  const litrosClean = record.liters !== undefined && record.liters !== null && String(record.liters).trim() !== ''
+    ? `${String(record.liters).trim().replace(/\s*l/i, '').toUpperCase()} L`
+    : '-';
+
   let categoryKey: 'entrada' | 'saida' | 'combustivel' | 'pdc' | 'qualidade' = 'entrada';
   let customRow: string[] = [];
 
   if (record.operationType === 'saida') {
     categoryKey = 'saida';
-    // 10 Colunas: Data, Hora, Placa, Condutor, KM, Nível Combustível, Destino, Chave Reserva, Observação, Operador
+    // SAIDA: 12 Colunas Exatas:
+    // A: DATA | B: HORA | C: PLACA | D: CONDUTOR | E: KM(ODOMETRO) | F: NIVEL DO COMBUSTIVEL | G: DESTINO | H: CHAVE RESERVA | I: FOTO DO DOCUMENTO | J: TIPO DE VEICULO(RAC, GF, LQV, OUTROS) | K: OBSERVAÇÕES | L: OPERADOR DO REGISTRO
     customRow = [
       dateStr,
       timeStr,
@@ -587,12 +629,15 @@ export async function appendVehicleRecordToSheet(
       nivelCombustivel,
       destino,
       chaveReserva,
+      fotoDoc,
+      tipoVeiculo,
       observacoes,
       operador,
     ];
   } else if (record.operationType === 'abastecimento') {
     categoryKey = 'combustivel';
-    // 8 Colunas: Data, Hora, Placa, KM, Nível Combustível, Condutor, Destino, Operador
+    // COMBUSTIVEL: 11 Colunas Exatas:
+    // A: DATA | B: HORA | C: PLACA | D: KM ODOMETRO | E: NIVEL DO COMBUSTIVEL | F: CONDUTOR | G: DESTINO | H: OBSERVAÇÕES | I: TIPO DE COMBUSTIVEL | J: LITROS ABASTECIDOS | K: OPERADOR DO REGISTRO
     customRow = [
       dateStr,
       timeStr,
@@ -601,22 +646,28 @@ export async function appendVehicleRecordToSheet(
       nivelCombustivel,
       condutor,
       destino || 'POSTO DE ABASTECIMENTO',
+      observacoes,
+      tipoCombustivel,
+      litrosClean,
       operador,
     ];
   } else if (record.operationType === 'pdc') {
     categoryKey = 'pdc';
-    // 6 Colunas: Data, Hora, Placa, Nível Combustível, Observação, Operador
+    // Fila PDC: 6 Colunas Exatas:
+    // A: DATA | B: HORA | C: PLACA | D: NIVEL DO COMBUSTIVEL | E: OBSERVAÇÕES | F: CONDUTOR(OPERADOR DO REGISTRO)
+    const condutorOuOperador = condutor && condutor !== '-' ? `${condutor} (${operador})` : operador;
     customRow = [
       dateStr,
       timeStr,
       placa,
       nivelCombustivel,
       observacoes,
-      operador,
+      condutorOuOperador,
     ];
   } else if (record.operationType === 'qualidade_51') {
     categoryKey = 'qualidade';
-    // 8 Colunas: Data, Hora, Placa, Condutor, Característica do Veículo, Nível Combustível, Destino, Operador
+    // QUALIDADE 51: 8 Colunas Exatas:
+    // A: DATA | B: HORA | C: PLACA | D: CONDUTOR | E: CARACTERISTICAS DO VEICULO | F: NIVEL DO COMBUSTIVEL | G: DESTINO(P1, P2, P3, R1, ADM) | H: OPERADOR DO REGISTRO
     customRow = [
       dateStr,
       timeStr,
@@ -629,7 +680,8 @@ export async function appendVehicleRecordToSheet(
     ];
   } else {
     categoryKey = 'entrada';
-    // 12 Colunas: Data, Hora, Placa, Condutor, KM, Nível Combustível, Origem, Destino, Chave Reserva, Tipo Veículo, Observação, Operador
+    // ENTRADAS: 13 Colunas Exatas:
+    // A: DATA | B: HORA | C: PLACA | D: CONDUTOR | E: KM(ODOMETRO) | F: NIVEL DO COMBUSTIVEL | G: ORIGEM | H: DESTINO | I: CHAVE RESERVA | J: TIPO DE VEICULO(RAC, GF, LQV, OUTROS) | K: FOTO DO DOCUMENTO | L: OBSERVAÇÕES | M: OPERADOR DO REGISTRO
     customRow = [
       dateStr,
       timeStr,
@@ -641,6 +693,7 @@ export async function appendVehicleRecordToSheet(
       destino || 'BOLSÃO 40',
       chaveReserva,
       tipoVeiculo,
+      fotoDoc,
       observacoes,
       operador,
     ];
