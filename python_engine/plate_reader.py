@@ -19,11 +19,9 @@ MERCOSUL_MOTO_REGEX = re.compile(r'^[A-Z]{3}[0-9]{2}[A-Z][0-9]$')
 OLD_PLATE_REGEX = re.compile(r'^[A-Z]{3}[0-9]{4}$')
 
 AVAILABLE_MODELS = [
-    'gemini-2.5-flash',
-    'gemini-3.7-flash',
-    'gemini-3.5-flash',
-    'gemini-flash-latest',
-    'gemini-2.5-flash-lite'
+    'gemini-3.1-flash-lite',
+    'gemini-3.8-flash',
+    'gemini-flash-latest'
 ]
 
 def sanitize_plate_text(text: str) -> str:

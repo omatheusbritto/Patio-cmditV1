@@ -293,8 +293,9 @@ export async function enhanceImageForPlateOcr(
 
 export async function optimizeImageForOcr(
   sourceDataUrl: string,
-  maxDimension: number = 1024,
-  quality: number = 0.85
+  maxDimension: number = 768,
+  quality: number = 0.80,
+  stampDate: boolean = false
 ): Promise<OptimizedImageResult> {
   return new Promise((resolve) => {
     try {
@@ -333,15 +334,17 @@ export async function optimizeImageForOcr(
           });
         }
 
-        // Enable high-quality image smoothing
+        // Enable high-quality hardware-accelerated image smoothing
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
 
         // Draw and compress to optimized JPEG
         ctx.drawImage(img, 0, 0, targetW, targetH);
 
-        // Embed discrete bottom-right date and time
-        stampDateTimeOnCanvas(ctx, targetW, targetH, new Date());
+        // Optional date/time stamp (disabled by default for OCR to maximize recognition clarity and speed)
+        if (stampDate) {
+          stampDateTimeOnCanvas(ctx, targetW, targetH, new Date());
+        }
 
         const optimizedDataUrl = canvas.toDataURL('image/jpeg', quality);
 

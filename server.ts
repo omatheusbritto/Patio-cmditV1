@@ -53,12 +53,36 @@ dotenv.config();
 
 const rootDir = process.cwd();
 
-// Priority order for ultra-fast, high-accuracy recognition
+// Priority order for ultra-fast, high-accuracy recognition (using verified active models)
 const FAST_VISION_MODELS = [
-  'gemini-2.5-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-3.8-flash',
   'gemini-flash-latest',
-  'gemini-2.5-flash-lite',
 ];
+
+let geminiClientInstance: GoogleGenAI | null = null;
+function getGeminiClient(apiKey: string): GoogleGenAI {
+  if (!geminiClientInstance) {
+    geminiClientInstance = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
+  }
+  return geminiClientInstance;
+}
+
+function callWithTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`Timeout de ${timeoutMs}ms no modelo ${label}`)), timeoutMs)
+    ),
+  ]);
+}
 
 /**
  * High-Speed Python License Plate Engine (via stdin/stdout)
@@ -1883,16 +1907,9 @@ async function startServer() {
         if (mimeMatch) mimeType = mimeMatch[1];
       }
 
-      const ai = new GoogleGenAI({
-        apiKey,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build',
-          },
-        },
-      });
+      const ai = getGeminiClient(apiKey);
 
-      // Streamlined prompt optimized for sub-500ms token generation with high-precision character disambiguation
+      // Streamlined prompt optimized for sub-second token generation with high-precision character disambiguation
       const systemInstruction = `Perito em leitura e identificação de placas veiculares brasileiras (Mercosul e Modelo Antigo).
 REGRAS DE LEITURA ÓPTICA DE ALTA PRECISÃO (99.9% ACURÁCIA):
 1. Extraia exatamente os 7 caracteres principais da chapa da placa veicular (sem espaços, sem hífen).
@@ -1911,43 +1928,46 @@ REGRAS DE LEITURA ÓPTICA DE ALTA PRECISÃO (99.9% ACURÁCIA):
 
       let lastError: any = null;
 
-      // Try fast-path models sequentially
+      // Try fast-path models sequentially with 6.5s timeout per model to prevent stalling
       for (const modelName of FAST_VISION_MODELS) {
         try {
-          const response = await ai.models.generateContent({
-            model: modelName,
-            contents: [
-              {
-                inlineData: {
-                  data: base64Data,
-                  mimeType,
-                },
-              },
-              {
-                text: 'Leia a placa veicular brasileira desta imagem imediatamente.',
-              },
-            ],
-            config: {
-              systemInstruction,
-              responseMimeType: 'application/json',
-              responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                  found: { type: Type.BOOLEAN },
-                  plate: { type: Type.STRING },
-                  plateType: { type: Type.STRING },
-                  boundingBox: {
-                    type: Type.ARRAY,
-                    items: { type: Type.INTEGER },
+          const response = await callWithTimeout(
+            ai.models.generateContent({
+              model: modelName,
+              contents: [
+                {
+                  inlineData: {
+                    data: base64Data,
+                    mimeType,
                   },
-                  isCertain: { type: Type.BOOLEAN },
-                  analysisNotes: { type: Type.STRING },
                 },
-                required: ['found', 'plate', 'isCertain'],
+                {
+                  text: 'Leia a placa veicular brasileira desta imagem imediatamente.',
+                },
+              ],
+              config: {
+                systemInstruction,
+                responseMimeType: 'application/json',
+                responseSchema: {
+                  type: Type.OBJECT,
+                  properties: {
+                    found: { type: Type.BOOLEAN },
+                    plate: { type: Type.STRING },
+                    plateType: { type: Type.STRING },
+                    boundingBox: {
+                      type: Type.ARRAY,
+                      items: { type: Type.INTEGER },
+                    },
+                    isCertain: { type: Type.BOOLEAN },
+                  },
+                  required: ['found', 'plate'],
+                },
+                temperature: 0.0,
               },
-              temperature: 0.0,
-            },
-          });
+            }),
+            6500,
+            modelName
+          );
 
           const responseText = response.text?.trim() || '{}';
           let parsedData: any = {};
@@ -1974,13 +1994,15 @@ REGRAS DE LEITURA ÓPTICA DE ALTA PRECISÃO (99.9% ACURÁCIA):
             plate: rawPlate,
             plateType: parsedData.plateType || 'mercosul_car',
             boundingBox: parsedData.boundingBox || null,
-            isCertain: Boolean(parsedData.isCertain),
-            analysisNotes: parsedData.analysisNotes || `Lido em ${elapsedMs}ms via ${modelName}`,
+            isCertain: parsedData.isCertain !== undefined ? Boolean(parsedData.isCertain) : isFound,
+            analysisNotes: isFound
+              ? `Placa lida em ${elapsedMs}ms via ${modelName}`
+              : `Nenhuma placa identificada (${elapsedMs}ms)`,
             processingTimeMs: elapsedMs,
           });
           return;
         } catch (modelErr: any) {
-          console.warn(`Model ${modelName} fast-path error:`, modelErr.message);
+          console.warn(`Model ${modelName} fast-path error (${modelErr.message}), trying next model...`);
           lastError = modelErr;
         }
       }
