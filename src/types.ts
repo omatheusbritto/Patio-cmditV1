@@ -14,7 +14,22 @@ export type VehicleFleetType = 'RAC' | 'GF' | 'LQV' | 'OUTROS' | string;
 
 export type VehicleStatus = 'parked' | 'released';
 
-export type NavTab = 'register' | 'patio' | 'history' | 'logs';
+export type NavTab = 'register' | 'patio' | 'movimentacao' | 'history' | 'logs';
+
+export interface VehicleMovement {
+  id: string;
+  createdAt: number;
+  dateFormatted: string; // A: data
+  timeFormatted: string; // B: hora
+  plate: string; // C: placa
+  origin: string; // D: origem
+  destination: string; // E: destino
+  observation: string; // F: observação
+  fuelLevel?: string; // G: combustível
+  odometer?: number | string; // H: km odômetro
+  operatorName: string; // J: operador
+  photoUrl?: string;
+}
 
 export type LogEventType = 'LOGIN' | 'LOGOUT' | 'EXPIRADO';
 

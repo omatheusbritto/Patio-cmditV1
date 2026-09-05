@@ -561,6 +561,20 @@ export const GOOGLE_APPS_SCRIPT_TEMPLATE = `// =================================
 // ============================================================================
 
 var TAB_CONFIGS = {
+  movimentacao: {
+    tabName: "MOVIMENTAÇÃO",
+    headers: [
+      "DATA",
+      "HORA",
+      "PLACA",
+      "ORIGEM",
+      "DESTINO",
+      "OBSERVAÇÃO",
+      "COMBUSTÍVEL",
+      "KM ODÔMETRO",
+      "OPERADOR"
+    ]
+  },
   entrada: {
     tabName: "ENTRADAS",
     headers: [

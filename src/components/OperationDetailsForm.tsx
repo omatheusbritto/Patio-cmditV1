@@ -25,6 +25,7 @@ import {
   CheckCircle,
 } from 'lucide-react';
 import { QuickPlateEditModal } from './QuickPlateEditModal';
+import { DocumentCameraModal } from './DocumentCameraModal';
 import { formatPlateForDisplay } from '../utils/plateNormalizer';
 import { stampDateTimeOnCanvas, stampDateTimeOnDataUrl, compressAndStampImage } from '../utils/imageOptimizer';
 
@@ -100,6 +101,7 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
   // Document photo state (optional)
   const [documentPhotoUrl, setDocumentPhotoUrl] = useState<string>(initialDocumentPhotoUrl);
   const [isProcessingDocPhoto, setIsProcessingDocPhoto] = useState<boolean>(false);
+  const [isDocCameraOpen, setIsDocCameraOpen] = useState<boolean>(false);
   const docCameraInputRef = useRef<HTMLInputElement | null>(null);
   const docGalleryInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -829,7 +831,7 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
             <div className="flex items-center gap-2 pt-1">
               <button
                 type="button"
-                onClick={() => docCameraInputRef.current?.click()}
+                onClick={() => setIsDocCameraOpen(true)}
                 className="flex-1 py-1.5 rounded-lg bg-white border border-emerald-300 text-emerald-800 text-xs font-bold hover:bg-emerald-100 flex items-center justify-center gap-1.5 transition cursor-pointer"
               >
                 <Camera className="w-3.5 h-3.5" />
@@ -846,27 +848,37 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              disabled={isProcessingDocPhoto}
-              onClick={() => docCameraInputRef.current?.click()}
-              className="py-3 px-3 rounded-xl border border-neutral-300 bg-neutral-50 hover:bg-neutral-100 text-neutral-800 font-bold text-xs flex flex-col items-center justify-center gap-1 active:scale-95 transition cursor-pointer"
-            >
-              <Camera className="w-5 h-5 text-emerald-700" />
-              <span>Tirar Foto Doc</span>
-              <span className="text-[9px] font-normal text-neutral-500">Câmera direta</span>
-            </button>
+          <div className="flex flex-col gap-2">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={isProcessingDocPhoto}
+                onClick={() => setIsDocCameraOpen(true)}
+                className="py-3 px-3 rounded-xl border border-emerald-400 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold text-xs flex flex-col items-center justify-center gap-1 active:scale-95 transition cursor-pointer shadow-xs"
+              >
+                <Camera className="w-5 h-5 text-emerald-700" />
+                <span>Tirar Foto Doc</span>
+                <span className="text-[9px] font-normal text-emerald-700">Câmera integrada direta</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={isProcessingDocPhoto}
+                onClick={() => docGalleryInputRef.current?.click()}
+                className="py-3 px-3 rounded-xl border border-neutral-300 bg-neutral-50 hover:bg-neutral-100 text-neutral-800 font-bold text-xs flex flex-col items-center justify-center gap-1 active:scale-95 transition cursor-pointer"
+              >
+                <ImageIcon className="w-5 h-5 text-blue-700" />
+                <span>Buscar na Galeria</span>
+                <span className="text-[9px] font-normal text-neutral-500">Arquivo / Imagem</span>
+              </button>
+            </div>
 
             <button
               type="button"
-              disabled={isProcessingDocPhoto}
-              onClick={() => docGalleryInputRef.current?.click()}
-              className="py-3 px-3 rounded-xl border border-neutral-300 bg-neutral-50 hover:bg-neutral-100 text-neutral-800 font-bold text-xs flex flex-col items-center justify-center gap-1 active:scale-95 transition cursor-pointer"
+              onClick={() => docCameraInputRef.current?.click()}
+              className="text-[10px] text-neutral-400 hover:text-neutral-600 underline text-center transition cursor-pointer"
             >
-              <ImageIcon className="w-5 h-5 text-blue-700" />
-              <span>Buscar na Galeria</span>
-              <span className="text-[9px] font-normal text-neutral-500">Arquivo/Imagem</span>
+              Ou usar seletor padrão do aparelho se necessário
             </button>
           </div>
         )}
@@ -891,6 +903,14 @@ export const OperationDetailsForm: React.FC<OperationDetailsFormProps> = ({
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>
+
+      {/* Modal de Câmera Direta para Foto do Documento */}
+      <DocumentCameraModal
+        isOpen={isDocCameraOpen}
+        onClose={() => setIsDocCameraOpen(false)}
+        onPhotoCaptured={(url) => setDocumentPhotoUrl(url)}
+        title="Foto do Documento (CRLV)"
+      />
 
       {/* Modal para Alterar Placa mantendo a foto */}
       <QuickPlateEditModal

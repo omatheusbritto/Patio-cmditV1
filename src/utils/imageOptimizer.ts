@@ -82,8 +82,9 @@ export async function stampDateTimeOnDataUrl(
 
 /**
  * Universal safe image optimizer for Camera and File inputs (Placas, Painel, Documentos CRLV).
- * Resizes ultra-high resolution mobile photos (12MP - 108MP) to crisp, manageable ~120KB-250KB JPEGs.
- * Embeds discreet date/time watermark and avoids browser OOM / memory crash.
+ * Resizes ultra-high resolution mobile photos (12MP - 108MP) to crisp, manageable ~80KB-160KB JPEGs.
+ * Uses native browser hardware-accelerated decode (createImageBitmap) to bypass high RAM allocation,
+ * avoiding "Sem espaço de memória" / OutOfMemory errors on mobile devices.
  */
 export async function compressAndStampImage(
   input: File | Blob | string,
@@ -95,12 +96,89 @@ export async function compressAndStampImage(
   } = {}
 ): Promise<string> {
   const {
-    maxDimension = 1280,
-    quality = 0.85,
+    maxDimension = 1200,
+    quality = 0.80,
     stampDate = true,
     date = new Date(),
   } = options;
 
+  // 1. High Performance Native Path: If createImageBitmap is available and input is Blob/File,
+  // decode directly into downscaled memory to prevent mobile memory exhaustion.
+  if (
+    typeof window !== 'undefined' &&
+    'createImageBitmap' in window &&
+    typeof input === 'object' &&
+    input !== null &&
+    input instanceof Blob
+  ) {
+    try {
+      let bitmap: ImageBitmap | null = null;
+      try {
+        // Try hardware resize decode first (supported in modern Chrome / Safari)
+        bitmap = await (createImageBitmap as any)(input, {
+          resizeWidth: maxDimension,
+          resizeQuality: 'medium',
+        });
+      } catch {
+        // Fallback standard decode
+        try {
+          bitmap = await createImageBitmap(input);
+        } catch {
+          bitmap = null;
+        }
+      }
+
+      if (bitmap) {
+        const origW = bitmap.width;
+        const origH = bitmap.height;
+
+        let targetW = origW;
+        let targetH = origH;
+
+        if (origW > maxDimension || origH > maxDimension) {
+          if (origW >= origH) {
+            targetW = maxDimension;
+            targetH = Math.max(1, Math.round((origH * maxDimension) / origW));
+          } else {
+            targetH = maxDimension;
+            targetW = Math.max(1, Math.round((origW * maxDimension) / origH));
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext('2d', { alpha: false });
+
+        if (ctx) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'medium';
+          ctx.drawImage(bitmap, 0, 0, targetW, targetH);
+
+          // Close bitmap immediately to release RAM/GPU texture
+          bitmap.close();
+
+          if (stampDate) {
+            stampDateTimeOnCanvas(ctx, targetW, targetH, date);
+          }
+
+          const resultDataUrl = canvas.toDataURL('image/jpeg', quality);
+
+          // Free canvas memory buffer
+          canvas.width = 1;
+          canvas.height = 1;
+
+          return resultDataUrl;
+        }
+
+        bitmap.close();
+      }
+    } catch (bitmapErr) {
+      console.warn('createImageBitmap memory-safe path fallback:', bitmapErr);
+    }
+  }
+
+  // 2. Fallback Path: Standard Image element with immediate memory release
   let objectUrl: string | null = null;
 
   try {
@@ -154,7 +232,7 @@ export async function compressAndStampImage(
         }
 
         ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
+        ctx.imageSmoothingQuality = 'medium';
 
         // Draw downscaled photo
         ctx.drawImage(img, 0, 0, targetW, targetH);
@@ -165,6 +243,11 @@ export async function compressAndStampImage(
         }
 
         const resultDataUrl = canvas.toDataURL('image/jpeg', quality);
+
+        // Clear canvas
+        canvas.width = 1;
+        canvas.height = 1;
+
         resolve(resultDataUrl);
       };
 

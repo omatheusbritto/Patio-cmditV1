@@ -50,6 +50,8 @@ import { MyShiftHistoryModal } from './components/MyShiftHistoryModal';
 import { OnlineSpreadsheetViewerModal } from './components/OnlineSpreadsheetViewerModal';
 import { AccessLogsTab } from './components/AccessLogsTab';
 import { DatabaseTestModal } from './components/DatabaseTestModal';
+import { MovementTab } from './components/MovementTab';
+import { MasterDatabaseBackupModal } from './components/MasterDatabaseBackupModal';
 import {
   getCurrentSession,
   logoutUser,
@@ -60,7 +62,7 @@ import {
   setAutoPlateReadPreference,
 } from './utils/preferencesService';
 import { AuthSession } from './types';
-import { ShieldCheck, Clock, History, LogOut, AlertTriangle, FileSpreadsheet, Database } from 'lucide-react';
+import { ShieldCheck, Clock, History, LogOut, AlertTriangle, FileSpreadsheet, Database, HardDrive } from 'lucide-react';
 
 export default function App() {
   // Authentication & Shift Session State (8 hours)
@@ -69,6 +71,8 @@ export default function App() {
   const [showMyShiftModal, setShowMyShiftModal] = useState(false);
   const [isSpreadsheetModalOpen, setIsSpreadsheetModalOpen] = useState(false);
   const [isDbTestOpen, setIsDbTestOpen] = useState(false);
+  const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
+  const [selectedVehicleForMovement, setSelectedVehicleForMovement] = useState<VehicleRecord | null>(null);
   const [sessionTimeText, setSessionTimeText] = useState<string>('');
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
 
@@ -528,7 +532,16 @@ export default function App() {
                   title="Configurar & Testar Conexão PostgreSQL (Render)"
                 >
                   <Database className="w-3.5 h-3.5 text-indigo-400" />
-                  <span className="hidden sm:inline">Banco de Dados</span>
+                  <span className="hidden sm:inline">Banco</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsBackupModalOpen(true)}
+                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-[11px] font-bold flex items-center gap-1 transition cursor-pointer border border-slate-600/50"
+                  title="Backup e Restauração do Banco de Dados PostgreSQL (Render)"
+                >
+                  <HardDrive className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="hidden sm:inline">Backup</span>
                 </button>
                 <button
                   type="button"
@@ -537,7 +550,7 @@ export default function App() {
                   title="Consultar Planilha Online (5 Abas)"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-300" />
-                  <span className="hidden sm:inline">Planilha Online</span>
+                  <span className="hidden sm:inline">Planilha</span>
                 </button>
                 <button
                   type="button"
@@ -603,6 +616,7 @@ export default function App() {
               <HomeScreen
                 onStartRegistration={() => handleStartRegistration()}
                 onOpenPatio={() => setActiveTab('patio')}
+                onOpenMovement={() => setActiveTab('movimentacao')}
                 onOpenHistory={() => setActiveTab('history')}
                 onOpenLogs={() => setActiveTab('logs')}
                 onOpenSpreadsheetOnline={() => setIsSpreadsheetModalOpen(true)}
@@ -757,7 +771,13 @@ export default function App() {
                 onEditPlate={() => setCurrentStep('plate_confirm')}
                 onUpdatePlate={(newPlate) => setPlate(newPlate)}
                 onRetakePhoto={() => setCurrentStep('camera')}
-                onRetakeDashboardPhoto={() => setCurrentStep('dashboard_camera')}
+                onRetakeDashboardPhoto={() => {
+                  if (operationType === 'entrada' || operationType === 'saida') {
+                    setCurrentStep('operation_details');
+                  } else {
+                    setCurrentStep('dashboard_camera');
+                  }
+                }}
                 onEditOperation={() => setCurrentStep('operation_select')}
                 onEditDetails={() => {
                   if (operationType === 'abastecimento') {
@@ -795,10 +815,24 @@ export default function App() {
             onReleaseVehicle={(id) => handleUpdateVehicleStatus(id, 'released')}
             onStartNewRegistration={() => handleStartRegistration('entrada')}
             onOpenHistoryTab={() => setActiveTab('history')}
+            onMoveVehicle={(vehicle) => {
+              setSelectedVehicleForMovement(vehicle);
+              setActiveTab('movimentacao');
+            }}
           />
         )}
 
-        {/* Tab 3: Histórico com Busca Rápida */}
+        {/* Tab 3: Movimentação de Veículos */}
+        {activeTab === 'movimentacao' && (
+          <MovementTab
+            parkedVehicles={records.filter((r) => r.status === 'parked')}
+            initialSelectedVehicle={selectedVehicleForMovement}
+            onClearInitialVehicle={() => setSelectedVehicleForMovement(null)}
+            onOpenSpreadsheetOnline={() => setIsSpreadsheetModalOpen(true)}
+          />
+        )}
+
+        {/* Tab 4: Histórico com Busca Rápida */}
         {activeTab === 'history' && (
            <SmartHistory
              records={records}
@@ -810,7 +844,7 @@ export default function App() {
            />
         )}
 
-        {/* Tab 4: Tratamento de Logs de Acesso */}
+        {/* Tab 5: Tratamento de Logs de Acesso */}
         {activeTab === 'logs' && (
           <AccessLogsTab
             currentSession={authSession}
@@ -849,6 +883,18 @@ export default function App() {
         <DatabaseTestModal
           isOpen={isDbTestOpen}
           onClose={() => setIsDbTestOpen(false)}
+          onOpenBackupRestore={() => setIsBackupModalOpen(true)}
+        />
+      )}
+
+      {/* Backup & Restauração do Banco de Dados PostgreSQL (Render) - Apenas Master */}
+      {authSession?.user.role === 'master' && (
+        <MasterDatabaseBackupModal
+          isOpen={isBackupModalOpen}
+          onClose={() => setIsBackupModalOpen(false)}
+          onRestoreComplete={() => {
+            getAllRecords().then(setRecords);
+          }}
         />
       )}
 

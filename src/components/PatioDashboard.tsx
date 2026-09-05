@@ -20,11 +20,21 @@ import {
   Package,
   ShieldCheck,
   Wrench,
+  ArrowLeftRight,
+  ChevronDown,
+  ChevronRight,
+  Grid,
 } from 'lucide-react';
 import { LocationCode, PatioMetrics, VehicleRecord } from '../types';
-import { SECTORS } from '../utils/storageService';
 import { formatPlateForDisplay } from '../utils/plateNormalizer';
-import { generateWhatsAppMessage, getLocationMeaning, openWhatsAppShare } from '../utils/shareService';
+import { generateWhatsAppMessage, openWhatsAppShare } from '../utils/shareService';
+import {
+  BASE_YARD_LOCATIONS,
+  QUADRANT_ROWS,
+  formatQuadrantRow,
+  formatQuadrantRowCode,
+  matchLocationToGroup,
+} from '../utils/yardLocations';
 
 interface PatioDashboardProps {
   records: VehicleRecord[];
@@ -33,6 +43,7 @@ interface PatioDashboardProps {
   onReleaseVehicle: (id: string) => void;
   onStartNewRegistration: () => void;
   onOpenHistoryTab: (initialSectorFilter?: LocationCode) => void;
+  onMoveVehicle?: (vehicle: VehicleRecord) => void;
 }
 
 export const PatioDashboard: React.FC<PatioDashboardProps> = ({
@@ -42,20 +53,29 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
   onReleaseVehicle,
   onStartNewRegistration,
   onOpenHistoryTab,
+  onMoveVehicle,
 }) => {
-  const [selectedSectorFilter, setSelectedSectorFilter] = useState<LocationCode | 'ALL'>('ALL');
+  const [selectedFilter, setSelectedFilter] = useState<string>('ALL');
+  const [expandedQuadrant, setExpandedQuadrant] = useState<number | null>(1);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [viewMode, setViewMode] = useState<'quadrantes' | 'especiais' | 'todos'>('quadrantes');
 
   const parkedRecords = records.filter((r) => r.status === 'parked');
 
+  // Count vehicles in a specific location string or quadrant code
+  const getCountInLocation = (target: string): number => {
+    return parkedRecords.filter((v) => matchLocationToGroup(v.location, target)).length;
+  };
+
   const filteredParked = parkedRecords.filter((v) => {
-    const matchesSector = selectedSectorFilter === 'ALL' || v.location === selectedSectorFilter;
+    const matchesFilter = selectedFilter === 'ALL' || matchLocationToGroup(v.location, selectedFilter);
     const matchesSearch =
       !searchQuery.trim() ||
       v.plate.toUpperCase().includes(searchQuery.trim().toUpperCase()) ||
       (v.driverName && v.driverName.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (v.location && v.location.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (v.notes && v.notes.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesSector && matchesSearch;
+    return matchesFilter && matchesSearch;
   });
 
   const getFuelBadgeColor = (fuel: string) => {
@@ -65,20 +85,8 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
     return 'bg-emerald-100 text-emerald-800 border-emerald-300';
   };
 
-  const getOperationIcon = (op?: string) => {
-    switch (op) {
-      case 'entrada':
-        return <LogIn className="w-3.5 h-3.5 text-emerald-700" />;
-      case 'saida':
-        return <LogOut className="w-3.5 h-3.5 text-rose-700" />;
-      case 'pdc':
-        return <Wrench className="w-3.5 h-3.5 text-amber-700" />;
-      case 'qualidade_51':
-        return <ShieldCheck className="w-3.5 h-3.5 text-indigo-700" />;
-      default:
-        return <Car className="w-3.5 h-3.5 text-emerald-700" />;
-    }
-  };
+  const quadrants = BASE_YARD_LOCATIONS.filter((l) => l.isQuadrant);
+  const specials = BASE_YARD_LOCATIONS.filter((l) => !l.isQuadrant);
 
   return (
     <div className="flex flex-col gap-4 max-w-md mx-auto w-full px-4 py-4 pb-24">
@@ -91,10 +99,10 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
             </div>
             <div>
               <h2 className="text-lg font-black tracking-tight leading-none text-white">
-                Ocupação do Pátio
+                Pátio & Vagas
               </h2>
               <p className="text-[11px] text-emerald-200 font-semibold mt-0.5">
-                CMDIT Gestão em Tempo Real
+                Gestão Visual de Quadrantes & Filas CMDIT
               </p>
             </div>
           </div>
@@ -115,7 +123,7 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
             <div className="flex items-center gap-2">
               <Fuel className="w-4 h-4 text-emerald-300" />
               <span className="text-xs font-bold text-emerald-100">
-                Nível Médio de Combustível da Frota
+                Nível Médio de Combustível
               </span>
             </div>
             <span className="font-mono text-sm font-black text-emerald-300">
@@ -142,83 +150,243 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
             <div className="flex items-center gap-1.5 text-[11px] text-amber-200 font-medium pt-0.5">
               <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
               <span>
-                <strong>{metrics.criticalFuelCount} veículo(s)</strong> com tanque na reserva (≤ 2/8).
+                <strong>{metrics.criticalFuelCount} veículo(s)</strong> na reserva (≤ 2/8).
               </span>
             </div>
           )}
         </div>
       </div>
 
-      {/* Sector Vehicles Grid */}
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between px-1">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-600 flex items-center gap-1.5">
-            <MapPin className="w-3.5 h-3.5 text-emerald-700" />
-            Veículos por Setor
-          </h3>
-          <span className="text-[11px] font-bold text-neutral-600">
-            {metrics.totalParked} veículos no pátio
-          </span>
-        </div>
+      {/* Switcher: Visão por Quadrantes vs Setores Especiais */}
+      <div className="grid grid-cols-3 gap-1.5 bg-neutral-200/70 p-1 rounded-2xl">
+        <button
+          type="button"
+          onClick={() => setViewMode('quadrantes')}
+          className={`py-2 px-2 rounded-xl text-xs font-black transition ${
+            viewMode === 'quadrantes'
+              ? 'bg-white text-emerald-900 shadow-sm'
+              : 'text-neutral-600 hover:text-neutral-900'
+          }`}
+        >
+          Quadrantes (1-5)
+        </button>
+        <button
+          type="button"
+          onClick={() => setViewMode('especiais')}
+          className={`py-2 px-2 rounded-xl text-xs font-black transition ${
+            viewMode === 'especiais'
+              ? 'bg-white text-emerald-900 shadow-sm'
+              : 'text-neutral-600 hover:text-neutral-900'
+          }`}
+        >
+          Setores Especiais
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setViewMode('todos');
+            setSelectedFilter('ALL');
+          }}
+          className={`py-2 px-2 rounded-xl text-xs font-black transition ${
+            viewMode === 'todos' && selectedFilter === 'ALL'
+              ? 'bg-white text-emerald-900 shadow-sm'
+              : 'text-neutral-600 hover:text-neutral-900'
+          }`}
+        >
+          Todos ({metrics.totalParked})
+        </button>
+      </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {SECTORS.map((sec) => {
-            const count = metrics.sectorOccupancy[sec.code]?.count || 0;
-            const isSelected = selectedSectorFilter === sec.code;
+      {/* 1. VISÃO DETALHADA DE QUADRANTES (1 AO 5 COM FILAS 1 A 5) */}
+      {viewMode === 'quadrantes' && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between px-1">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-600 flex items-center gap-1.5">
+              <Grid className="w-3.5 h-3.5 text-emerald-700" />
+              Ocupação dos Quadrantes & Filas
+            </h3>
+            <span className="text-[10px] text-emerald-700 font-bold">5 Filas por Quadrante</span>
+          </div>
 
-            return (
-              <button
-                key={sec.code}
-                type="button"
-                onClick={() =>
-                  setSelectedSectorFilter((prev) => (prev === sec.code ? 'ALL' : sec.code))
-                }
-                className={`p-3 rounded-2xl text-left border transition-all active:scale-95 flex flex-col justify-between relative overflow-hidden ${
-                  isSelected
-                    ? 'bg-emerald-900 text-white border-emerald-700 shadow-md ring-2 ring-emerald-500'
-                    : 'bg-white text-neutral-900 border-neutral-200 hover:border-emerald-300 shadow-sm'
-                }`}
-              >
-                {/* Header */}
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      className={`font-black text-xs px-2 py-0.5 rounded-lg ${
-                        isSelected
-                          ? 'bg-emerald-700 text-white'
-                          : 'bg-emerald-100 text-emerald-900'
-                      }`}
-                    >
-                      {sec.code}
-                    </span>
-                    <span
-                      className={`text-[11px] font-bold truncate max-w-[90px] ${
-                        isSelected ? 'text-emerald-200' : 'text-neutral-600'
-                      }`}
-                    >
-                      {sec.name}
-                    </span>
-                  </div>
+          <div className="space-y-2.5">
+            {quadrants.map((quad) => {
+              const qNum = quad.quadrantNumber!;
+              const isExpanded = expandedQuadrant === qNum;
+              const quadCount = getCountInLocation(`Q${qNum}`);
+
+              return (
+                <div
+                  key={quad.id}
+                  className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-sm transition"
+                >
+                  {/* Quadrant Header Button */}
+                  <button
+                    type="button"
+                    onClick={() => setExpandedQuadrant(isExpanded ? null : qNum)}
+                    className="w-full p-3.5 flex items-center justify-between hover:bg-neutral-50 transition cursor-pointer text-left"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-900 font-black text-sm flex items-center justify-center font-mono">
+                        {quad.shortCode}
+                      </span>
+                      <div>
+                        <span className="text-sm font-black text-neutral-900 block leading-tight">
+                          {quad.name}
+                        </span>
+                        <span className="text-[11px] text-neutral-500">
+                          Filas 1 a 5 (Q{qNum}F1 a Q{qNum}F5)
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-xs font-black px-2.5 py-1 rounded-lg ${
+                          quadCount > 0
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-neutral-100 text-neutral-600'
+                        }`}
+                      >
+                        {quadCount} {quadCount === 1 ? 'veículo' : 'veículos'}
+                      </span>
+                      {isExpanded ? (
+                        <ChevronDown className="w-4 h-4 text-neutral-400" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4 text-neutral-400" />
+                      )}
+                    </div>
+                  </button>
+
+                  {/* Filas 1 a 5 Grid inside Quadrant */}
+                  {isExpanded && (
+                    <div className="p-3 bg-neutral-50/70 border-t border-neutral-100 grid grid-cols-5 gap-1.5 animate-in slide-in-from-top-2 duration-150">
+                      {QUADRANT_ROWS.map((rowNum) => {
+                        const rowCode = formatQuadrantRowCode(qNum, rowNum);
+                        const rowName = formatQuadrantRow(qNum, rowNum);
+                        const countInRow = getCountInLocation(rowCode);
+                        const isFiltered = selectedFilter === rowCode;
+
+                        return (
+                          <button
+                            key={rowNum}
+                            type="button"
+                            onClick={() => {
+                              setSelectedFilter((prev) => (prev === rowCode ? 'ALL' : rowCode));
+                            }}
+                            className={`p-2 rounded-xl text-center border transition active:scale-95 cursor-pointer flex flex-col items-center justify-between ${
+                              isFiltered
+                                ? 'bg-emerald-800 text-white border-emerald-900 shadow-md ring-2 ring-emerald-500'
+                                : countInRow > 0
+                                ? 'bg-white hover:bg-emerald-50 border-emerald-300 text-neutral-900 shadow-sm'
+                                : 'bg-white hover:bg-neutral-100 border-neutral-200 text-neutral-600'
+                            }`}
+                          >
+                            <span className="text-[10px] font-black uppercase font-mono block">
+                              Fila {rowNum}
+                            </span>
+                            <span
+                              className={`text-lg font-black my-0.5 leading-none font-mono ${
+                                isFiltered
+                                  ? 'text-white'
+                                  : countInRow > 0
+                                  ? 'text-emerald-700'
+                                  : 'text-neutral-400'
+                              }`}
+                            >
+                              {countInRow}
+                            </span>
+                            <span
+                              className={`text-[9px] font-bold uppercase rounded px-1 ${
+                                isFiltered
+                                  ? 'bg-emerald-900 text-emerald-200'
+                                  : countInRow > 0
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-neutral-100 text-neutral-500'
+                              }`}
+                            >
+                              {rowCode}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
-                {/* Vehicle Count */}
-                <div className="flex items-baseline justify-between mt-1.5">
-                  <span className="text-2xl font-black font-mono leading-none">
-                    {count}
-                  </span>
+      {/* 2. VISÃO SETORES ESPECIAIS & OPERACIONAIS */}
+      {viewMode === 'especiais' && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between px-1">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-600 flex items-center gap-1.5">
+              <MapPin className="w-3.5 h-3.5 text-emerald-700" />
+              Setores Operacionais & Apoio
+            </h3>
+            <span className="text-[10px] text-neutral-500">Clique para filtrar</span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            {specials.map((loc) => {
+              const count = getCountInLocation(loc.name);
+              const isSelected = selectedFilter === loc.name;
+
+              return (
+                <button
+                  key={loc.id}
+                  type="button"
+                  onClick={() => setSelectedFilter((prev) => (prev === loc.name ? 'ALL' : loc.name))}
+                  className={`p-3 rounded-2xl text-left border transition active:scale-95 flex flex-col justify-between cursor-pointer ${
+                    isSelected
+                      ? 'bg-emerald-900 text-white border-emerald-950 shadow-md ring-2 ring-emerald-500'
+                      : 'bg-white hover:bg-emerald-50/40 border-neutral-200 hover:border-emerald-300 text-neutral-900 shadow-sm'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span
+                      className={`text-[10px] font-black uppercase px-1.5 py-0.5 rounded font-mono ${
+                        isSelected ? 'bg-emerald-700 text-white' : 'bg-neutral-100 text-neutral-800'
+                      }`}
+                    >
+                      {loc.shortCode}
+                    </span>
+                    <span className="text-base font-black font-mono">{count}</span>
+                  </div>
                   <span
-                    className={`text-[11px] font-semibold ${
-                      isSelected ? 'text-emerald-200' : 'text-neutral-500'
+                    className={`text-xs font-bold truncate block ${
+                      isSelected ? 'text-emerald-100' : 'text-neutral-700'
                     }`}
                   >
-                    {count === 1 ? 'veículo' : 'veículos'}
+                    {loc.name}
                   </span>
-                </div>
-              </button>
-            );
-          })}
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Active Filter Pill */}
+      {selectedFilter !== 'ALL' && (
+        <div className="bg-emerald-50 p-2.5 rounded-2xl border border-emerald-200 flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-emerald-700" />
+            <span className="text-emerald-900 font-bold">
+              Filtrando por: <strong>{selectedFilter}</strong> ({filteredParked.length} veículos)
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSelectedFilter('ALL')}
+            className="text-emerald-700 hover:text-emerald-900 font-black underline text-xs cursor-pointer"
+          >
+            Limpar Filtro
+          </button>
+        </div>
+      )}
 
       {/* Filter / Search Bar */}
       <div className="bg-white rounded-2xl p-3 border border-neutral-200 shadow-sm flex flex-col gap-2.5">
@@ -229,7 +397,7 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar placa ou condutor..."
+              placeholder="Buscar placa, local ou condutor..."
               className="w-full pl-9 pr-3 py-2 text-xs font-semibold bg-neutral-50 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 uppercase"
             />
             {searchQuery && (
@@ -244,42 +412,11 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
 
           <button
             onClick={onStartNewRegistration}
-            className="py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 shadow-sm active:scale-95 transition"
+            className="py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 shadow-sm active:scale-95 transition cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Registrar</span>
           </button>
-        </div>
-
-        {/* Sector Filter Chips */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-xs">
-          <button
-            onClick={() => setSelectedSectorFilter('ALL')}
-            className={`px-3 py-1 rounded-lg font-bold text-[11px] whitespace-nowrap transition ${
-              selectedSectorFilter === 'ALL'
-                ? 'bg-emerald-800 text-white'
-                : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-            }`}
-          >
-            Todos ({metrics.totalParked})
-          </button>
-          {SECTORS.map((s) => {
-            const count = metrics.sectorOccupancy[s.code]?.count || 0;
-            return (
-              <button
-                key={s.code}
-                onClick={() => setSelectedSectorFilter(s.code)}
-                className={`px-2.5 py-1 rounded-lg font-bold text-[11px] whitespace-nowrap transition flex items-center gap-1 ${
-                  selectedSectorFilter === s.code
-                    ? 'bg-emerald-800 text-white'
-                    : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                }`}
-              >
-                <span>{s.code}</span>
-                <span className="text-[10px] px-1 rounded bg-black/10">{count}</span>
-              </button>
-            );
-          })}
         </div>
       </div>
 
@@ -289,10 +426,10 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
           <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-500">
             Veículos Estacionados ({filteredParked.length})
           </h3>
-          {selectedSectorFilter !== 'ALL' && (
+          {selectedFilter !== 'ALL' && (
             <button
-              onClick={() => setSelectedSectorFilter('ALL')}
-              className="text-[11px] font-bold text-emerald-700 hover:underline"
+              onClick={() => setSelectedFilter('ALL')}
+              className="text-[11px] font-bold text-emerald-700 hover:underline cursor-pointer"
             >
               Ver todos os setores
             </button>
@@ -308,17 +445,17 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
               <p className="text-sm font-bold text-neutral-800">
                 {searchQuery
                   ? 'Nenhum veículo encontrado para esta busca.'
-                  : selectedSectorFilter !== 'ALL'
-                  ? `Nenhum veículo estacionado no setor ${selectedSectorFilter}.`
+                  : selectedFilter !== 'ALL'
+                  ? `Nenhum veículo estacionado no local "${selectedFilter}".`
                   : 'Nenhum veículo no pátio no momento.'}
               </p>
               <p className="text-xs text-neutral-500 mt-1">
-                Cadastre um novo veículo para acompanhar a ocupação.
+                Cadastre um novo veículo ou registre uma movimentação.
               </p>
             </div>
             <button
               onClick={onStartNewRegistration}
-              className="mt-2 py-2 px-4 rounded-xl bg-emerald-600 text-white text-xs font-bold flex items-center gap-1.5 shadow"
+              className="mt-2 py-2 px-4 rounded-xl bg-emerald-600 text-white text-xs font-bold flex items-center gap-1.5 shadow cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               Cadastrar Veículo
@@ -339,7 +476,7 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-900 flex items-center justify-center font-mono font-black text-sm">
+                      <div className="min-w-[44px] px-2 h-10 rounded-xl bg-emerald-100 text-emerald-900 flex items-center justify-center font-mono font-black text-xs text-center border border-emerald-200">
                         {v.location || 'P1'}
                       </div>
 
@@ -378,6 +515,18 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
 
                     {/* Actions */}
                     <div className="flex items-center gap-1.5">
+                      {/* Botão Rápido: Movimentar */}
+                      {onMoveVehicle && (
+                        <button
+                          type="button"
+                          onClick={() => onMoveVehicle(v)}
+                          title="Movimentar este veículo"
+                          className="p-2 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 text-xs font-bold flex items-center gap-1 active:scale-95 transition border border-teal-200 cursor-pointer"
+                        >
+                          <ArrowLeftRight className="w-3.5 h-3.5 text-teal-700" />
+                        </button>
+                      )}
+
                       <button
                         onClick={() => {
                           const msg = generateWhatsAppMessage({
@@ -397,7 +546,7 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
                           openWhatsAppShare(msg);
                         }}
                         title="Enviar no WhatsApp"
-                        className="p-2 rounded-xl bg-[#25D366]/15 hover:bg-[#25D366]/25 text-emerald-900 text-xs font-bold flex items-center gap-1 active:scale-95 transition"
+                        className="p-2 rounded-xl bg-[#25D366]/15 hover:bg-[#25D366]/25 text-emerald-900 text-xs font-bold flex items-center gap-1 active:scale-95 transition cursor-pointer"
                       >
                         <Share2 className="w-3.5 h-3.5 text-emerald-700" />
                       </button>
@@ -405,7 +554,7 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
                       <button
                         onClick={() => onReleaseVehicle(v.id)}
                         title="Marcar Saída do Pátio"
-                        className="py-1.5 px-2.5 rounded-xl bg-neutral-100 hover:bg-rose-100 text-neutral-700 hover:text-rose-700 text-xs font-bold flex items-center gap-1 active:scale-95 transition border border-neutral-200"
+                        className="py-1.5 px-2.5 rounded-xl bg-neutral-100 hover:bg-rose-100 text-neutral-700 hover:text-rose-700 text-xs font-bold flex items-center gap-1 active:scale-95 transition border border-neutral-200 cursor-pointer"
                       >
                         <LogOut className="w-3.5 h-3.5" />
                         <span>Saída</span>

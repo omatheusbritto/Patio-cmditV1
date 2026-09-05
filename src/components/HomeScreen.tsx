@@ -14,6 +14,7 @@ import {
   LogOut,
   Fuel,
   Wrench,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { PatioMetrics, getRoleBadgeStyle, getRoleDisplayName } from '../types';
 import { GoogleSheetsIntegration } from './GoogleSheetsIntegration';
@@ -22,6 +23,7 @@ import { getCurrentSession } from '../utils/authService';
 interface HomeScreenProps {
   onStartRegistration: () => void;
   onOpenPatio: () => void;
+  onOpenMovement?: () => void;
   onOpenHistory: () => void;
   onOpenLogs?: () => void;
   onOpenSpreadsheetOnline?: () => void;
@@ -33,6 +35,7 @@ interface HomeScreenProps {
 export const HomeScreen: React.FC<HomeScreenProps> = ({
   onStartRegistration,
   onOpenPatio,
+  onOpenMovement,
   onOpenHistory,
   onOpenLogs,
   onOpenSpreadsheetOnline,
@@ -218,23 +221,32 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       </div>
 
       {/* Fast Navigation Buttons */}
-      <div className="w-full grid grid-cols-2 gap-2">
+      <div className="w-full grid grid-cols-3 gap-2">
         <button
           type="button"
-          onClick={onOpenHistory}
-          className="py-2.5 px-3 rounded-xl bg-white border border-neutral-300 text-neutral-800 hover:bg-neutral-50 font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition"
+          onClick={onOpenPatio}
+          className="py-2.5 px-2 rounded-xl bg-white border border-neutral-300 text-neutral-800 hover:bg-neutral-50 font-bold text-xs flex items-center justify-center gap-1 shadow-sm active:scale-95 transition"
         >
-          <Search className="w-3.5 h-3.5 text-emerald-700" />
-          <span>Buscar no Histórico</span>
+          <Layers className="w-3.5 h-3.5 text-emerald-700" />
+          <span>Pátio</span>
         </button>
 
         <button
           type="button"
-          onClick={onOpenPatio}
-          className="py-2.5 px-3 rounded-xl bg-white border border-neutral-300 text-neutral-800 hover:bg-neutral-50 font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition"
+          onClick={onOpenMovement}
+          className="py-2.5 px-2 rounded-xl bg-white border border-neutral-300 text-neutral-800 hover:bg-neutral-50 font-bold text-xs flex items-center justify-center gap-1 shadow-sm active:scale-95 transition"
         >
-          <Layers className="w-3.5 h-3.5 text-emerald-700" />
-          <span>Consultar Pátio</span>
+          <ArrowLeftRight className="w-3.5 h-3.5 text-blue-600" />
+          <span>Movimentar</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={onOpenHistory}
+          className="py-2.5 px-2 rounded-xl bg-white border border-neutral-300 text-neutral-800 hover:bg-neutral-50 font-bold text-xs flex items-center justify-center gap-1 shadow-sm active:scale-95 transition"
+        >
+          <Search className="w-3.5 h-3.5 text-emerald-700" />
+          <span>Histórico</span>
         </button>
       </div>
     </div>

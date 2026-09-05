@@ -242,12 +242,38 @@ async function saveRecordToLocalCache(record: VehicleRecord): Promise<void> {
   try {
     const current = getFallbackLocalStorage();
     const existingIdx = current.findIndex(r => r.id === normalized.id);
+
+    // Create a lightweight copy for localStorage fallback to never exceed the 5MB browser quota
+    // Full base64 photos are safely preserved in IndexedDB and PostgreSQL backend!
+    const lightRecord: VehicleRecord = {
+      ...normalized,
+      photoDataUrl: normalized.photoDataUrl && normalized.photoDataUrl.length > 50000 ? '' : normalized.photoDataUrl,
+      documentPhotoUrl: normalized.documentPhotoUrl && normalized.documentPhotoUrl.length > 50000 ? undefined : normalized.documentPhotoUrl,
+      dashboardPhotoUrl: normalized.dashboardPhotoUrl && normalized.dashboardPhotoUrl.length > 50000 ? undefined : normalized.dashboardPhotoUrl,
+    };
+
     if (existingIdx >= 0) {
-      current[existingIdx] = normalized;
+      current[existingIdx] = lightRecord;
     } else {
-      current.unshift(normalized);
+      current.unshift(lightRecord);
     }
-    localStorage.setItem('cmdit_records_v3', JSON.stringify(current));
+
+    // Keep only the most recent 100 records in localStorage fallback
+    const trimmed = current.slice(0, 100);
+
+    try {
+      localStorage.setItem('cmdit_records_v3', JSON.stringify(trimmed));
+    } catch (quotaErr) {
+      console.warn('LocalStorage quota exceeded, pruning old base64 images to protect memory:', quotaErr);
+      // Strip all data URLs and keep only metadata
+      const pruned = trimmed.map(r => ({
+        ...r,
+        photoDataUrl: '',
+        documentPhotoUrl: undefined,
+        dashboardPhotoUrl: undefined,
+      }));
+      localStorage.setItem('cmdit_records_v3', JSON.stringify(pruned.slice(0, 50)));
+    }
   } catch {
     // ignore
   }

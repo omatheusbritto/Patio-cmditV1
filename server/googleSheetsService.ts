@@ -102,13 +102,31 @@ export const HEADERS_USUARIOS = [
   'ULTIMO ACESSO',
 ];
 
+export const HEADERS_MOVIMENTACAO = [
+  'DATA',
+  'HORA',
+  'PLACA',
+  'ORIGEM',
+  'DESTINO',
+  'OBSERVAÇÃO',
+  'COMBUSTÍVEL',
+  'KM ODÔMETRO',
+  'OPERADOR',
+];
+
 // Standard tab specifications with exact tab names requested by the user
 export const TAB_DEFINITIONS = {
   geral: {
     title: 'ENTRADAS',
-    aliases: ['entradas', 'entrada', 'geral', 'todos', 'registros', 'movimentacoes', 'sheet1', 'planilha1'],
+    aliases: ['entradas', 'entrada', 'geral', 'todos', 'registros', 'sheet1', 'planilha1'],
     color: { red: 0.15, green: 0.2, blue: 0.3 },
     headers: HEADERS_ENTRADA,
+  },
+  movimentacao: {
+    title: 'MOVIMENTAÇÃO',
+    aliases: ['movimentacao', 'movimentação', 'movimentacoes', 'movimentações', 'movimento', 'movimentos', 'mov'],
+    color: { red: 0.05, green: 0.55, blue: 0.7 },
+    headers: HEADERS_MOVIMENTACAO,
   },
   entrada: {
     title: 'ENTRADAS',
@@ -245,6 +263,10 @@ async function initializeSpreadsheetHeaders(spreadsheetId: string, accessToken: 
     {
       range: `'${TAB_DEFINITIONS.entrada.title}'!A1:${String.fromCharCode(64 + TAB_DEFINITIONS.entrada.headers.length)}1`,
       values: [TAB_DEFINITIONS.entrada.headers],
+    },
+    {
+      range: `'${TAB_DEFINITIONS.movimentacao.title}'!A1:${String.fromCharCode(64 + TAB_DEFINITIONS.movimentacao.headers.length)}1`,
+      values: [TAB_DEFINITIONS.movimentacao.headers],
     },
     {
       range: `'${TAB_DEFINITIONS.saida.title}'!A1:${String.fromCharCode(64 + TAB_DEFINITIONS.saida.headers.length)}1`,

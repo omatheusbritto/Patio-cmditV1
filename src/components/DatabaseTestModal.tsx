@@ -16,29 +16,36 @@ import {
   Info,
   Layers,
   Users,
+  HardDrive,
 } from 'lucide-react';
 import {
   checkDatabaseHealth,
   configureDatabaseUrl,
   DatabaseDiagnosticResult,
+  getCurrentSession,
 } from '../utils/authService';
 
 interface DatabaseTestModalProps {
   isOpen: boolean;
   onClose: () => void;
   onQuickFillUser?: (username: string, pass: string) => void;
+  onOpenBackupRestore?: () => void;
 }
 
 export const DatabaseTestModal: React.FC<DatabaseTestModalProps> = ({
   isOpen,
   onClose,
   onQuickFillUser,
+  onOpenBackupRestore,
 }) => {
   const [diagnostic, setDiagnostic] = useState<DatabaseDiagnosticResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [customDbUrl, setCustomDbUrl] = useState('');
   const [savingUrl, setSavingUrl] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ text: string; isError: boolean } | null>(null);
+
+  const session = getCurrentSession();
+  const isMaster = session?.user.role === 'master' || session?.user.username.toLowerCase() === 'mastercmdit';
 
   const runTest = async () => {
     setLoading(true);
@@ -340,16 +347,32 @@ export const DatabaseTestModal: React.FC<DatabaseTestModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="p-4 bg-neutral-50 border-t border-neutral-200 flex items-center justify-between gap-3 shrink-0">
-          <button
-            type="button"
-            onClick={runTest}
-            disabled={loading}
-            className="px-4 py-2 bg-white hover:bg-neutral-100 border border-neutral-300 text-neutral-800 text-xs font-bold rounded-xl flex items-center gap-2 transition cursor-pointer"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 text-indigo-600 ${loading ? 'animate-spin' : ''}`} />
-            <span>{loading ? 'Testando...' : 'Testar Novamente'}</span>
-          </button>
+        <div className="p-4 bg-neutral-50 border-t border-neutral-200 flex items-center justify-between gap-2 shrink-0 flex-wrap">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={runTest}
+              disabled={loading}
+              className="px-3.5 py-2 bg-white hover:bg-neutral-100 border border-neutral-300 text-neutral-800 text-xs font-bold rounded-xl flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-indigo-600 ${loading ? 'animate-spin' : ''}`} />
+              <span>{loading ? 'Testando...' : 'Testar'}</span>
+            </button>
+
+            {isMaster && onOpenBackupRestore && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenBackupRestore();
+                }}
+                className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-900 text-xs font-black rounded-xl flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <HardDrive className="w-3.5 h-3.5 text-indigo-700" />
+                <span>Backup & Restauração</span>
+              </button>
+            )}
+          </div>
 
           <button
             type="button"

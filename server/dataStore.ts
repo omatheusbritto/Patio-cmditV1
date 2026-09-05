@@ -30,6 +30,23 @@ const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const RECORDS_FILE = path.join(DATA_DIR, 'records.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 const LOGS_FILE = path.join(DATA_DIR, 'access_logs.json');
+const MOVEMENTS_FILE = path.join(DATA_DIR, 'movements.json');
+
+export interface VehicleMovementRecord {
+  id: string;
+  createdAt: number;
+  dateFormatted: string; // A: data (DD/MM/YYYY)
+  timeFormatted: string; // B: hora (HH:mm:ss)
+  plate: string; // C: placa
+  origin: string; // D: origem
+  destination: string; // E: destino
+  observation: string; // F: observação
+  fuelLevel?: string; // G: combustível
+  odometer?: number | string; // H: km odômetro
+  operatorName: string; // J: operador
+  photoUrl?: string;
+  rawData?: any;
+}
 
 export type LogEventType = 'LOGIN' | 'LOGOUT' | 'EXPIRADO';
 
@@ -1839,4 +1856,544 @@ export async function restoreLogsFromSpreadsheetAsync(
       error: err.message,
     };
   }
+}
+
+// --------------------------------------------------------------------------
+// MOVIMENTAÇÕES DE VEÍCULOS (ORIGEM -> DESTINO)
+// --------------------------------------------------------------------------
+
+export function loadLocalMovements(): VehicleMovementRecord[] {
+  try {
+    if (fs.existsSync(MOVEMENTS_FILE)) {
+      const content = fs.readFileSync(MOVEMENTS_FILE, 'utf-8');
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (err) {
+    console.warn('Could not read movements.json:', err);
+  }
+  return [];
+}
+
+export function saveLocalMovements(movements: VehicleMovementRecord[]): void {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(MOVEMENTS_FILE, JSON.stringify(movements, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('Could not write movements.json:', err);
+  }
+}
+
+export async function loadMovementsAsync(): Promise<VehicleMovementRecord[]> {
+  const pgPool = getPgPool();
+  if (pgPool) {
+    try {
+      const res = await pgPool.query(`
+        SELECT 
+          id, 
+          date_formatted, 
+          time_formatted, 
+          plate, 
+          origin, 
+          destination, 
+          observation, 
+          fuel_level, 
+          odometer, 
+          operator_name, 
+          photo_url, 
+          raw_data,
+          created_at
+        FROM vehicle_movements
+        ORDER BY created_at DESC
+        LIMIT 500;
+      `);
+      if (res.rows && res.rows.length > 0) {
+        return res.rows.map((r) => ({
+          id: r.id,
+          createdAt: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
+          dateFormatted: r.date_formatted,
+          timeFormatted: r.time_formatted,
+          plate: (r.plate || '').toUpperCase(),
+          origin: r.origin,
+          destination: r.destination,
+          observation: r.observation,
+          fuelLevel: r.fuel_level || undefined,
+          odometer: r.odometer ?? undefined,
+          operatorName: r.operator_name,
+          photoUrl: r.photo_url || undefined,
+          rawData: r.raw_data || undefined,
+        }));
+      }
+    } catch (err: any) {
+      console.warn('PostgreSQL loadMovements error, falling back to local file:', err.message);
+    }
+  }
+
+  return loadLocalMovements();
+}
+
+export async function saveMovementAsync(movement: VehicleMovementRecord): Promise<VehicleMovementRecord> {
+  const normMovement: VehicleMovementRecord = {
+    ...movement,
+    id: movement.id || `mov-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    createdAt: movement.createdAt || Date.now(),
+    plate: (movement.plate || '').toUpperCase().trim(),
+    origin: (movement.origin || '').trim(),
+    destination: (movement.destination || '').trim(),
+    observation: (movement.observation || '').trim(),
+    operatorName: (movement.operatorName || 'Operador').trim(),
+  };
+
+  // 1. Save to PostgreSQL
+  const pgPool = getPgPool();
+  if (pgPool) {
+    try {
+      await pgPool.query(
+        `INSERT INTO vehicle_movements 
+          (id, date_formatted, time_formatted, plate, origin, destination, observation, fuel_level, odometer, operator_name, photo_url, raw_data, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP)
+         ON CONFLICT (id) DO UPDATE SET
+          date_formatted = EXCLUDED.date_formatted,
+          time_formatted = EXCLUDED.time_formatted,
+          plate = EXCLUDED.plate,
+          origin = EXCLUDED.origin,
+          destination = EXCLUDED.destination,
+          observation = EXCLUDED.observation,
+          fuel_level = EXCLUDED.fuel_level,
+          odometer = EXCLUDED.odometer,
+          operator_name = EXCLUDED.operator_name,
+          photo_url = EXCLUDED.photo_url,
+          raw_data = EXCLUDED.raw_data;`,
+        [
+          normMovement.id,
+          normMovement.dateFormatted,
+          normMovement.timeFormatted,
+          normMovement.plate,
+          normMovement.origin,
+          normMovement.destination,
+          normMovement.observation,
+          normMovement.fuelLevel || null,
+          normMovement.odometer ? Number(normMovement.odometer) : null,
+          normMovement.operatorName,
+          normMovement.photoUrl || null,
+          JSON.stringify(normMovement),
+        ]
+      );
+
+      // Update vehicle record location in PostgreSQL
+      await pgPool.query(
+        `UPDATE vehicle_records 
+         SET notes = CASE 
+               WHEN notes IS NULL OR notes = '' THEN 'Origem: ' || $1 || ' -> Destino: ' || $2
+               ELSE notes || ' | ' || 'Origem: ' || $1 || ' -> Destino: ' || $2
+             END,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE UPPER(plate) = UPPER($3);`,
+        [normMovement.origin, normMovement.destination, normMovement.plate]
+      ).catch(() => {});
+    } catch (err: any) {
+      console.warn('PostgreSQL saveMovement error:', err.message);
+    }
+  }
+
+  // 2. Save to local movements.json
+  const localList = loadLocalMovements();
+  const existingIdx = localList.findIndex((m) => m.id === normMovement.id);
+  if (existingIdx >= 0) {
+    localList[existingIdx] = normMovement;
+  } else {
+    localList.unshift(normMovement);
+  }
+  saveLocalMovements(localList);
+
+  // 3. Update vehicle position in local records store
+  try {
+    const records = loadServerRecords();
+    const vIdx = records.findIndex(
+      (r) => r.plate && r.plate.toUpperCase().trim() === normMovement.plate
+    );
+    if (vIdx >= 0) {
+      records[vIdx] = {
+        ...records[vIdx],
+        location: normMovement.destination,
+        destination: normMovement.destination,
+        status: 'parked',
+        notes: (records[vIdx].notes ? records[vIdx].notes + ' | ' : '') + `Mov: ${normMovement.origin} -> ${normMovement.destination}`,
+        fuel: normMovement.fuelLevel || records[vIdx].fuel,
+        km: normMovement.odometer || records[vIdx].km,
+      };
+      saveServerRecords(records);
+    }
+  } catch (err) {
+    console.warn('Notice updating local records for movement:', err);
+  }
+
+  return normMovement;
+}
+
+export async function deleteMovementAsync(id: string): Promise<boolean> {
+  const pgPool = getPgPool();
+  if (pgPool) {
+    try {
+      await pgPool.query('DELETE FROM vehicle_movements WHERE id = $1', [id]);
+    } catch (err: any) {
+      console.warn('PostgreSQL deleteMovement error:', err.message);
+    }
+  }
+
+  const localList = loadLocalMovements();
+  const filtered = localList.filter((m) => m.id !== id);
+  saveLocalMovements(filtered);
+  return true;
+}
+
+// --------------------------------------------------------------------------
+// BACKUP E RESTAURAÇÃO TOTAL DO BANCO DE DADOS (POSTGRESQL / RENDER)
+// --------------------------------------------------------------------------
+
+export interface DatabaseBackupPayload {
+  version: string;
+  exportedAt: string;
+  database: string;
+  provider: string;
+  counts: {
+    users: number;
+    vehicle_records: number;
+    vehicle_movements: number;
+    access_logs: number;
+    app_settings: number;
+  };
+  tables: {
+    users: any[];
+    vehicle_records: any[];
+    vehicle_movements: any[];
+    access_logs: any[];
+    app_settings: any[];
+  };
+}
+
+export async function exportDatabaseBackupAsync(): Promise<DatabaseBackupPayload> {
+  const pgPool = getPgPool();
+
+  let users: any[] = [];
+  let vehicleRecords: any[] = [];
+  let vehicleMovements: any[] = [];
+  let accessLogs: any[] = [];
+  let appSettings: any[] = [];
+
+  if (pgPool) {
+    try {
+      const uRes = await pgPool.query('SELECT * FROM users ORDER BY created_at ASC;');
+      users = uRes.rows;
+    } catch (e: any) {
+      console.warn('Backup error loading users from PG:', e.message);
+      users = loadServerUsers();
+    }
+
+    try {
+      const rRes = await pgPool.query('SELECT * FROM vehicle_records ORDER BY created_at DESC;');
+      vehicleRecords = rRes.rows;
+    } catch (e: any) {
+      console.warn('Backup error loading vehicle_records from PG:', e.message);
+      vehicleRecords = loadServerRecords();
+    }
+
+    try {
+      const mRes = await pgPool.query('SELECT * FROM vehicle_movements ORDER BY created_at DESC;');
+      vehicleMovements = mRes.rows;
+    } catch (e: any) {
+      console.warn('Backup error loading vehicle_movements from PG:', e.message);
+      vehicleMovements = loadLocalMovements();
+    }
+
+    try {
+      const lRes = await pgPool.query('SELECT * FROM access_logs ORDER BY created_at DESC;');
+      accessLogs = lRes.rows;
+    } catch (e: any) {
+      console.warn('Backup error loading access_logs from PG:', e.message);
+      accessLogs = loadServerLogs();
+    }
+
+    try {
+      const sRes = await pgPool.query('SELECT * FROM app_settings;');
+      appSettings = sRes.rows;
+    } catch (e: any) {
+      console.warn('Backup error loading app_settings from PG:', e.message);
+      appSettings = [{ key: 'general', value: loadServerSettings() }];
+    }
+  } else {
+    users = loadServerUsers();
+    vehicleRecords = loadServerRecords();
+    vehicleMovements = loadLocalMovements();
+    accessLogs = loadServerLogs();
+    appSettings = [{ key: 'general', value: loadServerSettings() }];
+  }
+
+  return {
+    version: '1.0',
+    exportedAt: new Date().toISOString(),
+    database: 'patiocmdit_db',
+    provider: 'PostgreSQL (Render)',
+    counts: {
+      users: users.length,
+      vehicle_records: vehicleRecords.length,
+      vehicle_movements: vehicleMovements.length,
+      access_logs: accessLogs.length,
+      app_settings: appSettings.length,
+    },
+    tables: {
+      users,
+      vehicle_records: vehicleRecords,
+      vehicle_movements: vehicleMovements,
+      access_logs: accessLogs,
+      app_settings: appSettings,
+    },
+  };
+}
+
+export async function restoreDatabaseBackupAsync(
+  payload: DatabaseBackupPayload
+): Promise<{
+  success: boolean;
+  message: string;
+  restoredCounts: {
+    users: number;
+    vehicle_records: number;
+    vehicle_movements: number;
+    access_logs: number;
+    app_settings: number;
+  };
+  errors?: string[];
+}> {
+  if (!payload || !payload.tables) {
+    throw new Error('Formato de backup inválido: "tables" não encontrado.');
+  }
+
+  const errors: string[] = [];
+  const counts = {
+    users: 0,
+    vehicle_records: 0,
+    vehicle_movements: 0,
+    access_logs: 0,
+    app_settings: 0,
+  };
+
+  const pgPool = getPgPool();
+
+  // 1. Restaurar Usuários
+  if (Array.isArray(payload.tables.users)) {
+    const rawUsers = payload.tables.users;
+    for (const u of rawUsers) {
+      try {
+        const userId = u.id || `user-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const username = (u.username || '').toLowerCase().trim();
+        const passwordHash = u.password_hash || u.password || '123456';
+        const fullName = u.full_name || u.name || username;
+        const role = u.role || 'operador';
+        const whatsapp = u.whatsapp || null;
+        const isActive = u.is_active !== undefined ? Boolean(u.is_active) : (u.isActive !== undefined ? Boolean(u.isActive) : true);
+
+        if (pgPool && username) {
+          await pgPool.query(
+            `INSERT INTO users (id, username, password_hash, full_name, role, whatsapp, is_active, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+             ON CONFLICT (username) DO UPDATE SET
+               password_hash = EXCLUDED.password_hash,
+               full_name = EXCLUDED.full_name,
+               role = EXCLUDED.role,
+               whatsapp = EXCLUDED.whatsapp,
+               is_active = EXCLUDED.is_active,
+               updated_at = CURRENT_TIMESTAMP;`,
+            [userId, username, passwordHash, fullName, role, whatsapp, isActive]
+          );
+        }
+        counts.users++;
+      } catch (err: any) {
+        errors.push(`Usuário (${u.username}): ${err.message}`);
+      }
+    }
+  }
+
+  // 2. Restaurar Registros de Veículos
+  if (Array.isArray(payload.tables.vehicle_records)) {
+    const rawRecs = payload.tables.vehicle_records;
+    for (const r of rawRecs) {
+      try {
+        const id = r.id || `rec-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const plate = (r.plate || '').toUpperCase().trim();
+        if (!plate) continue;
+
+        if (pgPool) {
+          await pgPool.query(
+            `INSERT INTO vehicle_records 
+              (id, plate, plate_state, model, color, driver_name, driver_doc, company, entry_time, exit_time, status, seal_number, odometer, notes, operator_name, raw_data, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, CURRENT_TIMESTAMP)
+             ON CONFLICT (id) DO UPDATE SET
+               plate = EXCLUDED.plate,
+               plate_state = EXCLUDED.plate_state,
+               model = EXCLUDED.model,
+               color = EXCLUDED.color,
+               driver_name = EXCLUDED.driver_name,
+               driver_doc = EXCLUDED.driver_doc,
+               company = EXCLUDED.company,
+               entry_time = EXCLUDED.entry_time,
+               exit_time = EXCLUDED.exit_time,
+               status = EXCLUDED.status,
+               seal_number = EXCLUDED.seal_number,
+               odometer = EXCLUDED.odometer,
+               notes = EXCLUDED.notes,
+               operator_name = EXCLUDED.operator_name,
+               raw_data = EXCLUDED.raw_data,
+               updated_at = CURRENT_TIMESTAMP;`,
+            [
+              id,
+              plate,
+              r.plate_state || r.plateState || null,
+              r.model || null,
+              r.color || null,
+              r.driver_name || r.driverName || null,
+              r.driver_doc || r.driverDoc || null,
+              r.company || null,
+              r.entry_time || r.entryTime || null,
+              r.exit_time || r.exitTime || null,
+              r.status || 'inside',
+              r.seal_number || r.sealNumber || null,
+              r.odometer ? Number(r.odometer) : null,
+              r.notes || null,
+              r.operator_name || r.operatorName || null,
+              r.raw_data ? (typeof r.raw_data === 'string' ? r.raw_data : JSON.stringify(r.raw_data)) : JSON.stringify(r),
+            ]
+          );
+        }
+        counts.vehicle_records++;
+      } catch (err: any) {
+        errors.push(`Registro (${r.plate}): ${err.message}`);
+      }
+    }
+  }
+
+  // 3. Restaurar Movimentações
+  if (Array.isArray(payload.tables.vehicle_movements)) {
+    const rawMovs = payload.tables.vehicle_movements;
+    for (const m of rawMovs) {
+      try {
+        const id = m.id || `mov-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const plate = (m.plate || '').toUpperCase().trim();
+        const origin = m.origin || '';
+        const destination = m.destination || '';
+        const observation = m.observation || '';
+        const dateFormatted = m.date_formatted || m.dateFormatted || '';
+        const timeFormatted = m.time_formatted || m.timeFormatted || '';
+        const operatorName = m.operator_name || m.operatorName || 'Operador';
+        const fuelLevel = m.fuel_level || m.fuelLevel || null;
+        const odometer = m.odometer ? Number(m.odometer) : null;
+        const photoUrl = m.photo_url || m.photoUrl || null;
+
+        if (pgPool && plate) {
+          await pgPool.query(
+            `INSERT INTO vehicle_movements 
+              (id, date_formatted, time_formatted, plate, origin, destination, observation, fuel_level, odometer, operator_name, photo_url, raw_data, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP)
+             ON CONFLICT (id) DO UPDATE SET
+               date_formatted = EXCLUDED.date_formatted,
+               time_formatted = EXCLUDED.time_formatted,
+               plate = EXCLUDED.plate,
+               origin = EXCLUDED.origin,
+               destination = EXCLUDED.destination,
+               observation = EXCLUDED.observation,
+               fuel_level = EXCLUDED.fuel_level,
+               odometer = EXCLUDED.odometer,
+               operator_name = EXCLUDED.operator_name,
+               photo_url = EXCLUDED.photo_url,
+               raw_data = EXCLUDED.raw_data;`,
+            [
+              id,
+              dateFormatted,
+              timeFormatted,
+              plate,
+              origin,
+              destination,
+              observation,
+              fuelLevel,
+              odometer,
+              operatorName,
+              photoUrl,
+              m.raw_data ? (typeof m.raw_data === 'string' ? m.raw_data : JSON.stringify(m.raw_data)) : JSON.stringify(m),
+            ]
+          );
+        }
+        counts.vehicle_movements++;
+      } catch (err: any) {
+        errors.push(`Movimentação (${m.plate}): ${err.message}`);
+      }
+    }
+  }
+
+  // 4. Restaurar Logs de Acesso
+  if (Array.isArray(payload.tables.access_logs)) {
+    const rawLogs = payload.tables.access_logs;
+    for (const l of rawLogs) {
+      try {
+        const id = l.id || `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        if (pgPool && l.username) {
+          await pgPool.query(
+            `INSERT INTO access_logs 
+              (id, timestamp, date_formatted, event, username, full_name, role, whatsapp, ip, user_agent, device_type, details, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP)
+             ON CONFLICT (id) DO NOTHING;`,
+            [
+              id,
+              l.timestamp || new Date().toISOString(),
+              l.date_formatted || l.dateFormatted || '',
+              l.event || 'LOGIN',
+              l.username,
+              l.full_name || l.name || l.username,
+              l.role || 'operador',
+              l.whatsapp || null,
+              l.ip || null,
+              l.user_agent || l.userAgent || null,
+              l.device_type || l.deviceType || null,
+              l.details || null,
+            ]
+          );
+        }
+        counts.access_logs++;
+      } catch (err: any) {
+        errors.push(`Log (${l.username}): ${err.message}`);
+      }
+    }
+  }
+
+  // 5. Restaurar Configurações
+  if (Array.isArray(payload.tables.app_settings)) {
+    const rawSettings = payload.tables.app_settings;
+    for (const s of rawSettings) {
+      try {
+        const key = s.key || 'general';
+        const val = s.value || s;
+        if (pgPool) {
+          await pgPool.query(
+            `INSERT INTO app_settings (key, value, updated_at)
+             VALUES ($1, $2, CURRENT_TIMESTAMP)
+             ON CONFLICT (key) DO UPDATE SET
+               value = EXCLUDED.value,
+               updated_at = CURRENT_TIMESTAMP;`,
+            [key, typeof val === 'string' ? val : JSON.stringify(val)]
+          );
+        }
+        counts.app_settings++;
+      } catch (err: any) {
+        errors.push(`Config (${s.key}): ${err.message}`);
+      }
+    }
+  }
+
+  return {
+    success: true,
+    message: 'Restauração do banco de dados concluída com sucesso!',
+    restoredCounts: counts,
+    errors: errors.length > 0 ? errors : undefined,
+  };
 }

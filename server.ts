@@ -47,6 +47,11 @@ import {
   appendServerLogAsync,
   clearServerLogsAsync,
   restoreLogsFromSpreadsheetAsync,
+  loadMovementsAsync,
+  saveMovementAsync,
+  deleteMovementAsync,
+  exportDatabaseBackupAsync,
+  restoreDatabaseBackupAsync,
 } from './server/dataStore';
 
 dotenv.config();
@@ -224,6 +229,49 @@ async function startServer() {
     }
   }
 
+  async function syncMovementToGoogleSheetWebhook(movement: any, customWebhookUrl?: string) {
+    try {
+      const settings = await loadServerSettingsAsync();
+      const webhookUrl = customWebhookUrl || settings.sheetsWebhookUrl;
+      if (!webhookUrl || !webhookUrl.startsWith('http')) {
+        return { success: false, reason: 'No webhook configured' };
+      }
+
+      const bodyData = {
+        action: 'record_movement',
+        tab: 'movimentacao',
+        movement: {
+          data: movement.dateFormatted,
+          hora: movement.timeFormatted,
+          placa: movement.plate,
+          origem: movement.origin,
+          destino: movement.destination,
+          observacao: movement.observation,
+          combustivel: movement.fuelLevel || '',
+          km: movement.odometer || '',
+          operador: movement.operatorName || '',
+        },
+        timestamp: new Date().toISOString(),
+      };
+
+      const resp = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bodyData),
+        redirect: 'follow',
+      });
+
+      if (resp.ok) {
+        const data = await resp.json().catch(() => ({ success: true }));
+        return { success: true, data };
+      }
+      return { success: false, status: resp.status };
+    } catch (err: any) {
+      console.warn('syncMovementToGoogleSheetWebhook error:', err.message);
+      return { success: false, error: err.message };
+    }
+  }
+
   // --------------------------------------------------------------------------
   // ROLE-BASED ACCESS CONTROL (RBAC) MIDDLEWARE: MASTER-ONLY PRIVILEGES
   // --------------------------------------------------------------------------
@@ -285,6 +333,111 @@ async function startServer() {
       }
       const result = await setRuntimeDatabaseUrl(databaseUrl);
       res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // --------------------------------------------------------------------------
+  // BACKUP E RESTAURAÇÃO DO BANCO DE DADOS (RENDER / POSTGRESQL) - EXCLUSIVO MASTER
+  // --------------------------------------------------------------------------
+  app.get('/api/database/backup', requireMaster, async (req: Request, res: Response) => {
+    try {
+      const backupData = await exportDatabaseBackupAsync();
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="backup_patiocmdit_${new Date().toISOString().slice(0, 10)}.json"`
+      );
+      res.json({ success: true, backup: backupData });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: 'Erro ao gerar backup: ' + err.message });
+    }
+  });
+
+  app.post('/api/database/restore', requireMaster, async (req: Request, res: Response) => {
+    try {
+      const { backup } = req.body;
+      if (!backup) {
+        res.status(400).json({ success: false, message: 'Dados de backup não fornecidos.' });
+        return;
+      }
+      const result = await restoreDatabaseBackupAsync(backup);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: 'Erro ao restaurar banco de dados: ' + err.message });
+    }
+  });
+
+  // --------------------------------------------------------------------------
+  // MOVIMENTAÇÃO DE VEÍCULOS NO PÁTIO (ORIGEM -> DESTINO)
+  // --------------------------------------------------------------------------
+  app.get('/api/movements', async (req: Request, res: Response) => {
+    try {
+      const movements = await loadMovementsAsync();
+      res.json({ success: true, movements });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  app.post('/api/movements', async (req: Request, res: Response) => {
+    try {
+      const {
+        plate,
+        origin,
+        destination,
+        observation,
+        fuelLevel,
+        odometer,
+        operatorName,
+        photoUrl,
+        dateFormatted,
+        timeFormatted,
+      } = req.body;
+
+      if (!plate || !origin || !destination || !observation) {
+        res.status(400).json({
+          success: false,
+          message: 'Campos obrigatórios ausentes: Placa, Origem, Destino e Observação são obrigatórios.',
+        });
+        return;
+      }
+
+      const now = new Date();
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      const defaultDate = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()}`;
+      const defaultTime = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+
+      const newMovement = await saveMovementAsync({
+        id: `mov-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        createdAt: Date.now(),
+        dateFormatted: dateFormatted || defaultDate,
+        timeFormatted: timeFormatted || defaultTime,
+        plate: plate.toUpperCase().trim(),
+        origin: origin.trim(),
+        destination: destination.trim(),
+        observation: observation.trim(),
+        fuelLevel: fuelLevel || undefined,
+        odometer: odometer ? Number(odometer) : undefined,
+        operatorName: operatorName || 'Operador',
+        photoUrl: photoUrl || undefined,
+      });
+
+      // Sincroniza em segundo plano com a aba MOVIMENTAÇÃO da planilha
+      syncMovementToGoogleSheetWebhook(newMovement).catch(() => {});
+
+      res.json({ success: true, movement: newMovement });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  app.delete('/api/movements/:id', async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const success = await deleteMovementAsync(id);
+      res.json({ success });
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
     }
