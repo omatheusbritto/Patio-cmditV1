@@ -31,6 +31,7 @@ const RECORDS_FILE = path.join(DATA_DIR, 'records.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 const LOGS_FILE = path.join(DATA_DIR, 'access_logs.json');
 const MOVEMENTS_FILE = path.join(DATA_DIR, 'movements.json');
+const INVENTORIES_FILE = path.join(DATA_DIR, 'inventories.json');
 
 export interface VehicleMovementRecord {
   id: string;
@@ -43,7 +44,22 @@ export interface VehicleMovementRecord {
   observation: string; // F: observação
   fuelLevel?: string; // G: combustível
   odometer?: number | string; // H: km odômetro
-  operatorName: string; // J: operador
+  operatorName: string; // I: operador
+  photoUrl?: string;
+  rawData?: any;
+}
+
+export interface VehicleInventoryRecord {
+  id: string;
+  createdAt: number;
+  dateFormatted: string; // A: data (DD/MM/YYYY)
+  timeFormatted: string; // B: hora (HH:mm:ss)
+  plate: string; // C: placa
+  location: string; // local (obrigatório)
+  observation?: string; // D: observação
+  fuelLevel?: string; // Combustível (opcional)
+  odometer?: number | string; // Km odômetro (opcional)
+  operatorName: string; // E: operador
   photoUrl?: string;
   rawData?: any;
 }
@@ -2050,6 +2066,158 @@ export async function deleteMovementAsync(id: string): Promise<boolean> {
 }
 
 // --------------------------------------------------------------------------
+// INVENTÁRIO DE VEÍCULOS NO PÁTIO (PLACA + LOCAL)
+// --------------------------------------------------------------------------
+
+export function loadLocalInventories(): VehicleInventoryRecord[] {
+  try {
+    if (fs.existsSync(INVENTORIES_FILE)) {
+      const content = fs.readFileSync(INVENTORIES_FILE, 'utf-8');
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (err) {
+    console.warn('Could not read inventories.json:', err);
+  }
+  return [];
+}
+
+export function saveLocalInventories(inventories: VehicleInventoryRecord[]): void {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(INVENTORIES_FILE, JSON.stringify(inventories, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('Could not write inventories.json:', err);
+  }
+}
+
+export async function loadInventoriesAsync(): Promise<VehicleInventoryRecord[]> {
+  const pgPool = getPgPool();
+  if (pgPool) {
+    try {
+      const res = await pgPool.query(`
+        SELECT 
+          id, 
+          date_formatted, 
+          time_formatted, 
+          plate, 
+          location, 
+          observation, 
+          fuel_level, 
+          odometer, 
+          operator_name, 
+          photo_url, 
+          raw_data,
+          created_at
+        FROM vehicle_inventories
+        ORDER BY created_at DESC
+        LIMIT 500;
+      `);
+      if (res.rows && res.rows.length > 0) {
+        return res.rows.map((r) => ({
+          id: r.id,
+          createdAt: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
+          dateFormatted: r.date_formatted,
+          timeFormatted: r.time_formatted,
+          plate: (r.plate || '').toUpperCase(),
+          location: r.location,
+          observation: r.observation || undefined,
+          fuelLevel: r.fuel_level || undefined,
+          odometer: r.odometer ?? undefined,
+          operatorName: r.operator_name,
+          photoUrl: r.photo_url || undefined,
+          rawData: r.raw_data || undefined,
+        }));
+      }
+    } catch (err: any) {
+      console.warn('PostgreSQL loadInventories error, falling back to local file:', err.message);
+    }
+  }
+
+  return loadLocalInventories();
+}
+
+export async function saveInventoryAsync(inventory: VehicleInventoryRecord): Promise<VehicleInventoryRecord> {
+  const normInventory: VehicleInventoryRecord = {
+    ...inventory,
+    id: inventory.id || `inv-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    createdAt: inventory.createdAt || Date.now(),
+    plate: (inventory.plate || '').toUpperCase().trim(),
+    location: (inventory.location || '').trim(),
+    observation: inventory.observation ? inventory.observation.trim() : undefined,
+    operatorName: (inventory.operatorName || 'Operador').trim(),
+  };
+
+  // 1. Save to PostgreSQL
+  const pgPool = getPgPool();
+  if (pgPool) {
+    try {
+      await pgPool.query(
+        `INSERT INTO vehicle_inventories 
+          (id, date_formatted, time_formatted, plate, location, observation, fuel_level, odometer, operator_name, photo_url, raw_data, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP)
+         ON CONFLICT (id) DO UPDATE SET
+          date_formatted = EXCLUDED.date_formatted,
+          time_formatted = EXCLUDED.time_formatted,
+          plate = EXCLUDED.plate,
+          location = EXCLUDED.location,
+          observation = EXCLUDED.observation,
+          fuel_level = EXCLUDED.fuel_level,
+          odometer = EXCLUDED.odometer,
+          operator_name = EXCLUDED.operator_name,
+          photo_url = EXCLUDED.photo_url,
+          raw_data = EXCLUDED.raw_data;`,
+        [
+          normInventory.id,
+          normInventory.dateFormatted,
+          normInventory.timeFormatted,
+          normInventory.plate,
+          normInventory.location,
+          normInventory.observation || null,
+          normInventory.fuelLevel || null,
+          normInventory.odometer ? Number(normInventory.odometer) : null,
+          normInventory.operatorName,
+          normInventory.photoUrl || null,
+          JSON.stringify(normInventory),
+        ]
+      );
+    } catch (err: any) {
+      console.warn('PostgreSQL saveInventory error, saving locally:', err.message);
+    }
+  }
+
+  // 2. Save locally
+  const localList = loadLocalInventories();
+  const existingIdx = localList.findIndex((i) => i.id === normInventory.id);
+  if (existingIdx >= 0) {
+    localList[existingIdx] = normInventory;
+  } else {
+    localList.unshift(normInventory);
+  }
+  saveLocalInventories(localList.slice(0, 500));
+
+  return normInventory;
+}
+
+export async function deleteInventoryAsync(id: string): Promise<boolean> {
+  const pgPool = getPgPool();
+  if (pgPool) {
+    try {
+      await pgPool.query('DELETE FROM vehicle_inventories WHERE id = $1', [id]);
+    } catch (err: any) {
+      console.warn('PostgreSQL deleteInventory error:', err.message);
+    }
+  }
+
+  const localList = loadLocalInventories();
+  const filtered = localList.filter((i) => i.id !== id);
+  saveLocalInventories(filtered);
+  return true;
+}
+
+// --------------------------------------------------------------------------
 // BACKUP E RESTAURAÇÃO TOTAL DO BANCO DE DADOS (POSTGRESQL / RENDER)
 // --------------------------------------------------------------------------
 
@@ -2062,6 +2230,7 @@ export interface DatabaseBackupPayload {
     users: number;
     vehicle_records: number;
     vehicle_movements: number;
+    vehicle_inventories: number;
     access_logs: number;
     app_settings: number;
   };
@@ -2069,6 +2238,7 @@ export interface DatabaseBackupPayload {
     users: any[];
     vehicle_records: any[];
     vehicle_movements: any[];
+    vehicle_inventories: any[];
     access_logs: any[];
     app_settings: any[];
   };
@@ -2080,6 +2250,7 @@ export async function exportDatabaseBackupAsync(): Promise<DatabaseBackupPayload
   let users: any[] = [];
   let vehicleRecords: any[] = [];
   let vehicleMovements: any[] = [];
+  let vehicleInventories: any[] = [];
   let accessLogs: any[] = [];
   let appSettings: any[] = [];
 
@@ -2109,6 +2280,14 @@ export async function exportDatabaseBackupAsync(): Promise<DatabaseBackupPayload
     }
 
     try {
+      const iRes = await pgPool.query('SELECT * FROM vehicle_inventories ORDER BY created_at DESC;');
+      vehicleInventories = iRes.rows;
+    } catch (e: any) {
+      console.warn('Backup error loading vehicle_inventories from PG:', e.message);
+      vehicleInventories = loadLocalInventories();
+    }
+
+    try {
       const lRes = await pgPool.query('SELECT * FROM access_logs ORDER BY created_at DESC;');
       accessLogs = lRes.rows;
     } catch (e: any) {
@@ -2127,6 +2306,7 @@ export async function exportDatabaseBackupAsync(): Promise<DatabaseBackupPayload
     users = loadServerUsers();
     vehicleRecords = loadServerRecords();
     vehicleMovements = loadLocalMovements();
+    vehicleInventories = loadLocalInventories();
     accessLogs = loadServerLogs();
     appSettings = [{ key: 'general', value: loadServerSettings() }];
   }
@@ -2140,6 +2320,7 @@ export async function exportDatabaseBackupAsync(): Promise<DatabaseBackupPayload
       users: users.length,
       vehicle_records: vehicleRecords.length,
       vehicle_movements: vehicleMovements.length,
+      vehicle_inventories: vehicleInventories.length,
       access_logs: accessLogs.length,
       app_settings: appSettings.length,
     },
@@ -2147,6 +2328,7 @@ export async function exportDatabaseBackupAsync(): Promise<DatabaseBackupPayload
       users,
       vehicle_records: vehicleRecords,
       vehicle_movements: vehicleMovements,
+      vehicle_inventories: vehicleInventories,
       access_logs: accessLogs,
       app_settings: appSettings,
     },
@@ -2162,6 +2344,7 @@ export async function restoreDatabaseBackupAsync(
     users: number;
     vehicle_records: number;
     vehicle_movements: number;
+    vehicle_inventories: number;
     access_logs: number;
     app_settings: number;
   };
@@ -2176,6 +2359,7 @@ export async function restoreDatabaseBackupAsync(
     users: 0,
     vehicle_records: 0,
     vehicle_movements: 0,
+    vehicle_inventories: 0,
     access_logs: 0,
     app_settings: 0,
   };
@@ -2331,7 +2515,61 @@ export async function restoreDatabaseBackupAsync(
     }
   }
 
-  // 4. Restaurar Logs de Acesso
+  // 4. Restaurar Inventários
+  if (Array.isArray(payload.tables.vehicle_inventories)) {
+    const rawInvs = payload.tables.vehicle_inventories;
+    for (const inv of rawInvs) {
+      try {
+        const id = inv.id || `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const plate = (inv.plate || '').toUpperCase().trim();
+        const location = inv.location || '';
+        const observation = inv.observation || null;
+        const dateFormatted = inv.date_formatted || inv.dateFormatted || '';
+        const timeFormatted = inv.time_formatted || inv.timeFormatted || '';
+        const operatorName = inv.operator_name || inv.operatorName || 'Operador';
+        const fuelLevel = inv.fuel_level || inv.fuelLevel || null;
+        const odometer = inv.odometer ? Number(inv.odometer) : null;
+        const photoUrl = inv.photo_url || inv.photoUrl || null;
+
+        if (pgPool && plate) {
+          await pgPool.query(
+            `INSERT INTO vehicle_inventories 
+              (id, date_formatted, time_formatted, plate, location, observation, fuel_level, odometer, operator_name, photo_url, raw_data, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP)
+             ON CONFLICT (id) DO UPDATE SET
+               date_formatted = EXCLUDED.date_formatted,
+               time_formatted = EXCLUDED.time_formatted,
+               plate = EXCLUDED.plate,
+               location = EXCLUDED.location,
+               observation = EXCLUDED.observation,
+               fuel_level = EXCLUDED.fuel_level,
+               odometer = EXCLUDED.odometer,
+               operator_name = EXCLUDED.operator_name,
+               photo_url = EXCLUDED.photo_url,
+               raw_data = EXCLUDED.raw_data;`,
+            [
+              id,
+              dateFormatted,
+              timeFormatted,
+              plate,
+              location,
+              observation,
+              fuelLevel,
+              odometer,
+              operatorName,
+              photoUrl,
+              inv.raw_data ? (typeof inv.raw_data === 'string' ? inv.raw_data : JSON.stringify(inv.raw_data)) : JSON.stringify(inv),
+            ]
+          );
+        }
+        counts.vehicle_inventories++;
+      } catch (err: any) {
+        errors.push(`Inventário (${inv.plate}): ${err.message}`);
+      }
+    }
+  }
+
+  // 5. Restaurar Logs de Acesso
   if (Array.isArray(payload.tables.access_logs)) {
     const rawLogs = payload.tables.access_logs;
     for (const l of rawLogs) {

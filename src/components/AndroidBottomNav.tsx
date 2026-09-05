@@ -1,5 +1,5 @@
 import React from 'react';
-import { Camera, Layers, History, ShieldCheck, ArrowLeftRight } from 'lucide-react';
+import { Camera, Layers, History, ShieldCheck, ArrowLeftRight, ClipboardCheck } from 'lucide-react';
 import { NavTab } from '../types';
 
 interface AndroidBottomNavProps {
@@ -27,15 +27,22 @@ export const AndroidBottomNav: React.FC<AndroidBottomNavProps> = ({
     },
     {
       id: 'patio' as NavTab,
-      label: 'Pátio & Vagas',
+      label: 'Pátio',
       icon: Layers,
       badge: parkedCount > 0 ? parkedCount : null,
       masterOnly: false,
     },
     {
       id: 'movimentacao' as NavTab,
-      label: 'Movimentação',
+      label: 'Movimentar',
       icon: ArrowLeftRight,
+      badge: null,
+      masterOnly: false,
+    },
+    {
+      id: 'inventario' as NavTab,
+      label: 'Inventário',
+      icon: ClipboardCheck,
       badge: null,
       masterOnly: false,
     },

@@ -50,6 +50,9 @@ import {
   loadMovementsAsync,
   saveMovementAsync,
   deleteMovementAsync,
+  loadInventoriesAsync,
+  saveInventoryAsync,
+  deleteInventoryAsync,
   exportDatabaseBackupAsync,
   restoreDatabaseBackupAsync,
 } from './server/dataStore';
@@ -272,6 +275,54 @@ async function startServer() {
     }
   }
 
+  async function syncInventoryToGoogleSheetWebhook(inventory: any, customWebhookUrl?: string) {
+    try {
+      const settings = await loadServerSettingsAsync();
+      const webhookUrl = customWebhookUrl || settings.sheetsWebhookUrl;
+      if (!webhookUrl || !webhookUrl.startsWith('http')) {
+        return { success: false, reason: 'No webhook configured' };
+      }
+
+      // Regra de colunas da aba inventario:
+      // A: data
+      // B: hora
+      // C: placa
+      // D: observação (com Local obrigatório + observação + combustível + km)
+      // E: operador
+      const bodyData = {
+        action: 'record_inventory',
+        tab: 'inventario',
+        inventory: {
+          data: inventory.dateFormatted,
+          hora: inventory.timeFormatted,
+          placa: inventory.plate,
+          local: inventory.location,
+          observacao: inventory.observation || '',
+          combustivel: inventory.fuelLevel || '',
+          km: inventory.odometer || '',
+          operador: inventory.operatorName || '',
+        },
+        timestamp: new Date().toISOString(),
+      };
+
+      const resp = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bodyData),
+        redirect: 'follow',
+      });
+
+      if (resp.ok) {
+        const data = await resp.json().catch(() => ({ success: true }));
+        return { success: true, data };
+      }
+      return { success: false, status: resp.status };
+    } catch (err: any) {
+      console.warn('syncInventoryToGoogleSheetWebhook error:', err.message);
+      return { success: false, error: err.message };
+    }
+  }
+
   // --------------------------------------------------------------------------
   // ROLE-BASED ACCESS CONTROL (RBAC) MIDDLEWARE: MASTER-ONLY PRIVILEGES
   // --------------------------------------------------------------------------
@@ -437,6 +488,79 @@ async function startServer() {
     try {
       const { id } = req.params;
       const success = await deleteMovementAsync(id);
+      res.json({ success });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // --------------------------------------------------------------------------
+  // INVENTÁRIO DE VEÍCULOS NO PÁTIO (PLACA + LOCAL)
+  // --------------------------------------------------------------------------
+  app.get('/api/inventories', async (req: Request, res: Response) => {
+    try {
+      const inventories = await loadInventoriesAsync();
+      res.json({ success: true, inventories });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  app.post('/api/inventories', async (req: Request, res: Response) => {
+    try {
+      const {
+        plate,
+        location,
+        observation,
+        fuelLevel,
+        odometer,
+        operatorName,
+        photoUrl,
+        dateFormatted,
+        timeFormatted,
+      } = req.body;
+
+      if (!plate || !plate.trim()) {
+        res.status(400).json({ success: false, message: 'A Placa do veículo é obrigatória.' });
+        return;
+      }
+      if (!location || !location.trim()) {
+        res.status(400).json({ success: false, message: 'O local do veículo é obrigatório.' });
+        return;
+      }
+
+      const now = new Date();
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      const defaultDate = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()}`;
+      const defaultTime = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+
+      const newInventory = await saveInventoryAsync({
+        id: `inv-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        createdAt: Date.now(),
+        dateFormatted: dateFormatted || defaultDate,
+        timeFormatted: timeFormatted || defaultTime,
+        plate: plate.toUpperCase().trim(),
+        location: location.trim(),
+        observation: observation ? observation.trim() : undefined,
+        fuelLevel: fuelLevel || undefined,
+        odometer: odometer ? Number(odometer) : undefined,
+        operatorName: operatorName || 'Operador',
+        photoUrl: photoUrl || undefined,
+      });
+
+      // Sincroniza em segundo plano com a aba INVENTARIO da planilha
+      syncInventoryToGoogleSheetWebhook(newInventory).catch(() => {});
+
+      res.json({ success: true, inventory: newInventory });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  app.delete('/api/inventories/:id', async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const success = await deleteInventoryAsync(id);
       res.json({ success });
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });

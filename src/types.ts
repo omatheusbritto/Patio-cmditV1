@@ -6,7 +6,14 @@ export type LocationCode = 'P1' | 'P2' | 'P3' | 'R1' | 'ADM' | 'PDC' | 'OUTROS' 
 
 export type QualityLocationCode = 'P1' | 'P2' | 'P3' | 'R1' | 'ADM' | 'OUTROS' | string;
 
-export type OperationType = 'entrada' | 'saida' | 'abastecimento' | 'pdc' | 'qualidade_51';
+export type OperationType =
+  | 'entrada'
+  | 'saida'
+  | 'abastecimento'
+  | 'pdc'
+  | 'qualidade_51'
+  | 'movimentacao'
+  | 'inventario';
 
 export type EntrySubtype = 'bolsao_40' | 'retorno' | 'recusa' | 'remocao_adesivos';
 
@@ -14,7 +21,7 @@ export type VehicleFleetType = 'RAC' | 'GF' | 'LQV' | 'OUTROS' | string;
 
 export type VehicleStatus = 'parked' | 'released';
 
-export type NavTab = 'register' | 'patio' | 'movimentacao' | 'history' | 'logs';
+export type NavTab = 'register' | 'patio' | 'movimentacao' | 'inventario' | 'history' | 'logs';
 
 export interface VehicleMovement {
   id: string;
@@ -27,7 +34,21 @@ export interface VehicleMovement {
   observation: string; // F: observação
   fuelLevel?: string; // G: combustível
   odometer?: number | string; // H: km odômetro
-  operatorName: string; // J: operador
+  operatorName: string; // I: operador
+  photoUrl?: string;
+}
+
+export interface VehicleInventory {
+  id: string;
+  createdAt: number;
+  dateFormatted: string; // A: data
+  timeFormatted: string; // B: hora
+  plate: string; // C: placa
+  location: string; // local (obrigatório)
+  observation?: string; // D: observação
+  fuelLevel?: string; // Combustível (opcional)
+  odometer?: number | string; // Km odômetro (opcional)
+  operatorName: string; // E: operador
   photoUrl?: string;
 }
 
@@ -183,7 +204,7 @@ export function getAllowedOperationsForRole(role?: UserRole): OperationType[] {
     case 'master':
     case 'patio':
     case 'operador':
-      return ['entrada', 'saida', 'abastecimento', 'pdc', 'qualidade_51'];
+      return ['entrada', 'saida', 'abastecimento', 'pdc', 'qualidade_51', 'movimentacao', 'inventario'];
     case 'qualidade_51':
     case 'vistoriador':
       return ['qualidade_51'];
@@ -195,7 +216,7 @@ export function getAllowedOperationsForRole(role?: UserRole): OperationType[] {
     case 'motorista':
       return ['entrada', 'saida'];
     default:
-      return ['entrada', 'saida', 'abastecimento', 'pdc', 'qualidade_51'];
+      return ['entrada', 'saida', 'abastecimento', 'pdc', 'qualidade_51', 'movimentacao', 'inventario'];
   }
 }
 

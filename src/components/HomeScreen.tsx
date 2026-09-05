@@ -15,6 +15,7 @@ import {
   Fuel,
   Wrench,
   ArrowLeftRight,
+  ClipboardCheck,
 } from 'lucide-react';
 import { PatioMetrics, getRoleBadgeStyle, getRoleDisplayName } from '../types';
 import { GoogleSheetsIntegration } from './GoogleSheetsIntegration';
@@ -24,6 +25,7 @@ interface HomeScreenProps {
   onStartRegistration: () => void;
   onOpenPatio: () => void;
   onOpenMovement?: () => void;
+  onOpenInventory?: () => void;
   onOpenHistory: () => void;
   onOpenLogs?: () => void;
   onOpenSpreadsheetOnline?: () => void;
@@ -36,6 +38,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onStartRegistration,
   onOpenPatio,
   onOpenMovement,
+  onOpenInventory,
   onOpenHistory,
   onOpenLogs,
   onOpenSpreadsheetOnline,
@@ -221,11 +224,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       </div>
 
       {/* Fast Navigation Buttons */}
-      <div className="w-full grid grid-cols-3 gap-2">
+      <div className="w-full grid grid-cols-2 sm:grid-cols-4 gap-2">
         <button
           type="button"
           onClick={onOpenPatio}
-          className="py-2.5 px-2 rounded-xl bg-white border border-neutral-300 text-neutral-800 hover:bg-neutral-50 font-bold text-xs flex items-center justify-center gap-1 shadow-sm active:scale-95 transition"
+          className="py-2.5 px-2 rounded-xl bg-white border border-neutral-300 text-neutral-800 hover:bg-neutral-50 font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition cursor-pointer"
         >
           <Layers className="w-3.5 h-3.5 text-emerald-700" />
           <span>Pátio</span>
@@ -234,18 +237,27 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         <button
           type="button"
           onClick={onOpenMovement}
-          className="py-2.5 px-2 rounded-xl bg-white border border-neutral-300 text-neutral-800 hover:bg-neutral-50 font-bold text-xs flex items-center justify-center gap-1 shadow-sm active:scale-95 transition"
+          className="py-2.5 px-2 rounded-xl bg-white border border-teal-300 bg-teal-50/50 text-teal-950 hover:bg-teal-100 font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition cursor-pointer"
         >
-          <ArrowLeftRight className="w-3.5 h-3.5 text-blue-600" />
+          <ArrowLeftRight className="w-3.5 h-3.5 text-teal-700" />
           <span>Movimentar</span>
         </button>
 
         <button
           type="button"
-          onClick={onOpenHistory}
-          className="py-2.5 px-2 rounded-xl bg-white border border-neutral-300 text-neutral-800 hover:bg-neutral-50 font-bold text-xs flex items-center justify-center gap-1 shadow-sm active:scale-95 transition"
+          onClick={onOpenInventory}
+          className="py-2.5 px-2 rounded-xl bg-white border border-blue-300 bg-blue-50/50 text-blue-950 hover:bg-blue-100 font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition cursor-pointer"
         >
-          <Search className="w-3.5 h-3.5 text-emerald-700" />
+          <ClipboardCheck className="w-3.5 h-3.5 text-blue-700" />
+          <span>Inventário</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={onOpenHistory}
+          className="py-2.5 px-2 rounded-xl bg-white border border-neutral-300 text-neutral-800 hover:bg-neutral-50 font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition cursor-pointer"
+        >
+          <Search className="w-3.5 h-3.5 text-neutral-600" />
           <span>Histórico</span>
         </button>
       </div>

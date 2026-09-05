@@ -649,6 +649,16 @@ var TAB_CONFIGS = {
       "OBSERVAÇÕES",
       "CONDUTOR(OPERADOR DO REGISTRO)"
     ]
+  },
+  inventario: {
+    tabName: "INVENTÁRIO",
+    headers: [
+      "DATA",
+      "HORA",
+      "PLACA",
+      "OBSERVAÇÃO",
+      "OPERADOR"
+    ]
   }
 };
 
@@ -1071,6 +1081,10 @@ function doPost(e) {
       tabCategory = "qualidade";
     } else if (op === "pdc" || op.indexOf("pdc") !== -1 || op.indexOf("fila") !== -1) {
       tabCategory = "pdc";
+    } else if (op === "movimentacao" || op === "movimentação" || op.indexOf("movimen") !== -1 || data.action === 'record_movement') {
+      tabCategory = "movimentacao";
+    } else if (op === "inventario" || op === "inventário" || op.indexOf("inventar") !== -1 || data.action === 'record_inventory') {
+      tabCategory = "inventario";
     }
 
     var activeConfig = TAB_CONFIGS[tabCategory] || TAB_CONFIGS.entrada;
@@ -1095,6 +1109,14 @@ function doPost(e) {
         tabName = allSheets[i].getName();
         break;
       } else if (tabCategory === "pdc" && (sName.indexOf("pdc") !== -1 || sName.indexOf("fila") !== -1)) {
+        sheet = allSheets[i];
+        tabName = allSheets[i].getName();
+        break;
+      } else if (tabCategory === "movimentacao" && (sName.indexOf("movimen") !== -1 || sName.indexOf("transfer") !== -1)) {
+        sheet = allSheets[i];
+        tabName = allSheets[i].getName();
+        break;
+      } else if (tabCategory === "inventario" && (sName.indexOf("inventar") !== -1 || sName.indexOf("confer") !== -1)) {
         sheet = allSheets[i];
         tabName = allSheets[i].getName();
         break;
@@ -1252,6 +1274,38 @@ function doPost(e) {
         nivelCombustivel, // Col D: NIVEL DO COMBUSTIVEL
         observacoes,      // Col E: OBSERVAÇÕES
         condutorOuOperador// Col F: CONDUTOR(OPERADOR DO REGISTRO)
+      ];
+    } else if (tabCategory === "movimentacao") {
+      customRow = [
+        dateStr,          // Col A: DATA
+        timeStr,          // Col B: HORA
+        placa,            // Col C: PLACA
+        origem,           // Col D: ORIGEM
+        destino,          // Col E: DESTINO
+        observacoes,      // Col F: OBSERVAÇÃO
+        nivelCombustivel, // Col G: COMBUSTÍVEL
+        km,               // Col H: KM ODÔMETRO
+        operador          // Col I: OPERADOR
+      ];
+    } else if (tabCategory === "inventario") {
+      var obsInventario = observacoes || "";
+      var locInv = String(data.location || data.local || "").toUpperCase().trim();
+      if (locInv) {
+        obsInventario = "Local: " + locInv + (obsInventario ? " | " + obsInventario : "");
+      }
+      if (nivelCombustivel && nivelCombustivel !== "-") {
+        obsInventario += " | Combustível: " + nivelCombustivel;
+      }
+      if (km && km !== "-") {
+        obsInventario += " | KM: " + km;
+      }
+
+      customRow = [
+        dateStr,          // Col A: DATA
+        timeStr,          // Col B: HORA
+        placa,            // Col C: PLACA
+        obsInventario,    // Col D: OBSERVAÇÃO
+        operador          // Col E: OPERADOR
       ];
     }
 

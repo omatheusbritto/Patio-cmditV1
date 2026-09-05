@@ -18,6 +18,8 @@ import {
   Check,
   Edit2,
   Lock,
+  ArrowLeftRight,
+  ClipboardCheck,
 } from 'lucide-react';
 import { QuickPlateEditModal } from './QuickPlateEditModal';
 import { formatPlateForDisplay } from '../utils/plateNormalizer';
@@ -105,6 +107,30 @@ const OPERATIONS: OperationOption[] = [
     accentColor: 'text-indigo-700',
     borderColor: 'hover:border-indigo-500',
     selectedBg: 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-500',
+  },
+  {
+    id: 'movimentacao',
+    title: 'Movimentação',
+    badge: 'Origem ➔ Destino',
+    badgeColor: 'bg-teal-100 text-teal-800 border-teal-300',
+    description: 'Transferência de veículo entre vagas ou setores do pátio',
+    fieldsText: 'Placa • Origem • Destino • Combustível • KM Odômetro • Observação',
+    icon: ArrowLeftRight,
+    accentColor: 'text-teal-700',
+    borderColor: 'hover:border-teal-500',
+    selectedBg: 'border-teal-600 bg-teal-50/50 ring-2 ring-teal-500',
+  },
+  {
+    id: 'inventario',
+    title: 'Inventário',
+    badge: 'Placa + Local',
+    badgeColor: 'bg-blue-100 text-blue-800 border-blue-300',
+    description: 'Conferência e inventário rápido: apenas Placa e Local',
+    fieldsText: 'Placa (obrigatório) • Local (obrigatório) • Observação • Combustível • KM',
+    icon: ClipboardCheck,
+    accentColor: 'text-blue-700',
+    borderColor: 'hover:border-blue-500',
+    selectedBg: 'border-blue-600 bg-blue-50/50 ring-2 ring-blue-500',
   },
 ];
 

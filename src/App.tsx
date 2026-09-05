@@ -51,6 +51,7 @@ import { OnlineSpreadsheetViewerModal } from './components/OnlineSpreadsheetView
 import { AccessLogsTab } from './components/AccessLogsTab';
 import { DatabaseTestModal } from './components/DatabaseTestModal';
 import { MovementTab } from './components/MovementTab';
+import { InventoryTab } from './components/InventoryTab';
 import { MasterDatabaseBackupModal } from './components/MasterDatabaseBackupModal';
 import {
   getCurrentSession,
