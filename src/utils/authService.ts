@@ -684,3 +684,22 @@ export async function configureDatabaseUrl(databaseUrl: string): Promise<{ succe
   }
 }
 
+/**
+ * Força auto-reconexão com o banco de dados PostgreSQL e retorna o diagnóstico atualizado
+ */
+export async function reconnectDatabaseAsync(): Promise<{ success: boolean; diagnostic?: DatabaseDiagnosticResult }> {
+  try {
+    const res = await fetch('/api/db/reconnect', {
+      method: 'POST',
+      headers: {
+        ...getAuthHeaders(),
+      },
+    });
+    return await res.json();
+  } catch (err: any) {
+    return {
+      success: false,
+    };
+  }
+}
+

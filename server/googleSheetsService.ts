@@ -5,7 +5,7 @@ import { GoogleGenAI } from '@google/genai';
  */
 export interface SheetVehiclePayload {
   plate: string;
-  operationType: 'entrada' | 'saida' | 'abastecimento' | 'pdc' | 'qualidade_51';
+  operationType: 'entrada' | 'saida' | 'abastecimento' | 'pdc' | 'qualidade_51' | 'qualidade' | 'inventario' | string;
   fuel: string;
   operatorName?: string;
   driverName?: string;
@@ -22,6 +22,7 @@ export interface SheetVehiclePayload {
   characteristic?: string | null;
   notes?: string;
   description?: string;
+  customRow?: any[];
 }
 
 const SPREADSHEET_TITLE = 'Controle de Frota & Pátio CMDIT';
@@ -163,6 +164,12 @@ export const TAB_DEFINITIONS = {
     aliases: ['usuarios_cmdit', 'usuarios', 'usuários', 'users'],
     color: { red: 0.2, green: 0.4, blue: 0.8 },
     headers: HEADERS_USUARIOS,
+  },
+  inventario: {
+    title: 'inventario',
+    aliases: ['inventario', 'inventário', 'inventarios', 'estoque', 'conferencia'],
+    color: { red: 0.1, green: 0.65, blue: 0.45 },
+    headers: ['DATA', 'HORA', 'PLACA', 'LOCAL', 'OBSERVAÇÃO', 'OPERADOR'],
   },
 };
 
@@ -327,7 +334,7 @@ async function initializeSpreadsheetHeaders(spreadsheetId: string, accessToken: 
  */
 async function ensureTargetTab(
   spreadsheetId: string,
-  categoryKey: 'entrada' | 'saida' | 'combustivel' | 'pdc' | 'qualidade' | 'usuarios',
+  categoryKey: 'entrada' | 'saida' | 'combustivel' | 'pdc' | 'qualidade' | 'usuarios' | 'inventario',
   accessToken: string
 ): Promise<{ title: string; sheetId?: number }> {
   const tabDef = TAB_DEFINITIONS[categoryKey];
@@ -600,8 +607,8 @@ export async function appendVehicleRecordToSheet(
   let destino = record.destination || '-';
   if (record.operationType === 'pdc') {
     destino = record.destination || 'FILA PDC (LAVAGEM / OFICINA)';
-  } else if (record.operationType === 'qualidade_51') {
-    destino = record.destination || record.location || 'P1';
+  } else if (record.operationType === 'qualidade_51' || record.operationType === 'qualidade') {
+    destino = record.location || (record as any).local || record.destination || (record as any).destino || 'P1';
   }
   destino = String(destino).toUpperCase().trim();
 
@@ -635,7 +642,7 @@ export async function appendVehicleRecordToSheet(
     ? `${String(record.liters).trim().replace(/\s*l/i, '').toUpperCase()} L`
     : '-';
 
-  let categoryKey: 'entrada' | 'saida' | 'combustivel' | 'pdc' | 'qualidade' = 'entrada';
+  let categoryKey: 'entrada' | 'saida' | 'combustivel' | 'pdc' | 'qualidade' | 'inventario' = 'entrada';
   let customRow: string[] = [];
 
   if (record.operationType === 'saida') {
@@ -686,10 +693,10 @@ export async function appendVehicleRecordToSheet(
       observacoes,
       condutorOuOperador,
     ];
-  } else if (record.operationType === 'qualidade_51') {
+  } else if (record.operationType === 'qualidade_51' || record.operationType === 'qualidade') {
     categoryKey = 'qualidade';
     // QUALIDADE 51: 8 Colunas Exatas:
-    // A: DATA | B: HORA | C: PLACA | D: CONDUTOR | E: CARACTERISTICAS DO VEICULO | F: NIVEL DO COMBUSTIVEL | G: DESTINO(P1, P2, P3, R1, ADM) | H: OPERADOR DO REGISTRO
+    // A: DATA | B: HORA | C: PLACA | D: CONDUTOR | E: CARACTERISTICAS DO VEICULO | F: NIVEL DO COMBUSTIVEL | G: DESTINO/LOCAL(P1, P2, P3, R1, ADM) | H: OPERADOR DO REGISTRO
     customRow = [
       dateStr,
       timeStr,
@@ -698,6 +705,31 @@ export async function appendVehicleRecordToSheet(
       caracteristica,
       nivelCombustivel,
       destino || 'P1',
+      operador,
+    ];
+  } else if (record.operationType === 'inventario') {
+    categoryKey = 'inventario';
+    // INVENTÁRIO: 6 Colunas Exatas:
+    // A: DATA | B: HORA | C: PLACA | D: LOCAL | E: OBSERVAÇÃO (com Local + Combustível/KM) | F: OPERADOR
+    const locInv = String(record.location || (record as any).local || '-').toUpperCase().trim();
+    let obsInv = locInv && locInv !== '-' ? `Local: ${locInv}` : '';
+    if (observacoes && observacoes !== '-' && !obsInv.includes(observacoes)) {
+      obsInv = obsInv ? `${obsInv} | ${observacoes}` : observacoes;
+    }
+    if (nivelCombustivel && nivelCombustivel !== '-' && !obsInv.includes('Combustível:')) {
+      obsInv = obsInv ? `${obsInv} | Combustível: ${nivelCombustivel}` : `Combustível: ${nivelCombustivel}`;
+    }
+    if (kmClean && kmClean !== '-' && !obsInv.includes('KM:')) {
+      obsInv = obsInv ? `${obsInv} | KM: ${kmClean}` : `KM: ${kmClean}`;
+    }
+    if (!obsInv) obsInv = locInv ? `Local: ${locInv}` : '-';
+
+    customRow = [
+      dateStr,
+      timeStr,
+      placa,
+      locInv || '-',
+      obsInv,
       operador,
     ];
   } else {

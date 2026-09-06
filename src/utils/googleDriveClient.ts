@@ -534,20 +534,15 @@ export function getAppsScriptTemplateCode(): string {
 
 /**
  * Template de Script do Google Apps Script para copiar e colar na planilha
- * Consolidação completa: Todas as 6 abas na MESMA planilha oficial única:
- * - 📥 Entrada (12 colunas): Data, Hora, Placa, Condutor, KM odômetro, Nível Combustível, Origem, Destino, Chave reserva, Tipo veículo, Observação, Operador
- * - 📤 Saída (10 colunas): Data, Hora, Placa, Condutor, KM odômetro, Nível Combustível, Destino, Chave reserva, Observação, Operador
- * - 🔍 Qualidade 51 (8 colunas): Data, Hora, Placa, Condutor, Característica do Veículo, Nível Combustível, Destino, Operador
- * - ⛽ Combustível (8 colunas): Data, Hora, Placa, KM odômetro, Nível Combustível, Condutor, Destino, Operador
- * - 📋 Fila PDC (6 colunas): Data, Hora, Placa, Nível Combustível, Observação, Operador
- * - 👥 USUARIOS_CMDIT (7 colunas):
- *     Coluna A: Data e Hora da criação do usuario
- *     Coluna B: Matricula/Usuario
- *     Coluna C: Nome do usuario
- *     Coluna D: Senha
- *     Coluna E: Whatsapp
- *     Coluna F: Status
- *     Coluna G: ultimo acesso
+ * Consolidação completa: Todas as abas na MESMA planilha oficial única:
+ * - 📋 INVENTÁRIO (6 colunas): A: Data, B: Hora, C: Placa, D: Local, E: Observação (contendo o Local obrigatório e detalhes adicionais de Combustível/KM), F: Operador
+ * - 🔍 Qualidade 51 (8 colunas): A: Data, B: Hora, C: Placa, D: Condutor, E: Característica do Veículo, F: Nível Combustível, G: Destino/Local (P1, P2, P3, R1, ADM), H: Operador do Registro
+ * - 🔄 Movimentação (9 colunas): A: Data, B: Hora, C: Placa, D: Origem, E: Destino, F: Observação, G: Combustível, H: KM Odômetro, I: Operador
+ * - 📥 Entrada (13 colunas): Data, Hora, Placa, Condutor, KM odômetro, Nível Combustível, Origem, Destino, Chave reserva, Tipo veículo, Foto Doc, Observação, Operador
+ * - 📤 Saída (12 colunas): Data, Hora, Placa, Condutor, KM odômetro, Nível Combustível, Destino, Chave reserva, Foto Doc, Tipo veículo, Observação, Operador
+ * - ⛽ Combustível (11 colunas): Data, Hora, Placa, KM odômetro, Nível Combustível, Condutor, Destino, Observação, Tipo Combustível, Litros, Operador
+ * - 📋 Fila PDC (6 colunas): Data, Hora, Placa, Nível Combustível, Observação, Condutor/Operador
+ * - 👥 USUARIOS_CMDIT (7 colunas): Data e Hora, Matrícula, Nome, Senha, WhatsApp, Status, Último Acesso
  */
 export const GOOGLE_APPS_SCRIPT_TEMPLATE = `// ============================================================================
 // SCRIPT DE GRAVAÇÃO AUTOMÁTICA OFICIAL UNIFICADA - CMDIT CONTROLE DE PÁTIO
@@ -656,6 +651,7 @@ var TAB_CONFIGS = {
       "DATA",
       "HORA",
       "PLACA",
+      "LOCAL",
       "OBSERVAÇÃO",
       "OPERADOR"
     ]
@@ -1175,7 +1171,23 @@ function doPost(e) {
     var condutor = String(data.driverName || data.condutor || data.motorista || "-").toUpperCase().trim();
     var placa = String(data.plate || data.placa || "").toUpperCase().trim();
     var origem = String(data.origin || data.origem || (tabCategory === "entrada" ? "PÁTIO PRINCIPAL" : "-")).toUpperCase().trim();
-    var destino = String(data.destination || data.destino || (tabCategory === "pdc" ? "FILA PDC (LAVAGEM/OFICINA)" : (tabCategory === "qualidade" ? (data.location || "P1") : "-"))).toUpperCase().trim();
+
+    // Local / Destino do veículo
+    var locQualidade = String(
+      (data.location && data.location !== "-") ? data.location :
+      (data.local && data.local !== "-") ? data.local :
+      (data.destination && data.destination !== "-") ? data.destination :
+      (data.destino && data.destino !== "-") ? data.destino :
+      "P1"
+    ).toUpperCase().trim();
+
+    var destino = String(
+      tabCategory === "qualidade" ? locQualidade :
+      (data.destination && data.destination !== "-") ? data.destination :
+      (data.destino && data.destino !== "-") ? data.destino :
+      (tabCategory === "pdc" ? "FILA PDC (LAVAGEM/OFICINA)" : (tabCategory === "entrada" ? "BOLSÃO 40" : "-"))
+    ).toUpperCase().trim();
+
     var km = data.km ? (String(data.km).replace(/\\s*km/i, '').toUpperCase().trim() + " KM") : (data.odometro ? (String(data.odometro).replace(/\\s*km/i, '').toUpperCase().trim() + " KM") : "-");
     var nivelCombustivel = formatFuelLevel(data.nivelCombustivel || data.fuel || data.combustivel);
     
@@ -1249,7 +1261,7 @@ function doPost(e) {
         condutor,         // Col D: CONDUTOR
         caracteristica,   // Col E: CARACTERISTICAS DO VEICULO
         nivelCombustivel, // Col F: NIVEL DO COMBUSTIVEL
-        destino,          // Col G: DESTINO(P1, P2, P3, R1, ADM)
+        locQualidade,     // Col G: DESTINO(P1, P2, P3, R1, ADM) / LOCAL DO VEÍCULO
         operador          // Col H: OPERADOR DO REGISTRO
       ];
     } else if (tabCategory === "combustivel") {
@@ -1288,24 +1300,35 @@ function doPost(e) {
         operador          // Col I: OPERADOR
       ];
     } else if (tabCategory === "inventario") {
-      var obsInventario = observacoes || "";
-      var locInv = String(data.location || data.local || "").toUpperCase().trim();
-      if (locInv) {
-        obsInventario = "Local: " + locInv + (obsInventario ? " | " + obsInventario : "");
+      var locInv = String(data.location || data.local || (data.inventory && (data.inventory.local || data.inventory.location)) || "").toUpperCase().trim();
+      var obsRaw = data.observation || data.observacao || data.observacoes || (data.inventory && (data.inventory.observation || data.inventory.observacao || data.inventory.observacoes)) || "";
+      obsRaw = String(obsRaw).replace(/\\r?\\n/g, ' - ').trim();
+
+      var obsInventario = locInv ? ("Local: " + locInv) : "";
+      if (obsRaw && obsRaw !== "-" && obsRaw !== obsInventario) {
+        if (obsRaw.indexOf("Local:") === 0) {
+          obsInventario = obsRaw;
+        } else {
+          obsInventario = (obsInventario ? obsInventario + " | " : "") + obsRaw;
+        }
       }
-      if (nivelCombustivel && nivelCombustivel !== "-") {
-        obsInventario += " | Combustível: " + nivelCombustivel;
+      if (nivelCombustivel && nivelCombustivel !== "-" && obsInventario.indexOf("Combustível:") === -1) {
+        obsInventario += (obsInventario ? " | " : "") + "Combustível: " + nivelCombustivel;
       }
-      if (km && km !== "-") {
-        obsInventario += " | KM: " + km;
+      if (km && km !== "-" && obsInventario.indexOf("KM:") === -1) {
+        obsInventario += (obsInventario ? " | " : "") + "KM: " + km;
+      }
+      if (!obsInventario) {
+        obsInventario = locInv ? ("Local: " + locInv) : "-";
       }
 
       customRow = [
         dateStr,          // Col A: DATA
         timeStr,          // Col B: HORA
         placa,            // Col C: PLACA
-        obsInventario,    // Col D: OBSERVAÇÃO
-        operador          // Col E: OPERADOR
+        locInv || "-",    // Col D: LOCAL
+        obsInventario,    // Col E: OBSERVAÇÃO (contendo o Local obrigatório e detalhes adicionais de Combustível/KM)
+        operador          // Col F: OPERADOR
       ];
     }
 
@@ -1318,12 +1341,16 @@ function doPost(e) {
     targetRange.setFontColor("#000000");
 
     // Formatar cabeçalho se necessário
-    var headerCheck = sheet.getRange(1, 1, 1, expectedHeaders.length);
-    if (headerCheck.getValues()[0][0] !== expectedHeaders[0]) {
-      headerCheck.setValues([expectedHeaders]);
-      headerCheck.setFontWeight("bold");
-      headerCheck.setBackground("#0f172a");
-      headerCheck.setFontColor("#ffffff");
+    var currentHeaderCols = sheet.getLastColumn() || 1;
+    var headerCheck = sheet.getRange(1, 1, 1, Math.max(currentHeaderCols, expectedHeaders.length));
+    var firstCell = headerCheck.getValues()[0][0];
+    var colD = headerCheck.getValues()[0][3];
+    if (firstCell !== expectedHeaders[0] || (tabCategory === "inventario" && (!colD || String(colD).toUpperCase().indexOf("LOCAL") === -1))) {
+      var headerRange = sheet.getRange(1, 1, 1, expectedHeaders.length);
+      headerRange.setValues([expectedHeaders]);
+      headerRange.setFontWeight("bold");
+      headerRange.setBackground("#0f172a");
+      headerRange.setFontColor("#ffffff");
     }
 
     return ContentService.createTextOutput(JSON.stringify({

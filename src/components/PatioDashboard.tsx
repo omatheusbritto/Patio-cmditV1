@@ -21,6 +21,7 @@ import {
   ShieldCheck,
   Wrench,
   ArrowLeftRight,
+  ClipboardCheck,
   ChevronDown,
   ChevronRight,
   Grid,
@@ -44,6 +45,7 @@ interface PatioDashboardProps {
   onStartNewRegistration: () => void;
   onOpenHistoryTab: (initialSectorFilter?: LocationCode) => void;
   onMoveVehicle?: (vehicle: VehicleRecord) => void;
+  onInventoryVehicle?: (vehicle: VehicleRecord) => void;
 }
 
 export const PatioDashboard: React.FC<PatioDashboardProps> = ({
@@ -54,6 +56,7 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
   onStartNewRegistration,
   onOpenHistoryTab,
   onMoveVehicle,
+  onInventoryVehicle,
 }) => {
   const [selectedFilter, setSelectedFilter] = useState<string>('ALL');
   const [expandedQuadrant, setExpandedQuadrant] = useState<number | null>(1);
@@ -524,6 +527,18 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
                           className="p-2 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 text-xs font-bold flex items-center gap-1 active:scale-95 transition border border-teal-200 cursor-pointer"
                         >
                           <ArrowLeftRight className="w-3.5 h-3.5 text-teal-700" />
+                        </button>
+                      )}
+
+                      {/* Botão Rápido: Inventariar */}
+                      {onInventoryVehicle && (
+                        <button
+                          type="button"
+                          onClick={() => onInventoryVehicle(v)}
+                          title="Fazer Inventário deste veículo"
+                          className="p-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold flex items-center gap-1 active:scale-95 transition border border-blue-200 cursor-pointer"
+                        >
+                          <ClipboardCheck className="w-3.5 h-3.5 text-blue-700" />
                         </button>
                       )}
 

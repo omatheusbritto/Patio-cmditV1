@@ -186,7 +186,7 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
     if (inv.odometer) text += `⏱️ *KM Odômetro:* ${inv.odometer}\n`;
     text += `👤 *Operador:* ${inv.operatorName}\n`;
     text += `📅 *Data/Hora:* ${inv.dateFormatted} às ${inv.timeFormatted}\n`;
-    text += `📊 *Planilha Oficial:* Aba Inventário`;
+    text += `📊 *Planilha Oficial:* Aba inventario (Colunas A a F)`;
 
     const encoded = encodeURIComponent(text);
     window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
@@ -250,7 +250,7 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
         <div className="mt-3 pt-3 border-t border-emerald-700/40 flex items-center justify-between text-xs text-emerald-200">
           <div className="flex items-center gap-2">
             <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>Aba: <strong>inventario</strong> (Colunas A a E)</span>
+            <span>Aba: <strong>inventario</strong> (Colunas A a F: Data, Hora, Placa, Local, Obs, Operador)</span>
           </div>
           <span>Total: <strong>{inventories.length}</strong> conferências</span>
         </div>

@@ -41,14 +41,14 @@ export interface VehicleMovement {
 export interface VehicleInventory {
   id: string;
   createdAt: number;
-  dateFormatted: string; // A: data
-  timeFormatted: string; // B: hora
-  plate: string; // C: placa
-  location: string; // local (obrigatório)
-  observation?: string; // D: observação
+  dateFormatted: string; // Col A: Data
+  timeFormatted: string; // Col B: Hora
+  plate: string; // Col C: Placa
+  location: string; // Col D: Local
+  observation?: string; // Col E: Observação (contendo o Local obrigatório e detalhes adicionais de Combustível/KM)
   fuelLevel?: string; // Combustível (opcional)
   odometer?: number | string; // Km odômetro (opcional)
-  operatorName: string; // E: operador
+  operatorName: string; // Col F: Operador
   photoUrl?: string;
 }
 
@@ -214,7 +214,7 @@ export function getAllowedOperationsForRole(role?: UserRole): OperationType[] {
       return ['abastecimento'];
     case 'entrada_saida':
     case 'motorista':
-      return ['entrada', 'saida'];
+      return ['entrada', 'saida', 'movimentacao', 'inventario'];
     default:
       return ['entrada', 'saida', 'abastecimento', 'pdc', 'qualidade_51', 'movimentacao', 'inventario'];
   }

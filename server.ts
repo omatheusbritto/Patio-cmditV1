@@ -14,6 +14,8 @@ import {
   getActiveDbType,
   getDatabaseDiagnosticAsync,
   setRuntimeDatabaseUrl,
+  startDatabaseHeartbeat,
+  reconnectDatabaseNow,
 } from './server/db';
 import {
   loadServerUsersAsync,
@@ -142,10 +144,11 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Initialize PostgreSQL / MySQL / JSON Database
+  // Initialize PostgreSQL / MySQL / JSON Database & Start Heartbeat Monitor
   await initDatabase().catch((err) =>
     console.warn('Database initialization note:', err.message)
   );
+  startDatabaseHeartbeat();
 
   // Support large base64 image uploads from camera
   app.use(express.json({ limit: '35mb' }));
@@ -283,21 +286,64 @@ async function startServer() {
         return { success: false, reason: 'No webhook configured' };
       }
 
-      // Regra de colunas da aba inventario:
-      // A: data
-      // B: hora
-      // C: placa
-      // D: observação (com Local obrigatório + observação + combustível + km)
-      // E: operador
+      // Regra rigorosa de colunas da aba "inventario" da planilha Google Sheets:
+      // A: Data
+      // B: Hora
+      // C: Placa
+      // D: Local
+      // E: Observação (contendo o Local obrigatório e detalhes adicionais de Combustível/KM)
+      // F: Operador
+      const locClean = String(inventory.location || '').toUpperCase().trim();
+      let obsFinal = `Local: ${locClean}`;
+      if (inventory.observation && String(inventory.observation).trim() && String(inventory.observation).trim() !== '-') {
+        obsFinal += ` | ${String(inventory.observation).trim()}`;
+      }
+      if (inventory.fuelLevel && inventory.fuelLevel !== '-') {
+        obsFinal += ` | Combustível: ${inventory.fuelLevel}`;
+      }
+      if (inventory.odometer && inventory.odometer !== '-') {
+        obsFinal += ` | KM: ${inventory.odometer}`;
+      }
+
       const bodyData = {
         action: 'record_inventory',
         tab: 'inventario',
+        operation: 'inventario',
+        operationType: 'inventario',
+        targetTabName: '📋 INVENTÁRIO',
+        data: inventory.dateFormatted,
+        hora: inventory.timeFormatted,
+        dateFormatted: inventory.dateFormatted,
+        timeFormatted: inventory.timeFormatted,
+        placa: inventory.plate,
+        plate: inventory.plate,
+        local: locClean,
+        location: locClean,
+        observacao: obsFinal,
+        observacoes: obsFinal,
+        notes: obsFinal,
+        operador: inventory.operatorName || '',
+        operatorName: inventory.operatorName || '',
+        fuel: inventory.fuelLevel || '',
+        combustivel: inventory.fuelLevel || '',
+        km: inventory.odometer || '',
+        customRow: [
+          inventory.dateFormatted,
+          inventory.timeFormatted,
+          inventory.plate,
+          locClean,
+          obsFinal,
+          inventory.operatorName || '',
+        ],
         inventory: {
           data: inventory.dateFormatted,
           hora: inventory.timeFormatted,
           placa: inventory.plate,
-          local: inventory.location,
-          observacao: inventory.observation || '',
+          plate: inventory.plate,
+          local: locClean,
+          location: locClean,
+          observacao: obsFinal,
+          observacoes: obsFinal,
           combustivel: inventory.fuelLevel || '',
           km: inventory.odometer || '',
           operador: inventory.operatorName || '',
@@ -384,6 +430,16 @@ async function startServer() {
       }
       const result = await setRuntimeDatabaseUrl(databaseUrl);
       res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  app.post('/api/db/reconnect', async (req: Request, res: Response) => {
+    try {
+      const ok = await reconnectDatabaseNow();
+      const diagnostic = await getDatabaseDiagnosticAsync();
+      res.json({ success: ok, diagnostic });
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
     }
@@ -547,6 +603,24 @@ async function startServer() {
         operatorName: operatorName || 'Operador',
         photoUrl: photoUrl || undefined,
       });
+
+      // Atualiza também a localização do veículo no pátio se já existir no cadastro
+      try {
+        const allRecords = await loadServerRecordsAsync();
+        const cleanUpperPlate = plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const targetRecord = allRecords.find(
+          (r: any) => (r.plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanUpperPlate
+        );
+        if (targetRecord) {
+          targetRecord.location = location.trim().toUpperCase();
+          targetRecord.local = location.trim().toUpperCase();
+          if (fuelLevel) targetRecord.fuel = fuelLevel;
+          if (odometer) targetRecord.km = odometer;
+          await appendOrUpdateServerRecordAsync(targetRecord);
+        }
+      } catch (e) {
+        console.warn('Could not update vehicle record location during inventory:', e);
+      }
 
       // Sincroniza em segundo plano com a aba INVENTARIO da planilha
       syncInventoryToGoogleSheetWebhook(newInventory).catch(() => {});
@@ -1040,7 +1114,21 @@ async function startServer() {
       const condutor = record.driverName || record.condutor || '-';
       const placa = (record.plate || record.placa || '').toUpperCase().trim();
       const origem = record.origin || record.origem || (normalizedCategory === 'entrada' ? 'Pátio Principal' : '-');
-      const destino = record.destination || record.destino || (normalizedCategory === 'pdc' ? 'Fila PDC (Lavagem/Oficina)' : (normalizedCategory === 'entrada' ? 'Bolsão 40' : '-'));
+
+      // Local / Destino do veículo
+      let destino = record.destination || record.destino;
+      if (normalizedCategory === 'qualidade') {
+        destino = record.location || record.local || record.destination || record.destino || 'P1';
+      } else if (normalizedCategory === 'pdc') {
+        destino = destino || 'Fila PDC (Lavagem/Oficina)';
+      } else if (normalizedCategory === 'entrada') {
+        destino = destino || 'Bolsão 40';
+      } else {
+        destino = destino || '-';
+      }
+      destino = String(destino).toUpperCase().trim();
+      const localVeiculo = String(record.location || record.local || (normalizedCategory === 'qualidade' ? destino : '')).toUpperCase().trim();
+
       const km = record.km ? `${String(record.km).replace(/\s*km/i, '')} km` : (record.odometro || '-');
       const nivelCombustivel = formatFuel(record.fuel || record.nivelCombustivel || record.combustivel);
       const tipoVeiculo = String(record.fleetType || record.tipoVeiculo || record.tipo || 'GF').toUpperCase().trim();
@@ -1086,6 +1174,8 @@ async function startServer() {
         origem,
         destino,
         destination: destino,
+        local: localVeiculo || destino,
+        location: localVeiculo || destino,
         km,
         odometro: km,
         nivelCombustivel,
@@ -1283,6 +1373,24 @@ async function startServer() {
         samplePayload.fuel = '4/8 (1/2)';
         samplePayload.nivelCombustivel = '4/8 (1/2)';
         samplePayload.observacoes = 'Aguardando lavagem geral';
+      } else if (op === 'inventario') {
+        opCategory = 'inventario';
+        targetTabName = '📋 INVENTÁRIO';
+        samplePayload.location = 'P3';
+        samplePayload.local = 'P3';
+        samplePayload.destination = 'P3';
+        samplePayload.destino = 'P3';
+        samplePayload.observacao = 'Local: P3 | Teste de inventário';
+        samplePayload.observacoes = 'Local: P3 | Teste de inventário';
+        samplePayload.notes = 'Local: P3 | Teste de inventário';
+        samplePayload.customRow = [
+          new Date().toLocaleDateString('pt-BR'),
+          new Date().toLocaleTimeString('pt-BR'),
+          'ABC-1234',
+          'P3',
+          'Local: P3 | Teste de inventário',
+          'Carlos Silva',
+        ];
       }
 
       samplePayload.operationCategory = opCategory;

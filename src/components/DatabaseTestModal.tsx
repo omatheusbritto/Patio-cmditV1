@@ -17,10 +17,13 @@ import {
   Layers,
   Users,
   HardDrive,
+  Activity,
+  Radio,
 } from 'lucide-react';
 import {
   checkDatabaseHealth,
   configureDatabaseUrl,
+  reconnectDatabaseAsync,
   DatabaseDiagnosticResult,
   getCurrentSession,
 } from '../utils/authService';
@@ -42,6 +45,7 @@ export const DatabaseTestModal: React.FC<DatabaseTestModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [customDbUrl, setCustomDbUrl] = useState('');
   const [savingUrl, setSavingUrl] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ text: string; isError: boolean } | null>(null);
 
   const session = getCurrentSession();
@@ -68,6 +72,27 @@ export const DatabaseTestModal: React.FC<DatabaseTestModalProps> = ({
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForceReconnect = async () => {
+    setReconnecting(true);
+    setSaveMessage(null);
+    try {
+      const res = await reconnectDatabaseAsync();
+      if (res.diagnostic) {
+        setDiagnostic(res.diagnostic);
+      } else {
+        await runTest();
+      }
+      setSaveMessage({
+        text: res.success ? 'Conexão restabelecida e banco sincronizado!' : 'Reconexão executada.',
+        isError: !res.success,
+      });
+    } catch (err: any) {
+      setSaveMessage({ text: 'Falha ao forçar reconexão: ' + err.message, isError: true });
+    } finally {
+      setReconnecting(false);
     }
   };
 
@@ -179,6 +204,35 @@ export const DatabaseTestModal: React.FC<DatabaseTestModalProps> = ({
                   : diagnostic?.message || 'Status verificado.'}
               </p>
             </div>
+          </div>
+
+          {/* Heartbeat & Auto-Reconnect Indicator */}
+          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="relative flex h-2.5 w-2.5 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-600"></span>
+              </span>
+              <div className="min-w-0">
+                <div className="text-xs font-black text-emerald-950 flex items-center gap-1.5">
+                  <Activity className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                  <span>Conexão Contínua & Auto-Reconexão Ativa</span>
+                </div>
+                <div className="text-[11px] text-emerald-800 leading-tight mt-0.5">
+                  Socket ativo com keep-alive. Caso caia, o sistema reconecta 100% automaticamente.
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleForceReconnect}
+              disabled={reconnecting || loading}
+              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shrink-0 flex items-center gap-1.5 shadow-sm active:scale-95 transition cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${reconnecting ? 'animate-spin' : ''}`} />
+              <span>{reconnecting ? 'Reconectando...' : 'Reconectar'}</span>
+            </button>
           </div>
 
           {/* Diagnostic Metrics Grid */}

@@ -470,8 +470,8 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
           rec.destination ||
           (op === 'pdc'
             ? 'FILA PDC (LAVAGEM/OFICINA)'
-            : op === 'qualidade_51' && rec.location
-            ? `Pátio ${rec.location}`
+            : (op === 'qualidade_51' || op === 'qualidade')
+            ? (rec.location || (rec as any).local || 'P1')
             : '-');
         const km = rec.km ? `${String(rec.km).replace(/\s*km/i, '')} KM` : '-';
         
@@ -526,7 +526,8 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
             _rawDate: rec.createdAt,
             _plate: placa,
           });
-        } else if (op === 'qualidade_51') {
+        } else if (op === 'qualidade_51' || op === 'qualidade') {
+          const locQualidade = rec.location || (rec as any).local || destino || 'P1';
           result.qualidade51.rows.push({
             DATA: dateStr,
             HORA: timeStr,
@@ -534,7 +535,7 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
             CONDUTOR: condutor,
             'CARACTERISTICAS DO VEICULO': caracteristica,
             'NIVEL DO COMBUSTIVEL': nivelCombustivel,
-            'DESTINO(P1, P2, P3, R1, ADM)': destino || 'P1',
+            'DESTINO(P1, P2, P3, R1, ADM)': locQualidade,
             'OPERADOR DO REGISTRO': operador,
             _rawDate: rec.createdAt,
             _plate: placa,

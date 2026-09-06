@@ -20,7 +20,12 @@ export function loadSavedDbUrl(): string | null {
     if (fs.existsSync(DB_CONFIG_FILE)) {
       const content = fs.readFileSync(DB_CONFIG_FILE, 'utf-8');
       const parsed = JSON.parse(content);
-      if (parsed && typeof parsed.databaseUrl === 'string' && parsed.databaseUrl.trim()) {
+      if (
+        parsed &&
+        typeof parsed.databaseUrl === 'string' &&
+        parsed.databaseUrl.trim() &&
+        (parsed.databaseUrl.startsWith('postgres://') || parsed.databaseUrl.startsWith('postgresql://'))
+      ) {
         return parsed.databaseUrl.trim();
       }
     }
@@ -119,12 +124,25 @@ export function getPgPool(customUrl?: string): PgPool | null {
         const pool = new PgPool({
           connectionString: databaseUrl,
           ssl: isLocal ? false : { rejectUnauthorized: false },
-          max: 10,
-          idleTimeoutMillis: 30000,
-          connectionTimeoutMillis: 10000,
+          max: 20,
+          idleTimeoutMillis: 300000, // 5 minutos antes de fechar conexões ociosas
+          connectionTimeoutMillis: 15000,
+          keepAlive: true,
+          keepAliveInitialDelayMillis: 10000, // Envia pacotes TCP keepalive a cada 10s para provedores cloud (Render/Supabase/Neon)
         });
-        pool.on('error', (err) => {
-          console.warn('PostgreSQL Client Warning:', err.message);
+        pool.on('error', (err: any) => {
+          console.warn('⚠️ [PostgreSQL Pool Event]:', err.message);
+          const msg = (err?.message || '').toLowerCase();
+          if (
+            msg.includes('closed') ||
+            msg.includes('terminated') ||
+            msg.includes('reset') ||
+            msg.includes('econnreset') ||
+            msg.includes('timeout')
+          ) {
+            console.log('🔄 Conexão com o banco caiu. Acionando auto-reconexão imediata...');
+            triggerBackgroundReconnect().catch(() => {});
+          }
         });
         if (!customUrl) {
           pgPool = pool;
@@ -145,7 +163,15 @@ export function getPgPool(customUrl?: string): PgPool | null {
           database: process.env.PGDATABASE || process.env.POSTGRES_DATABASE || 'postgres',
           port: Number(process.env.PGPORT || 5432),
           ssl: { rejectUnauthorized: false },
-          max: 10,
+          max: 20,
+          idleTimeoutMillis: 300000,
+          connectionTimeoutMillis: 15000,
+          keepAlive: true,
+          keepAliveInitialDelayMillis: 10000,
+        });
+        pgPool.on('error', (err: any) => {
+          console.warn('⚠️ [PostgreSQL Pool Event]:', err.message);
+          triggerBackgroundReconnect().catch(() => {});
         });
       } catch (err) {
         console.warn('PostgreSQL connection with env vars failed:', err);
@@ -339,6 +365,7 @@ export async function initDatabase(): Promise<{ active: boolean; type: 'postgres
         activeDbType = 'postgres';
         isDbAvailable = true;
         console.log('✅ PostgreSQL Database connected & synchronized successfully (Render / Cloud)!');
+        startDatabaseHeartbeat();
         return { active: true, type: 'postgres' };
       } finally {
         client.release();
@@ -564,8 +591,75 @@ export async function getDatabaseDiagnosticAsync(customUrl?: string): Promise<Da
   };
 }
 
+// --------------------------------------------------------------------------
+// PERSISTENT CONNECTION HEARTBEAT & AUTO-RECONNECT ENGINE
+// --------------------------------------------------------------------------
+let heartbeatTimer: NodeJS.Timeout | null = null;
+let isReconnecting = false;
+let reconnectAttempts = 0;
+
+export async function triggerBackgroundReconnect(): Promise<boolean> {
+  if (isReconnecting) return false;
+  isReconnecting = true;
+  reconnectAttempts++;
+  console.log(`🔄 [DB Auto-Reconnect] Iniciando reconexão automática com PostgreSQL (tentativa #${reconnectAttempts})...`);
+
+  try {
+    if (pgPool) {
+      try {
+        await pgPool.end();
+      } catch {}
+      pgPool = null;
+    }
+    const res = await initDatabase();
+    if (res.active && res.type === 'postgres') {
+      console.log('✅ [DB Auto-Reconnect] Conexão com o banco de dados restabelecida e 100% online!');
+      reconnectAttempts = 0;
+      isDbAvailable = true;
+      return true;
+    } else {
+      console.warn('⚠️ [DB Auto-Reconnect] Falha ao reconectar. Nova tentativa ocorrerá no próximo ciclo.');
+      return false;
+    }
+  } catch (e: any) {
+    console.warn('⚠️ [DB Auto-Reconnect Error]:', e.message);
+    return false;
+  } finally {
+    isReconnecting = false;
+  }
+}
+
+export function startDatabaseHeartbeat(): void {
+  if (heartbeatTimer) return;
+  console.log('💓 [DB Heartbeat] Monitor de conexão ativa e auto-reconexão iniciado (intervalo: 15s).');
+  // Mantém a conexão sempre aberta e testa a cada 15 segundos
+  heartbeatTimer = setInterval(async () => {
+    const pool = getPgPool();
+    if (!pool) {
+      await triggerBackgroundReconnect();
+      return;
+    }
+
+    try {
+      const client = await pool.connect();
+      try {
+        await client.query('SELECT 1;');
+        isDbAvailable = true;
+        activeDbType = 'postgres';
+      } finally {
+        client.release();
+      }
+    } catch (err: any) {
+      console.warn('⚠️ [DB Heartbeat Ping Falhou]: Conexão caiu. Reconectando automaticamente agora...', err.message);
+      isDbAvailable = false;
+      await triggerBackgroundReconnect();
+    }
+  }, 15000);
+}
+
 // Aliases for compatibility
 export const initMariaDbDatabase = initDatabase;
 export const isMariaDbActive = () => isDbAvailable;
 export const getActiveDbType = () => activeDbType;
+export const reconnectDatabaseNow = triggerBackgroundReconnect;
 

@@ -383,6 +383,14 @@ export const GoogleSheetsIntegration: React.FC<GoogleSheetsIntegrationProps> = (
             <button
               type="button"
               disabled={isTesting}
+              onClick={() => handleTestWebhook('inventario')}
+              className="bg-white hover:bg-emerald-50 border border-neutral-200 hover:border-emerald-300 text-neutral-800 hover:text-emerald-700 py-1.5 px-2 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 transition cursor-pointer disabled:opacity-50 active:scale-95"
+            >
+              <span>📋 Inventário</span>
+            </button>
+            <button
+              type="button"
+              disabled={isTesting}
               onClick={async () => {
                 const urlToTest = webhookInput.trim() || config.webhookUrl;
                 if (!urlToTest) {

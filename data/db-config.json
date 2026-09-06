@@ -1,4 +1,4 @@
 {
-  "databaseUrl": "invalid_url",
-  "savedAt": "2026-09-04T13:34:22.491Z"
+  "databaseUrl": "postgresql://adm_patiocmdit:BXrnPw0WxeLXMGcqgxgb2v6z4yUWv8JC@dpg-daan43hsrm7s73fe0920-a.oregon-postgres.render.com/patiocmdit_db",
+  "savedAt": "2026-09-06T12:00:00.000Z"
 }

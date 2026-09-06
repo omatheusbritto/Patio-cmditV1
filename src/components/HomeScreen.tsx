@@ -46,28 +46,28 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   autoReadEnabled = true,
   onToggleAutoRead,
 }) => {
-  const session萃 = getCurrentSession();
-  const userRole = session萃?.user.role || 'patio';
-  const isMaster = userRole === 'master' || session萃?.user.username.toLowerCase() === 'mastercmdit';
+  const session = getCurrentSession();
+  const userRole = session?.user.role || 'patio';
+  const isMaster = userRole === 'master' || session?.user.username.toLowerCase() === 'mastercmdit';
   const roleBadge = getRoleBadgeStyle(userRole);
   const roleName = getRoleDisplayName(userRole);
 
   // Customize title & subtitle per role
   let mainBtnText = 'Fotografar e Registrar';
-  let subtitleText专 = 'Fotografe • Escolha a Operação • Compartilhe';
+  let subtitleText = 'Fotografe • Escolha a Operação • Compartilhe';
 
   if (userRole === 'qualidade_51' || userRole === 'vistoriador') {
     mainBtnText = 'Fotografar & 51 Qualidade';
-    subtitleText专 = 'Bolsão 51 ➔ Destinos P1, P2, P3, R1 e ADM';
+    subtitleText = 'Bolsão 51 ➔ Destinos P1, P2, P3, R1 e ADM';
   } else if (userRole === 'combustivel') {
     mainBtnText = 'Fotografar & Abastecimento';
-    subtitleText专 = 'Controle de Combustível e Odômetro';
+    subtitleText = 'Controle de Combustível e Odômetro';
   } else if (userRole === 'pdc') {
     mainBtnText = 'Fotografar & Fila PDC';
-    subtitleText专 = 'Manutenções Preventivas, Corretivas e Lavagem';
+    subtitleText = 'Manutenções Preventivas, Corretivas e Lavagem';
   } else if (userRole === 'entrada_saida' || userRole === 'motorista') {
     mainBtnText = 'Fotografar & Entrada / Saída';
-    subtitleText专 = 'Controle de Acesso e Movimentação de Pátio';
+    subtitleText = 'Controle de Acesso e Movimentação de Pátio';
   }
 
   return (
@@ -89,7 +89,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             Registro Veicular CMDIT
           </h1>
           <p className="text-[11px] font-bold text-emerald-700 mt-1 tracking-wide uppercase">
-            {subtitleText专}
+            {subtitleText}
           </p>
         </div>
       </div>

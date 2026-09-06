@@ -208,6 +208,9 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
     const upperLocation = location ? (String(location).trim().toUpperCase() as LocationCode) : undefined;
 
     // Save to local history immediately
+    const qualityOrPatioLoc = upperLocation || (operationType === 'qualidade_51' ? 'P1' : (operationType === 'pdc' ? 'PDC' : undefined));
+    const effectiveDestination = upperDestination || (operationType === 'qualidade_51' ? (qualityOrPatioLoc || 'P1') : undefined);
+
     onSaveToHistory({
       photoDataUrl,
       dashboardPhotoUrl,
@@ -217,7 +220,8 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
       fuel,
       driverName: upperDriverName,
       origin: upperOrigin,
-      destination: upperDestination,
+      destination: effectiveDestination,
+      destino: effectiveDestination,
       km: upperKm,
       hasSpareKey,
       fleetType: upperFleetType,
@@ -226,7 +230,8 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
       liters: upperLiters,
       fuelType: upperFuelType,
       characteristic: (upperCharacteristic as any) || undefined,
-      location: upperLocation || (operationType === 'pdc' ? 'PDC' : 'P1'),
+      location: qualityOrPatioLoc,
+      local: qualityOrPatioLoc,
       description: messageText,
     });
 
@@ -244,7 +249,8 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
       operatorName,
       driverName: upperDriverName,
       origin: upperOrigin,
-      destination: upperDestination,
+      destination: effectiveDestination,
+      destino: effectiveDestination,
       km: upperKm,
       hasSpareKey,
       fleetType: upperFleetType,
@@ -253,7 +259,8 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
       liters: upperLiters,
       fuelType: upperFuelType,
       characteristic: (upperCharacteristic as any) || undefined,
-      location: upperLocation || undefined,
+      location: qualityOrPatioLoc,
+      local: qualityOrPatioLoc,
       documentPhotoUrl: documentPhotoUrl || undefined,
       hasDocumentPhoto: !!documentPhotoUrl,
     };

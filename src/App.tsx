@@ -74,6 +74,7 @@ export default function App() {
   const [isDbTestOpen, setIsDbTestOpen] = useState(false);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
   const [selectedVehicleForMovement, setSelectedVehicleForMovement] = useState<VehicleRecord | null>(null);
+  const [selectedVehicleForInventory, setSelectedVehicleForInventory] = useState<VehicleRecord | null>(null);
   const [sessionTimeText, setSessionTimeText] = useState<string>('');
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
 
@@ -311,6 +312,46 @@ export default function App() {
       setCurrentStep('fuel');
     } else if (op === 'qualidade_51') {
       setCurrentStep('characteristic');
+    } else if (op === 'movimentacao') {
+      const cleanPlateUpper = plate.toUpperCase().trim();
+      const existing = records.find(
+        (r) => r.plate.toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanPlateUpper.replace(/[^A-Z0-9]/g, '')
+      );
+      setSelectedVehicleForMovement(
+        existing || {
+          id: 'mov-' + Date.now(),
+          plate: cleanPlateUpper,
+          operationType: 'movimentacao',
+          status: 'parked',
+          location: location || '',
+          entryTime: new Date().toISOString(),
+          dateFormatted: '',
+          timeFormatted: '',
+          photoUrl: photoDataUrl || undefined,
+        }
+      );
+      setActiveTab('movimentacao');
+      setCurrentStep('home');
+    } else if (op === 'inventario') {
+      const cleanPlateUpper = plate.toUpperCase().trim();
+      const existing = records.find(
+        (r) => r.plate.toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanPlateUpper.replace(/[^A-Z0-9]/g, '')
+      );
+      setSelectedVehicleForInventory(
+        existing || {
+          id: 'inv-' + Date.now(),
+          plate: cleanPlateUpper,
+          operationType: 'inventario',
+          status: 'parked',
+          location: location || '',
+          entryTime: new Date().toISOString(),
+          dateFormatted: '',
+          timeFormatted: '',
+          photoUrl: photoDataUrl || undefined,
+        }
+      );
+      setActiveTab('inventario');
+      setCurrentStep('home');
     }
   };
 
@@ -618,6 +659,7 @@ export default function App() {
                 onStartRegistration={() => handleStartRegistration()}
                 onOpenPatio={() => setActiveTab('patio')}
                 onOpenMovement={() => setActiveTab('movimentacao')}
+                onOpenInventory={() => setActiveTab('inventario')}
                 onOpenHistory={() => setActiveTab('history')}
                 onOpenLogs={() => setActiveTab('logs')}
                 onOpenSpreadsheetOnline={() => setIsSpreadsheetModalOpen(true)}
@@ -820,6 +862,10 @@ export default function App() {
               setSelectedVehicleForMovement(vehicle);
               setActiveTab('movimentacao');
             }}
+            onInventoryVehicle={(vehicle) => {
+              setSelectedVehicleForInventory(vehicle);
+              setActiveTab('inventario');
+            }}
           />
         )}
 
@@ -829,6 +875,16 @@ export default function App() {
             parkedVehicles={records.filter((r) => r.status === 'parked')}
             initialSelectedVehicle={selectedVehicleForMovement}
             onClearInitialVehicle={() => setSelectedVehicleForMovement(null)}
+            onOpenSpreadsheetOnline={() => setIsSpreadsheetModalOpen(true)}
+          />
+        )}
+
+        {/* Tab 4: Inventário Rápido (Placa + Local) */}
+        {activeTab === 'inventario' && (
+          <InventoryTab
+            parkedVehicles={records.filter((r) => r.status === 'parked')}
+            initialSelectedVehicle={selectedVehicleForInventory}
+            onClearInitialVehicle={() => setSelectedVehicleForInventory(null)}
             onOpenSpreadsheetOnline={() => setIsSpreadsheetModalOpen(true)}
           />
         )}
