@@ -565,6 +565,17 @@ export default function App() {
               <span className="hidden sm:inline">Meus Registros</span>
             </button>
 
+            {/* Planilha Online: aberta a todos, com filtro automático por perfil (operadores veem apenas seus registros) */}
+            <button
+              type="button"
+              onClick={() => setIsSpreadsheetModalOpen(true)}
+              className="px-2 py-1 bg-emerald-800 hover:bg-emerald-700 text-emerald-100 rounded-lg text-[11px] font-bold flex items-center gap-1 transition cursor-pointer border border-emerald-600/50"
+              title="Consultar Planilha Online Google Sheets ao Vivo"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-300" />
+              <span className="hidden sm:inline">Planilha</span>
+            </button>
+
             {authSession.user.role === 'master' && (
               <>
                 <button
@@ -584,15 +595,6 @@ export default function App() {
                 >
                   <HardDrive className="w-3.5 h-3.5 text-amber-400" />
                   <span className="hidden sm:inline">Backup</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsSpreadsheetModalOpen(true)}
-                  className="px-2 py-1 bg-emerald-800 hover:bg-emerald-700 text-emerald-100 rounded-lg text-[11px] font-bold flex items-center gap-1 transition cursor-pointer border border-emerald-600/50"
-                  title="Consultar Planilha Online (5 Abas)"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-300" />
-                  <span className="hidden sm:inline">Planilha</span>
                 </button>
                 <button
                   type="button"
@@ -977,11 +979,12 @@ export default function App() {
         />
       )}
 
-      {/* Consulta da Planilha Online (Apenas Master / Visualizador 5 Abas) */}
+      {/* Consulta da Planilha Online (Google Drive & Sheets Ao Vivo com RBAC) */}
       <OnlineSpreadsheetViewerModal
         isOpen={isSpreadsheetModalOpen}
         onClose={() => setIsSpreadsheetModalOpen(false)}
         localRecords={records}
+        currentUser={authSession?.user}
         onImportRecords={(importedList) => {
           if (importedList.length > 0) {
             const combined = [...importedList, ...records];

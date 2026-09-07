@@ -25,6 +25,10 @@ import {
   HelpCircle,
   Edit3,
   Save,
+  ChevronDown,
+  ChevronUp,
+  Layers,
+  Info,
 } from 'lucide-react';
 import {
   getAllUsers,
@@ -45,7 +49,17 @@ import {
   fetchSheetDiagnostic,
   getAppsScriptTemplateCode,
 } from '../utils/googleDriveClient';
-import { UserAccount, UserRole, getRoleBadgeStyle, getRoleDisplayName } from '../types';
+import {
+  UserAccount,
+  UserRole,
+  getRoleBadgeStyle,
+  getRoleDisplayName,
+  getUserProfileDefinition,
+  ALL_USER_PROFILES,
+  UserProfileDefinition,
+  getOperationDisplayInfo,
+  OperationType,
+} from '../types';
 
 interface UserManagementModalProps {
   onClose: () => void;
@@ -55,7 +69,9 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
   const [users, setUsers] = useState<UserAccount[]>(() => getAllUsers());
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'list' | 'create' | 'diagnostic'>('list');
+  const [activeTab, setActiveTab] = useState<'list' | 'create' | 'profiles' | 'diagnostic'>('list');
+  const [expandedUserRoles, setExpandedUserRoles] = useState<Record<string, boolean>>({});
+  const [profileSearchTerm, setProfileSearchTerm] = useState('');
   const [isSyncingSheet, setIsSyncingSheet] = useState(false);
   const [syncStatusMsg, setSyncStatusMsg] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [driveConfig, setDriveConfig] = useState(() => getStoredDriveConfig());
@@ -347,6 +363,85 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
         alert(res.error || 'Erro ao excluir.');
       }
     }
+  };
+
+  const toggleExpandUserRole = (userId: string) => {
+    setExpandedUserRoles((prev) => ({ ...prev, [userId]: !prev[userId] }));
+  };
+
+  const renderProfileDetailsBox = (role: UserRole) => {
+    const prof = getUserProfileDefinition(role);
+    return (
+      <div className={`p-3 rounded-xl border ${prof.borderClass} ${prof.bgClass} flex flex-col gap-2 shadow-2xs`}>
+        <div className="flex items-center justify-between gap-1.5 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[10px] font-black uppercase tracking-wider text-neutral-700 bg-white/90 px-2 py-0.5 rounded border border-neutral-300">
+              {prof.category}
+            </span>
+            <span className={`text-[10px] font-black px-2 py-0.5 rounded border uppercase ${prof.badgeClass}`}>
+              {prof.badgeLabel}
+            </span>
+          </div>
+        </div>
+
+        <p className="text-xs text-neutral-800 leading-relaxed font-medium">
+          {prof.description}
+        </p>
+
+        {/* Permitted Operations */}
+        <div className="flex flex-col gap-1 pt-1.5 border-t border-black/10">
+          <span className="text-[10px] font-black text-neutral-700 uppercase tracking-wider">
+            Operações Liberadas ({prof.allowedOperations.length}):
+          </span>
+          <div className="flex flex-wrap gap-1">
+            {prof.allowedOperations.map((op) => {
+              const opInfo = getOperationDisplayInfo(op);
+              return (
+                <span
+                  key={op}
+                  className={`text-[9px] font-bold px-2 py-0.5 rounded border ${opInfo.badgeClass}`}
+                  title={opInfo.shortDesc}
+                >
+                  {opInfo.name}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Responsibilities */}
+        <div className="flex flex-col gap-1 pt-1.5 border-t border-black/10">
+          <span className="text-[10px] font-black text-neutral-700 uppercase tracking-wider">
+            Principais Atribuições:
+          </span>
+          <ul className="text-[11px] text-neutral-700 space-y-0.5 pl-3 list-disc">
+            {prof.responsibilities.map((resp, i) => (
+              <li key={i}>{resp}</li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Special Permissions if any */}
+        {prof.specialPermissions && prof.specialPermissions.length > 0 && (
+          <div className="flex flex-col gap-1 pt-1.5 border-t border-black/10">
+            <span className="text-[10px] font-black text-emerald-900 uppercase tracking-wider flex items-center gap-1">
+              <Shield className="w-3 h-3 text-emerald-700" />
+              Permissões de Gestão:
+            </span>
+            <div className="flex flex-wrap gap-1">
+              {prof.specialPermissions.map((sp, i) => (
+                <span
+                  key={i}
+                  className="text-[9px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300"
+                >
+                  {sp}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   const filteredUsers = users.filter(

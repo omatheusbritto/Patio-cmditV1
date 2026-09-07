@@ -5,6 +5,7 @@ import {
   getAllowedOperationsForRole,
   getRoleBadgeStyle,
   getRoleDisplayName,
+  getUserProfileDefinition,
 } from '../types';
 import {
   LogIn,
@@ -146,9 +147,10 @@ export const OperationSelector: React.FC<OperationSelectorProps> = ({
 
   // Determina o cargo/função do usuário atual
   const activeRole = userRole || getCurrentSession()?.user.role || 'patio';
-  const allowedOps = getAllowedOperationsForRole(activeRole);
+  const profile = getUserProfileDefinition(activeRole);
+  const allowedOps = profile.allowedOperations;
   const roleBadge = getRoleBadgeStyle(activeRole);
-  const roleTitle加快 = getRoleDisplayName(activeRole);
+  const roleTitle = profile.title;
 
   const visibleOperations = OPERATIONS.filter((op) => allowedOps.includes(op.id));
 

@@ -17,7 +17,12 @@ import {
   ArrowLeftRight,
   ClipboardCheck,
 } from 'lucide-react';
-import { PatioMetrics, getRoleBadgeStyle, getRoleDisplayName } from '../types';
+import {
+  PatioMetrics,
+  getRoleBadgeStyle,
+  getRoleDisplayName,
+  getUserProfileDefinition,
+} from '../types';
 import { GoogleSheetsIntegration } from './GoogleSheetsIntegration';
 import { getCurrentSession } from '../utils/authService';
 
@@ -49,8 +54,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const session = getCurrentSession();
   const userRole = session?.user.role || 'patio';
   const isMaster = userRole === 'master' || session?.user.username.toLowerCase() === 'mastercmdit';
+  const profile = getUserProfileDefinition(userRole);
   const roleBadge = getRoleBadgeStyle(userRole);
-  const roleName = getRoleDisplayName(userRole);
+  const roleName = profile.title;
 
   // Customize title & subtitle per role
   let mainBtnText = 'Fotografar e Registrar';
@@ -61,13 +67,22 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     subtitleText = 'Bolsão 51 ➔ Destinos P1, P2, P3, R1 e ADM';
   } else if (userRole === 'combustivel') {
     mainBtnText = 'Fotografar & Abastecimento';
-    subtitleText = 'Controle de Combustível e Odômetro';
+    subtitleText = 'Controle de Combustível, Odômetro e Litros';
   } else if (userRole === 'pdc') {
     mainBtnText = 'Fotografar & Fila PDC';
     subtitleText = 'Manutenções Preventivas, Corretivas e Lavagem';
   } else if (userRole === 'entrada_saida' || userRole === 'motorista') {
     mainBtnText = 'Fotografar & Entrada / Saída';
-    subtitleText = 'Controle de Acesso e Movimentação de Pátio';
+    subtitleText = 'Portaria • Check-in, Check-out e Portão';
+  } else if (userRole === 'movimentacao' || userRole === 'manobrista') {
+    mainBtnText = 'Fotografar & Movimentar';
+    subtitleText = 'Remanejamento Interno: Origem ➔ Destino';
+  } else if (userRole === 'inventario') {
+    mainBtnText = 'Fotografar & Inventário';
+    subtitleText = 'Auditoria Rápida: Placa e Local do Veículo';
+  } else if (isMaster) {
+    mainBtnText = 'Fotografar e Registrar';
+    subtitleText = 'Gestão Total • 7 Operações do Pátio';
   }
 
   return (

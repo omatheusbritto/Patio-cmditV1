@@ -29,7 +29,7 @@ import {
   Plus,
   Shield,
 } from 'lucide-react';
-import { LocationCode, OperationType, VehicleCharacteristic, VehicleRecord, VehicleStatus } from '../types';
+import { LocationCode, OperationType, VehicleCharacteristic, VehicleRecord, VehicleStatus, canUserAccessRecord } from '../types';
 import { exportRecordsToCsv, SECTORS, saveRecord } from '../utils/storageService';
 import { formatPlateForDisplay } from '../utils/plateNormalizer';
 import { generateWhatsAppMessage, getEntrySubtypeLabel, getLocationMeaning, openWhatsAppShare, shareToWhatsApp } from '../utils/shareService';
@@ -94,6 +94,20 @@ export const SmartHistory: React.FC<SmartHistoryProps> = ({
   // Preview Photo Modal
   const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
 
+  // Master Filter Scope (All vs Mine)
+  const [masterViewScope, setMasterViewScope] = useState<'all' | 'mine'>('all');
+
+  // RBAC Access Rule: Non-master profiles only see their own records. Master has access to everything.
+  const userAllowedRecords = useMemo(() => {
+    if (isMaster) {
+      if (masterViewScope === 'mine') {
+        return records.filter((r) => canUserAccessRecord(session?.user, r));
+      }
+      return records;
+    }
+    return records.filter((r) => canUserAccessRecord(session?.user, r));
+  }, [records, isMaster, masterViewScope, session]);
+
   // Fast Memoized Filter
   const filteredRecords = useMemo(() => {
     const cleanSearch = searchTerm.trim().toUpperCase();
@@ -103,7 +117,7 @@ export const SmartHistory: React.FC<SmartHistoryProps> = ({
     const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000;
     const startOfWeek = startOfToday - 7 * 24 * 60 * 60 * 1000;
 
-    return records.filter((r) => {
+    return userAllowedRecords.filter((r) => {
       // 1. Search Query (Plate, Driver, Origin/Dest, entryReason or notes)
       if (cleanSearch) {
         const plateMatch = r.plate.toUpperCase().includes(cleanSearch);
@@ -139,7 +153,7 @@ export const SmartHistory: React.FC<SmartHistoryProps> = ({
 
       return true;
     });
-  }, [records, searchTerm, operationFilter, statusFilter, sectorFilter, dateFilter]);
+  }, [userAllowedRecords, searchTerm, operationFilter, statusFilter, sectorFilter, dateFilter]);
 
   const handleExportCsv = () => {
     exportRecordsToCsv(filteredRecords);
@@ -194,10 +208,10 @@ export const SmartHistory: React.FC<SmartHistoryProps> = ({
             </button>
           )}
 
-          {isMaster && onOpenSpreadsheetOnline && (
+          {onOpenSpreadsheetOnline && (
             <button
               onClick={onOpenSpreadsheetOnline}
-              title="Consultar Planilha Google Online com 5 abas"
+              title="Consultar Planilha Google Online com 5 abas ao vivo"
               className="py-1.5 px-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1 active:scale-95 transition shadow-xs"
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
@@ -215,6 +229,49 @@ export const SmartHistory: React.FC<SmartHistoryProps> = ({
           </button>
         </div>
       </div>
+
+      {/* RBAC Profile Access Banner */}
+      {!isMaster ? (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-2.5 flex items-center justify-between text-xs text-amber-900">
+          <div className="flex items-center gap-2">
+            <Shield className="w-4 h-4 text-amber-700 shrink-0" />
+            <span>
+              <strong>Filtro de Perfil Ativo:</strong> Exibindo apenas os registros realizados por você (<strong>{session?.user.name || session?.user.username || 'Operador'}</strong>).
+            </span>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-2 px-3 flex items-center justify-between text-xs text-emerald-900">
+          <div className="flex items-center gap-1.5">
+            <Shield className="w-4 h-4 text-emerald-700 shrink-0" />
+            <span className="font-bold">Acesso Master (Total):</span>
+          </div>
+          <div className="flex items-center gap-1 bg-white p-0.5 rounded-xl border border-emerald-200 shadow-xs">
+            <button
+              type="button"
+              onClick={() => setMasterViewScope('all')}
+              className={`px-2.5 py-0.5 rounded-lg text-[11px] font-black transition ${
+                masterViewScope === 'all'
+                  ? 'bg-emerald-800 text-white shadow-xs'
+                  : 'text-neutral-600 hover:text-neutral-900'
+              }`}
+            >
+              Todos ({records.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setMasterViewScope('mine')}
+              className={`px-2.5 py-0.5 rounded-lg text-[11px] font-black transition ${
+                masterViewScope === 'mine'
+                  ? 'bg-emerald-800 text-white shadow-xs'
+                  : 'text-neutral-600 hover:text-neutral-900'
+              }`}
+            >
+              Apenas os Meus
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Search Input Bar */}
       <div className="relative">

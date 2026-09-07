@@ -20,9 +20,12 @@ import {
   Settings2,
   HelpCircle,
   FolderUp,
+  Shield,
+  Activity,
+  Radio,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { VehicleRecord } from '../types';
+import { VehicleRecord, canUserAccessSpreadsheetRow, UserRole } from '../types';
 import {
   getStoredDriveConfig,
   saveDriveConfig,
@@ -30,12 +33,14 @@ import {
   DEFAULT_SPREADSHEET_URL,
 } from '../utils/googleDriveClient';
 import { formatPlateForDisplay, isMercosulFormat } from '../utils/plateNormalizer';
+import { getCurrentSession } from '../utils/authService';
 
 interface OnlineSpreadsheetViewerModalProps {
   isOpen: boolean;
   onClose: () => void;
   localRecords?: VehicleRecord[];
   onImportRecords?: (imported: VehicleRecord[]) => void;
+  currentUser?: { role?: UserRole; username?: string; name?: string } | null;
 }
 
 type TabKey = 'entrada' | 'saida' | 'combustivel' | 'qualidade51' | 'pdc' | 'all' | string;
@@ -52,7 +57,12 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
   onClose,
   localRecords = [],
   onImportRecords,
+  currentUser,
 }) => {
+  const session = getCurrentSession();
+  const activeUser = currentUser || session?.user;
+  const isMaster = activeUser?.role === 'master' || activeUser?.username?.toLowerCase() === 'mastercmdit';
+
   const [activeTab, setActiveTab] = useState<TabKey>('entrada');
   const [viewMode, setViewMode] = useState<'table' | 'embed'>('table');
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -65,6 +75,15 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Auto-sync ao vivo (Google Sheets live polling)
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState<boolean>(true);
+  const [syncIntervalSec, setSyncIntervalSec] = useState<number>(10);
+  const [countdown, setCountdown] = useState<number>(10);
+  const [lastSyncTick, setLastSyncTick] = useState<string>('');
+
+  // Master Scope (All vs Mine)
+  const [masterScope, setMasterScope] = useState<'all' | 'mine'>('all');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -95,10 +114,12 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
     : '';
 
   // Fetch online data from server with multi-strategy support
-  const loadData = async (overrideUrl?: string, overrideWebhook?: string) => {
-    setIsLoading(true);
-    setErrorMsg(null);
-    setStatusMessage(null);
+  const loadData = async (overrideUrl?: string, overrideWebhook?: string, silent: boolean = false) => {
+    if (!silent) {
+      setIsLoading(true);
+      setErrorMsg(null);
+      setStatusMessage(null);
+    }
 
     const activeUrl = overrideUrl || inputSpreadsheetUrl || config.spreadsheetUrl || '';
     const activeWebhook = overrideWebhook !== undefined ? overrideWebhook : (inputWebhookUrl || config.webhookUrl || '');
@@ -136,6 +157,9 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
         console.warn('Endpoint returned non-JSON response, using server synced storage');
       }
 
+      const nowTime = new Date().toLocaleTimeString('pt-BR');
+      setLastSyncTick(nowTime);
+
       if (data && data.success && data.tabs && Object.keys(data.tabs).length > 0) {
         if (data.spreadsheetUrl || data.spreadsheetId) {
           saveDriveConfig({
@@ -146,43 +170,68 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
         }
         setOnlineData(data);
         setDataSource(data.source || 'server_synced_store');
-        setLastUpdated(data.updatedAt || new Date().toLocaleTimeString('pt-BR'));
+        setLastUpdated(data.updatedAt || nowTime);
 
         const rowCount = Object.values(data.tabs).reduce((acc: number, t: any) => acc + (t.rows?.length || 0), 0);
 
-        if (data.source === 'apps_script_live') {
-          setStatusMessage(`Lido via Webhook Apps Script (${rowCount} linhas)`);
-        } else if (data.source === 'google_sheets_gviz_live') {
-          setStatusMessage(`Lido via Google Sheets online (${rowCount} linhas)`);
-        } else {
-          setStatusMessage(`Base de dados sincronizada (${rowCount} linhas)`);
+        if (!silent) {
+          if (data.source === 'apps_script_live') {
+            setStatusMessage(`Lido via Webhook Apps Script (${rowCount} linhas)`);
+          } else if (data.source === 'google_sheets_gviz_live') {
+            setStatusMessage(`Lido via Google Sheets online (${rowCount} linhas)`);
+          } else {
+            setStatusMessage(`Base de dados sincronizada (${rowCount} linhas)`);
+          }
         }
       } else {
         // Safe fallback without error
-        setDataSource('local_storage');
-        setStatusMessage('Base de dados sincronizada');
+        if (!silent) {
+          setDataSource('local_storage');
+          setStatusMessage('Base de dados sincronizada');
+        }
       }
     } catch (err: any) {
       console.warn('Erro ao carregar dados online:', err);
-      setDataSource('local_storage');
-      setStatusMessage('Base de dados sincronizada');
+      if (!silent) {
+        setDataSource('local_storage');
+        setStatusMessage('Base de dados sincronizada');
+      }
     } finally {
-      setIsLoading(false);
+      if (!silent) {
+        setIsLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    if (isOpen) {
-      const freshConfig = getStoredDriveConfig();
-      setConfig(freshConfig);
-      setInputSpreadsheetUrl(
-        freshConfig.spreadsheetUrl ||
-        (freshConfig.spreadsheetId ? `https://docs.google.com/spreadsheets/d/${freshConfig.spreadsheetId}/edit` : DEFAULT_SPREADSHEET_URL)
-      );
-      setInputWebhookUrl(freshConfig.webhookUrl || '');
-      loadData();
-    }
-  }, [isOpen]);
+    if (!isOpen) return;
+
+    const freshConfig = getStoredDriveConfig();
+    setConfig(freshConfig);
+    setInputSpreadsheetUrl(
+      freshConfig.spreadsheetUrl ||
+      (freshConfig.spreadsheetId ? `https://docs.google.com/spreadsheets/d/${freshConfig.spreadsheetId}/edit` : DEFAULT_SPREADSHEET_URL)
+    );
+    setInputWebhookUrl(freshConfig.webhookUrl || '');
+    
+    // Initial fetch
+    loadData();
+    setCountdown(syncIntervalSec);
+
+    // Auto-sync live polling with second-by-second countdown
+    if (!autoSyncEnabled) return;
+    const intervalTimer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          loadData(undefined, undefined, true);
+          return syncIntervalSec;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(intervalTimer);
+  }, [isOpen, autoSyncEnabled, syncIntervalSec]);
 
   // Save new spreadsheet link/ID
   const handleSaveConfig = () => {
@@ -594,7 +643,7 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
     return result;
   }, [onlineData, localRecords]);
 
-  // Active Tab rows filtered by search and date
+  // Active Tab rows filtered by RBAC permissions, search and date
   const filteredRows = useMemo(() => {
     const currentTabObj = normalizedTabsData[activeTab] || Object.values(normalizedTabsData)[0];
     if (!currentTabObj) return [];
@@ -606,7 +655,18 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
     const weekStart = todayStart - 7 * ONE_DAY;
 
     return currentTabObj.rows.filter((row: any) => {
-      // Search matching
+      // 1. RBAC Check: Usuários comuns só consultam seus próprios registros; Master consulta tudo ou filtra os seus
+      if (!isMaster) {
+        if (activeUser && !canUserAccessSpreadsheetRow(activeUser, row)) {
+          return false;
+        }
+      } else if (masterScope === 'mine') {
+        if (activeUser && !canUserAccessSpreadsheetRow(activeUser, row)) {
+          return false;
+        }
+      }
+
+      // 2. Search matching
       if (searchClean) {
         const matchesSearch = Object.values(row).some((val) =>
           String(val).toUpperCase().includes(searchClean)
@@ -614,7 +674,7 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
         if (!matchesSearch) return false;
       }
 
-      // Date filtering (if raw date exists)
+      // 3. Date filtering (if raw date exists)
       if (row._rawDate) {
         const rowTime = Number(row._rawDate);
         if (dateFilter === 'today' && rowTime < todayStart) return false;
@@ -625,7 +685,7 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
 
       return true;
     });
-  }, [normalizedTabsData, activeTab, searchTerm, dateFilter]);
+  }, [normalizedTabsData, activeTab, searchTerm, dateFilter, isMaster, activeUser, masterScope]);
 
   // Export current tab rows to CSV
   const handleExportCsv = () => {
@@ -765,16 +825,52 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
               <span className="hidden md:inline">Link / Config</span>
             </button>
 
+            {/* Live Auto-Sync Indicator & Toggle */}
+            <div className="flex items-center">
+              <button
+                type="button"
+                onClick={() => setAutoSyncEnabled(!autoSyncEnabled)}
+                title={autoSyncEnabled ? 'Pausar sincronização automática com o Google Sheets' : 'Ativar sincronização automática ao vivo'}
+                className={`py-2 px-2.5 rounded-l-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 border ${
+                  autoSyncEnabled
+                    ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/90'
+                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200 rounded-r-xl'
+                }`}
+              >
+                <Radio className={`w-3.5 h-3.5 ${autoSyncEnabled ? 'text-emerald-400 animate-pulse' : 'text-slate-500'}`} />
+                <span className="hidden sm:inline">
+                  {autoSyncEnabled ? `Ao Vivo (${countdown}s)` : 'Auto-Sync Pausado'}
+                </span>
+              </button>
+              {autoSyncEnabled && (
+                <select
+                  value={syncIntervalSec}
+                  onChange={(e) => {
+                    const s = Number(e.target.value);
+                    setSyncIntervalSec(s);
+                    setCountdown(s);
+                  }}
+                  title="Intervalo da sincronização automática ao vivo com Google Sheets"
+                  className="bg-emerald-900/90 border-t border-b border-r border-emerald-500/40 text-emerald-200 rounded-r-xl py-2 px-1 text-[11px] font-bold focus:outline-none cursor-pointer"
+                >
+                  <option value={5} className="bg-slate-900 text-white">5s</option>
+                  <option value={10} className="bg-slate-900 text-white">10s</option>
+                  <option value={30} className="bg-slate-900 text-white">30s</option>
+                  <option value={60} className="bg-slate-900 text-white">60s</option>
+                </select>
+              )}
+            </div>
+
             {/* Refresh Button */}
             <button
               type="button"
               onClick={() => loadData()}
               disabled={isLoading}
-              title="Atualizar dados da planilha"
+              title="Atualizar dados da planilha agora"
               className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition active:scale-95 disabled:opacity-50 flex items-center gap-1.5 text-xs font-bold"
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-emerald-400' : ''}`} />
-              <span className="hidden sm:inline">Atualizar</span>
+              <span className="hidden sm:inline">Sincronizar</span>
             </button>
 
             {/* Direct Open in Google Sheets */}
@@ -920,6 +1016,49 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
           </div>
         )}
 
+        {/* RBAC Security & Profile Banner */}
+        <div
+          className={`px-4 py-2 text-xs flex flex-wrap items-center justify-between gap-2 border-b shrink-0 ${
+            isMaster
+              ? 'bg-slate-800 text-slate-200 border-slate-700'
+              : 'bg-amber-50 text-amber-950 border-amber-200'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {isMaster ? (
+              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+            ) : (
+              <Shield className="w-4 h-4 text-amber-600 shrink-0" />
+            )}
+            <div>
+              {isMaster ? (
+                <span>
+                  <strong className="font-black text-emerald-400">Acesso Master Global:</strong> Visualização irrestrita de todos os registros e operadores na planilha Google Sheets ao vivo.
+                </span>
+              ) : (
+                <span>
+                  <strong className="font-black text-amber-800">Consulta Restrita por Perfil:</strong> Visualizando apenas registros vinculados a você (<span className="font-black underline">{activeUser?.name || activeUser?.username || 'Operador'}</span>). Usuários Master têm acesso total.
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 text-[11px]">
+            {lastSyncTick && (
+              <span className="text-slate-400 hidden sm:inline">
+                Último sync: <strong className="font-mono text-slate-300 font-bold">{lastSyncTick}</strong>
+              </span>
+            )}
+            <span
+              className={`px-2.5 py-0.5 rounded-full font-bold text-[11px] ${
+                isMaster ? 'bg-slate-700 text-emerald-300 border border-emerald-500/30' : 'bg-amber-200 text-amber-900 border border-amber-300'
+              }`}
+            >
+              {filteredRows.length} {filteredRows.length === 1 ? 'registro visível' : 'registros visíveis'}
+            </span>
+          </div>
+        </div>
+
         {/* Sub-header / Tab Bar & Controls */}
         <div className="bg-slate-50 border-b border-neutral-200 p-2.5 sm:p-3 flex flex-col gap-2.5 shrink-0">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -928,7 +1067,10 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
               {activeTabsList.map((tab) => {
                 const isActive = activeTab === tab.id;
                 const Icon = tab.icon;
-                const count = normalizedTabsData[tab.id]?.rows?.length || 0;
+                const rawRows = normalizedTabsData[tab.id]?.rows || [];
+                const count = isMaster
+                  ? rawRows.length
+                  : rawRows.filter((r: any) => canUserAccessSpreadsheetRow(activeUser, r)).length;
 
                 return (
                   <button
@@ -1061,9 +1203,59 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
               />
             </div>
           ) : (
-            /* Interactive Data Table */
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full">
-              <div className="overflow-auto flex-1">
+            /* Interactive Data Table with RBAC Banner */
+            <div className="flex flex-col h-full gap-2.5">
+              {/* RBAC Notification Banner */}
+              {!isMaster ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-2.5 px-3 flex items-center justify-between text-xs text-amber-900 shrink-0">
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-amber-700 shrink-0" />
+                    <span>
+                      <strong>Consulta de Perfil Restrita:</strong> Exibindo apenas as linhas vinculadas ao seu usuário (<strong>{activeUser?.name || activeUser?.username || 'Operador'}</strong>). Usuários Master possuem acesso irrestrito.
+                    </span>
+                  </div>
+                  <span className="font-mono text-[11px] font-bold text-amber-800 bg-amber-100/80 px-2.5 py-0.5 rounded-lg shrink-0">
+                    {filteredRows.length} linhas permitidas
+                  </span>
+                </div>
+              ) : (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-2 px-3 flex items-center justify-between text-xs text-emerald-900 shrink-0 flex-wrap gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <Shield className="w-4 h-4 text-emerald-700 shrink-0" />
+                    <span className="font-bold">Acesso Master (Total):</span>
+                    <span className="text-emerald-800 hidden sm:inline">
+                      Visualizando todas as linhas da planilha ao vivo ({currentSpreadsheetId ? 'Google Sheets' : 'Base Local'})
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 bg-white p-0.5 rounded-xl border border-emerald-200 shadow-xs">
+                    <button
+                      type="button"
+                      onClick={() => setMasterScope('all')}
+                      className={`px-2.5 py-0.5 rounded-lg text-[11px] font-black transition ${
+                        masterScope === 'all'
+                          ? 'bg-emerald-800 text-white shadow-xs'
+                          : 'text-neutral-600 hover:text-neutral-900'
+                      }`}
+                    >
+                      Todos ({normalizedTabsData[activeTab]?.rows?.length || 0})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMasterScope('mine')}
+                      className={`px-2.5 py-0.5 rounded-lg text-[11px] font-black transition ${
+                        masterScope === 'mine'
+                          ? 'bg-emerald-800 text-white shadow-xs'
+                          : 'text-neutral-600 hover:text-neutral-900'
+                      }`}
+                    >
+                      Apenas Meus Registros
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col flex-1 min-h-0">
+                <div className="overflow-auto flex-1">
                 {filteredRows.length === 0 ? (
                   <div className="py-16 text-center text-slate-400 flex flex-col items-center justify-center p-4">
                     <FileSpreadsheet className="w-12 h-12 stroke-1 mb-2 text-slate-300" />
@@ -1203,8 +1395,9 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
                 )}
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+      </div>
       </div>
     </div>
   );

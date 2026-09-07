@@ -68,11 +68,11 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Action buttons */}
           <div className="flex items-center gap-1">
-            {/* Master Spreadsheet Consultation Quick Button */}
-            {isMaster && onOpenSpreadsheetOnline && (
+            {/* Spreadsheet Consultation Quick Button (Master has full access, Operators see their own records) */}
+            {onOpenSpreadsheetOnline && (
               <button
                 onClick={onOpenSpreadsheetOnline}
-                title="Consultar Planilha Online (5 Abas)"
+                title="Consultar Planilha Online Google Sheets"
                 className="p-2 rounded-lg bg-emerald-950/80 hover:bg-emerald-700 active:scale-95 text-emerald-200 transition-colors flex items-center gap-1 text-xs border border-emerald-600/50"
               >
                 <FileSpreadsheet className="w-4 h-4 text-emerald-300" />
