@@ -608,7 +608,7 @@ export async function appendVehicleRecordToSheet(
   if (record.operationType === 'pdc') {
     destino = record.destination || 'FILA PDC (LAVAGEM / OFICINA)';
   } else if (record.operationType === 'qualidade_51' || record.operationType === 'qualidade') {
-    destino = record.location || (record as any).local || record.destination || (record as any).destino || 'P1';
+    destino = record.destination || (record as any).destino || record.location || (record as any).local || 'P1';
   }
   destino = String(destino).toUpperCase().trim();
 
@@ -797,7 +797,15 @@ export async function appendVehicleRecordToSheet(
             mappedRow[idx] = placa;
           } else if (hdr.includes('orig') || hdr.includes('proced') || hdr === 'de') {
             mappedRow[idx] = origem;
-          } else if (hdr.includes('dest') || hdr.includes('para') || hdr.includes('setor')) {
+          } else if (
+            hdr.includes('dest') ||
+            hdr.includes('para') ||
+            hdr.includes('setor') ||
+            hdr.includes('local') ||
+            hdr.includes('vaga') ||
+            hdr.includes('poste') ||
+            hdr.includes('posicao')
+          ) {
             mappedRow[idx] = destino;
           } else if (
             hdr.includes('km') ||

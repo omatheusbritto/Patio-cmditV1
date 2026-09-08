@@ -655,8 +655,8 @@ async function startServer() {
 
   app.post('/api/users', requireMaster, async (req: Request, res: Response) => {
     try {
-      const { username, name, password, role, whatsapp } = req.body;
-      const result = await createServerUserAsync(username, name, password, role, whatsapp);
+      const { username, name, password, role, whatsapp, allowedOperations } = req.body;
+      const result = await createServerUserAsync(username, name, password, role, whatsapp, allowedOperations);
       if (result.success && result.user) {
         const users = await loadServerUsersAsync();
         // Sincroniza em segundo plano diretamente com a planilha na aba USUARIOS_CMDIT
@@ -711,8 +711,8 @@ async function startServer() {
   app.put('/api/users/:id', requireMaster, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const { username, name, password, role, whatsapp, isActive } = req.body;
-      const result = await updateServerUserAsync(id, { username, name, password, role, whatsapp, isActive });
+      const { username, name, password, role, whatsapp, isActive, allowedOperations } = req.body;
+      const result = await updateServerUserAsync(id, { username, name, password, role, whatsapp, isActive, allowedOperations });
       if (result.success && result.user) {
         const users = await loadServerUsersAsync();
         syncUserToGoogleSheetWebhook('save_user', { user: result.user }).catch(() => {});
@@ -805,6 +805,7 @@ async function startServer() {
 
   // API Route: Restaurar operadores diretamente da aba USUARIOS_CMDIT do Google Sheets
   app.all('/api/users/restore-from-sheet', requireMaster, async (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
       const webhookUrl = req.body?.webhookUrl || (req.query?.webhookUrl as string) || undefined;
       const result = await restoreUsersFromSpreadsheetAsync(webhookUrl);
@@ -842,6 +843,7 @@ async function startServer() {
           username: result.user.username,
           name: result.user.name,
           role: result.user.role,
+          allowedOperations: (result.user as any).allowedOperations,
         },
         loginTimestamp: now,
         expiresAt: now + SESSION_DURATION_MS,
@@ -1118,7 +1120,7 @@ async function startServer() {
       // Local / Destino do veículo
       let destino = record.destination || record.destino;
       if (normalizedCategory === 'qualidade') {
-        destino = record.location || record.local || record.destination || record.destino || 'P1';
+        destino = record.destination || record.destino || record.location || record.local || 'P1';
       } else if (normalizedCategory === 'pdc') {
         destino = destino || 'Fila PDC (Lavagem/Oficina)';
       } else if (normalizedCategory === 'entrada') {
@@ -2061,7 +2063,14 @@ async function startServer() {
         const operador = String(r.operatorName || 'OPERADOR').toUpperCase().trim();
         const condutor = String(r.driverName || r.condutor || '-').toUpperCase().trim();
         const placa = (r.plate || r.placa || '').toUpperCase().trim();
-        const destino = String(r.destination || r.destino || (op === 'pdc' ? 'FILA PDC (LAVAGEM/OFICINA)' : '-')).toUpperCase().trim();
+        let destino = String(r.destination || r.destino || '').toUpperCase().trim();
+        if (op === 'qualidade_51' || op === 'qualidade') {
+          destino = String(r.destination || r.destino || r.location || (r as any).local || 'P1').toUpperCase().trim();
+        } else if (op === 'pdc') {
+          destino = destino || 'FILA PDC (LAVAGEM/OFICINA)';
+        } else if (!destino) {
+          destino = '-';
+        }
         const km = r.km ? `${String(r.km).replace(/\s*km/i, '').toUpperCase().trim()} KM` : (r.odometro ? `${String(r.odometro).replace(/\s*km/i, '').toUpperCase().trim()} KM` : '-');
         const nivelCombustivel = String(r.fuel || r.nivelCombustivel || r.combustivel || '-').toUpperCase().trim();
         const litrosAbastecidos = r.liters ? `${String(r.liters).replace(/\s*l/i, '').toUpperCase().trim()} L` : (r.litros ? `${String(r.litros).replace(/\s*l/i, '').toUpperCase().trim()} L` : '-');
@@ -2413,6 +2422,14 @@ REGRAS DE LEITURA ÓPTICA DE ALTA PRECISÃO (99.9% ACURÁCIA):
         error: err.message || 'Erro ao processar imagem.',
       });
     }
+  });
+
+  // Unmatched API route handler: Always return JSON 404 so /api/* calls NEVER fall through to HTML/Vite
+  app.all('/api/*', (req: Request, res: Response) => {
+    res.status(404).json({
+      success: false,
+      error: `Endpoint de API não encontrado: ${req.method} ${req.path}`,
+    });
   });
 
   // Vite middleware for development vs Static serving for production

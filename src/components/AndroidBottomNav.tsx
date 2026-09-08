@@ -1,6 +1,6 @@
 import React from 'react';
 import { Camera, Layers, History, ShieldCheck, ArrowLeftRight, ClipboardCheck } from 'lucide-react';
-import { NavTab } from '../types';
+import { NavTab, OperationType } from '../types';
 
 interface AndroidBottomNavProps {
   activeTab: NavTab;
@@ -8,6 +8,7 @@ interface AndroidBottomNavProps {
   parkedCount: number;
   historyCount: number;
   isMaster?: boolean;
+  allowedOperations?: OperationType[];
 }
 
 export const AndroidBottomNav: React.FC<AndroidBottomNavProps> = ({
@@ -16,53 +17,58 @@ export const AndroidBottomNav: React.FC<AndroidBottomNavProps> = ({
   parkedCount,
   historyCount,
   isMaster = false,
+  allowedOperations,
 }) => {
+  const ops = allowedOperations || [];
+  const canMove = isMaster || ops.includes('movimentacao');
+  const canInventory = isMaster || ops.includes('inventario');
+
   const allTabs = [
     {
       id: 'register' as NavTab,
       label: 'Registrar',
       icon: Camera,
       badge: null,
-      masterOnly: false,
+      visible: true,
     },
     {
       id: 'patio' as NavTab,
       label: 'Pátio',
       icon: Layers,
       badge: parkedCount > 0 ? parkedCount : null,
-      masterOnly: false,
+      visible: true,
     },
     {
       id: 'movimentacao' as NavTab,
       label: 'Movimentar',
       icon: ArrowLeftRight,
       badge: null,
-      masterOnly: false,
+      visible: canMove,
     },
     {
       id: 'inventario' as NavTab,
       label: 'Inventário',
       icon: ClipboardCheck,
       badge: null,
-      masterOnly: false,
+      visible: canInventory,
     },
     {
       id: 'history' as NavTab,
       label: 'Histórico',
       icon: History,
       badge: historyCount > 0 ? historyCount : null,
-      masterOnly: false,
+      visible: true,
     },
     {
       id: 'logs' as NavTab,
       label: 'Logs',
       icon: ShieldCheck,
       badge: null,
-      masterOnly: true,
+      visible: isMaster,
     },
   ];
 
-  const tabs = allTabs.filter((tab) => !tab.masterOnly || isMaster);
+  const tabs = allTabs.filter((tab) => tab.visible);
 
   return (
     <nav className="fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-neutral-200/80 shadow-lg select-none pb-[env(safe-area-inset-bottom)]">

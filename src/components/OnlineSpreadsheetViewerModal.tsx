@@ -517,10 +517,11 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
         const placa = (rec.plate || '').toUpperCase().trim();
         const destino =
           rec.destination ||
+          (rec as any).destino ||
           (op === 'pdc'
             ? 'FILA PDC (LAVAGEM/OFICINA)'
             : (op === 'qualidade_51' || op === 'qualidade')
-            ? (rec.location || (rec as any).local || 'P1')
+            ? (rec.destination || (rec as any).destino || rec.location || (rec as any).local || 'P1')
             : '-');
         const km = rec.km ? `${String(rec.km).replace(/\s*km/i, '')} KM` : '-';
         
@@ -576,7 +577,7 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
             _plate: placa,
           });
         } else if (op === 'qualidade_51' || op === 'qualidade') {
-          const locQualidade = rec.location || (rec as any).local || destino || 'P1';
+          const locQualidade = rec.destination || (rec as any).destino || rec.location || (rec as any).local || destino || 'P1';
           result.qualidade51.rows.push({
             DATA: dateStr,
             HORA: timeStr,
@@ -585,6 +586,7 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
             'CARACTERISTICAS DO VEICULO': caracteristica,
             'NIVEL DO COMBUSTIVEL': nivelCombustivel,
             'DESTINO(P1, P2, P3, R1, ADM)': locQualidade,
+            DESTINO: locQualidade,
             'OPERADOR DO REGISTRO': operador,
             _rawDate: rec.createdAt,
             _plate: placa,
@@ -1356,6 +1358,34 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
                                       }`}
                                     >
                                       {cellValue}
+                                    </span>
+                                  </td>
+                                );
+                              }
+
+                              if (h.toUpperCase().includes('DEST') || h.toUpperCase().includes('LOCAL')) {
+                                const valUp = String(cellValue || '').toUpperCase().trim();
+                                const isP = valUp.startsWith('P1') || valUp.startsWith('P2') || valUp.startsWith('P3') || valUp === 'P1' || valUp === 'P2' || valUp === 'P3';
+                                const isR = valUp.startsWith('R1') || valUp === 'R1';
+                                const isAdm = valUp.includes('ADM');
+                                const isOutros = valUp.includes('OUTRO');
+
+                                return (
+                                  <td key={h} className="py-2.5 px-3 border-r border-slate-100 whitespace-nowrap">
+                                    <span
+                                      className={`text-[11px] font-black px-2.5 py-0.5 rounded-md font-mono inline-block ${
+                                        isP
+                                          ? 'bg-indigo-100 text-indigo-900 border border-indigo-200'
+                                          : isR
+                                          ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                                          : isAdm
+                                          ? 'bg-blue-100 text-blue-900 border border-blue-200'
+                                          : isOutros
+                                          ? 'bg-purple-100 text-purple-900 border border-purple-200'
+                                          : 'bg-slate-100 text-slate-800'
+                                      }`}
+                                    >
+                                      {cellValue || '-'}
                                     </span>
                                   </td>
                                 );

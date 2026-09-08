@@ -12,6 +12,7 @@ import {
   VehicleRecord,
   VehicleStatus,
   getAllowedOperationsForRole,
+  getUserAllowedOperations,
   getRoleBadgeStyle,
   getRoleDisplayName,
 } from './types';
@@ -297,7 +298,23 @@ export default function App() {
       setDuplicateWarning(null);
     }
 
+    const userAllowedOps = getUserAllowedOperations(authSession?.user);
+    if (userAllowedOps.length === 1) {
+      handleSelectOperation(userAllowedOps[0]);
+      return;
+    }
+
     setCurrentStep('operation_select');
+  };
+
+  // Helper para retornar com segurança da etapa de operação
+  const navigateBackFromOperationStep = () => {
+    const userAllowedOps = getUserAllowedOperations(authSession?.user);
+    if (userAllowedOps.length === 1) {
+      setCurrentStep('plate_confirm');
+    } else {
+      setCurrentStep('operation_select');
+    }
   };
 
   // When user selects the Operation
@@ -437,10 +454,12 @@ export default function App() {
   // When user selects location (for 51 Qualidade)
   const handleSelectQualityLocation = (selectedLoc: QualityLocationCode) => {
     setLocation(selectedLoc);
+    setDestination(selectedLoc);
   };
 
   const handleNextFromQualityLocation = () => {
     if (location) {
+      setDestination(location);
       setCurrentStep('review');
     }
   };
@@ -725,7 +744,7 @@ export default function App() {
                 initialDocumentPhotoUrl={documentPhotoUrl}
                 onUpdatePlate={(newPlate) => setPlate(newPlate)}
                 onSubmit={handleSubmitOperationDetails}
-                onBack={() => setCurrentStep('operation_select')}
+                onBack={navigateBackFromOperationStep}
               />
             )}
 
@@ -734,7 +753,7 @@ export default function App() {
                 plate={plate}
                 onPhotoCaptured={handleDashboardPhotoCaptured}
                 onSkip={handleSkipDashboardPhoto}
-                onBack={() => setCurrentStep('operation_select')}
+                onBack={navigateBackFromOperationStep}
                 onUpdatePlate={(newPlate) => setPlate(newPlate)}
               />
             )}
@@ -753,7 +772,7 @@ export default function App() {
                 onRetakeDashboardPhoto={() => setCurrentStep('dashboard_camera')}
                 onUpdatePlate={(newPlate) => setPlate(newPlate)}
                 onSubmit={handleSubmitFuelingDetails}
-                onBack={() => setCurrentStep('operation_select')}
+                onBack={navigateBackFromOperationStep}
               />
             )}
 
@@ -762,7 +781,7 @@ export default function App() {
                 selectedCharacteristic={characteristic}
                 onSelectCharacteristic={handleSelectCharacteristic}
                 onNext={handleNextFromCharacteristic}
-                onBack={() => setCurrentStep('operation_select')}
+                onBack={navigateBackFromOperationStep}
               />
             )}
 
@@ -934,6 +953,7 @@ export default function App() {
           parkedCount={patioMetrics.totalParked}
           historyCount={records.length}
           isMaster={authSession?.user.role === 'master'}
+          allowedOperations={getUserAllowedOperations(authSession?.user)}
         />
       )}
 

@@ -121,15 +121,24 @@ export async function restoreDatabaseBackup(backupJsonData: any): Promise<{
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-user-role': session?.user.role || '',
-      'x-user-name': session?.user.username || '',
+      'Accept': 'application/json',
+      'x-user-role': session?.user.role || 'master',
+      'x-user-username': session?.user.username || 'mastercmdit',
+      'x-user-name': session?.user.name || '',
     },
     body: JSON.stringify({ backup: backupJsonData }),
   });
 
-  const data = await res.json();
+  const responseText = await res.text();
+  let data: any = null;
+  try {
+    data = JSON.parse(responseText);
+  } catch {
+    throw new Error('O servidor retornou uma resposta não-JSON ao restaurar backup.');
+  }
+
   if (!res.ok || !data.success) {
-    throw new Error(data.message || 'Falha ao restaurar banco de dados');
+    throw new Error(data?.message || data?.error || 'Falha ao restaurar banco de dados');
   }
 
   return data;

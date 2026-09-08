@@ -1,0 +1,83 @@
+[
+  {
+    "id": "master-001",
+    "username": "mastercmdit",
+    "name": "Administrador Master",
+    "role": "master",
+    "password": "Master@123",
+    "whatsapp": "-",
+    "createdAt": "2026-09-03T13:12:03.331Z",
+    "isActive": true
+  },
+  {
+    "id": "dev-001",
+    "username": "desenvolvedor",
+    "name": "Desenvolvedor CMDIT",
+    "role": "master",
+    "password": "DEV@cmdit",
+    "whatsapp": "DEV@cmdit",
+    "createdAt": "04/09/2026 16:46:59",
+    "isActive": true
+  },
+  {
+    "id": "user-1788455596305-xqei8",
+    "username": "matheusbritto",
+    "name": "Matheus Britto",
+    "role": "patio",
+    "password": "user123",
+    "whatsapp": "11963816345",
+    "createdAt": "04/09/2026 02:09:40",
+    "isActive": true,
+    "lastLogin": "30/08/2026 19:41:36"
+  },
+  {
+    "id": "user-1788548501411-o9vyk",
+    "username": "eduardofukuda",
+    "name": "Eduardo Fukuda",
+    "role": "master",
+    "password": "Eduardo@CMDIT",
+    "createdAt": "04/09/2026 12:51:50",
+    "isActive": true,
+    "whatsapp": "11930114104"
+  },
+  {
+    "id": "user-1788612675973-s76ci",
+    "username": "amandaaquele",
+    "name": "Amanda Aquele",
+    "role": "qualidade_51",
+    "password": "Cmdit",
+    "createdAt": "05/09/2026 09:49:48",
+    "isActive": true,
+    "whatsapp": "11984986781"
+  },
+  {
+    "id": "user-1788698182611-w40k4",
+    "username": "marcosatalla",
+    "name": "Marcos Atalla",
+    "role": "patio",
+    "password": "user@cmdit",
+    "createdAt": "06/09/2026 09:36:22",
+    "isActive": true,
+    "whatsapp": "11940736136"
+  },
+  {
+    "id": "user-1788879924914-2phzw",
+    "username": "luanaalves",
+    "name": "Luana Alves",
+    "role": "patio",
+    "whatsapp": "11963363063",
+    "password": "user321",
+    "createdAt": "04/09/2026 10:56:52",
+    "isActive": true,
+    "lastLogin": "03/09/2026 09:10:32"
+  },
+  {
+    "id": "user-1788879924937-eoqpc",
+    "username": "michelpedrozo",
+    "name": "Michel Pedrozo",
+    "role": "operador",
+    "password": "User1122",
+    "createdAt": "04/09/2026 16:01:41",
+    "isActive": true
+  }
+]

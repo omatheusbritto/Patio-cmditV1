@@ -510,8 +510,8 @@ export function exportRecordsToCsv(records: VehicleRecord[]): void {
       r.destination ||
       (r.operationType === 'pdc'
         ? 'FILA PDC (LAVAGEM/OFICINA)'
-        : r.operationType === 'qualidade_51' && r.location
-        ? `PÁTIO ${r.location}`
+        : r.operationType === 'qualidade_51'
+        ? (r.destination || r.location || 'P1')
         : '-')
     ).toUpperCase().trim();
 

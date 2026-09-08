@@ -29,6 +29,7 @@ import {
   ChevronUp,
   Layers,
   Info,
+  Sliders,
 } from 'lucide-react';
 import {
   getAllUsers,
@@ -59,7 +60,19 @@ import {
   UserProfileDefinition,
   getOperationDisplayInfo,
   OperationType,
+  getAllowedOperationsForRole,
+  getUserAllowedOperations,
 } from '../types';
+
+const ALL_OPERATIONS_AVAILABLE: OperationType[] = [
+  'entrada',
+  'saida',
+  'pdc',
+  'qualidade_51',
+  'abastecimento',
+  'movimentacao',
+  'inventario',
+];
 
 interface UserManagementModalProps {
   onClose: () => void;
@@ -98,7 +111,9 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
   const [newName, setNewName] = useState('');
   const [newWhatsapp, setNewWhatsapp] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [newRole, setNewRole] = useState<UserRole>('patio');
+  const [newRole, setNewRole] = useState<UserRole>('entrada');
+  const [newCustomOps, setNewCustomOps] = useState<OperationType[] | null>(null);
+  const [showCustomOps, setShowCustomOps] = useState(false);
   const [formMsg, setFormMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copiedScript, setCopiedScript] = useState(false);
@@ -109,7 +124,9 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
   const [editUsername, setEditUsername] = useState('');
   const [editWhatsapp, setEditWhatsapp] = useState('');
   const [editPassword, setEditPassword] = useState('');
-  const [editRole, setEditRole] = useState<UserRole>('patio');
+  const [editRole, setEditRole] = useState<UserRole>('entrada');
+  const [editCustomOps, setEditCustomOps] = useState<OperationType[] | null>(null);
+  const [showEditCustomOps, setShowEditCustomOps] = useState(false);
   const [editIsActive, setEditIsActive] = useState(true);
   const [editMsg, setEditMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -121,6 +138,8 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
     setEditWhatsapp(user.whatsapp || '');
     setEditPassword(user.password || '');
     setEditRole(user.role);
+    setEditCustomOps(user.allowedOperations || getAllowedOperationsForRole(user.role));
+    setShowEditCustomOps(false);
     setEditIsActive(user.isActive !== false);
     setEditMsg(null);
   };
@@ -199,7 +218,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
     setIsSyncingSheet(true);
     setSyncStatusMsg({ text: '📥 Restaurando operadores da aba USUARIOS_CMDIT da planilha oficial...', type: 'info' });
     try {
-      const res = await restoreUsersFromSheetClient();
+      const res = await restoreUsersFromSheetClient(driveConfig.webhookUrl);
       if (res.success) {
         setSyncStatusMsg({
           text: `🎉 Sucesso! ${res.totalRestored || res.users?.length || 0} operadores sincronizados e ativos no sistema!`,
@@ -213,7 +232,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
         });
       }
     } catch (err: any) {
-      setSyncStatusMsg({ text: `⚠️ Falha ao restaurar: ${err.message}`, type: 'error' });
+      setSyncStatusMsg({ text: `⚠️ Falha ao restaurar: ${err.message || 'Erro inesperado'}`, type: 'error' });
     } finally {
       setIsSyncingSheet(false);
       setTimeout(() => setSyncStatusMsg(null), 6000);
@@ -263,7 +282,15 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
     setIsSubmitting(true);
 
     try {
-      const res = await createNewUser(newUsername, newName, newPassword, newRole, newWhatsapp);
+      const allowedOpsToSave = newCustomOps || getAllowedOperationsForRole(newRole);
+      const res = await createNewUser(
+        newUsername,
+        newName,
+        newPassword,
+        newRole,
+        newWhatsapp,
+        allowedOpsToSave
+      );
       setIsSubmitting(false);
       if (res.success) {
         setFormMsg({
@@ -274,6 +301,8 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
         setNewName('');
         setNewWhatsapp('');
         setNewPassword('');
+        setNewCustomOps(null);
+        setShowCustomOps(false);
         await loadData();
         // Sincroniza em background com a planilha única
         syncAllUsersToSheet();
@@ -297,12 +326,14 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
     setIsUpdating(true);
 
     try {
+      const allowedOpsToSave = editCustomOps || getAllowedOperationsForRole(editRole);
       const res = await updateUserAccount(editingUser.id, {
         name: editName.trim(),
         username: editUsername.trim().toLowerCase(),
         whatsapp: editWhatsapp.trim() || undefined,
         password: editPassword.trim() || undefined,
         role: editRole,
+        allowedOperations: allowedOpsToSave,
         isActive: editIsActive,
       });
 
@@ -503,7 +534,18 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center flex-wrap">
+            <button
+              type="button"
+              onClick={handleRestoreFromSpreadsheet}
+              disabled={isSyncingSheet}
+              className="px-3 py-1.5 rounded-xl bg-emerald-700/80 hover:bg-emerald-700 border border-emerald-500/50 text-emerald-100 hover:text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer disabled:opacity-50 active:scale-95"
+              title="Restaurar lista de operadores diretamente da aba USUARIOS_CMDIT do Google Sheets"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncingSheet ? 'animate-spin text-white' : 'text-white'}`} />
+              <span>📥 Restaurar da Planilha</span>
+            </button>
+
             {officialUrl ? (
               <a
                 href={officialUrl}
@@ -529,11 +571,11 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
         </div>
 
         {/* Tab Toggle */}
-        <div className="flex border-b border-neutral-200 bg-neutral-50 px-4 pt-2 gap-2">
+        <div className="flex border-b border-neutral-200 bg-neutral-50 px-4 pt-2 gap-1.5 overflow-x-auto">
           <button
             type="button"
             onClick={() => setActiveTab('list')}
-            className={`pb-2.5 px-3 text-xs font-black flex items-center gap-1.5 border-b-2 transition cursor-pointer ${
+            className={`pb-2.5 px-3 text-xs font-black flex items-center gap-1.5 border-b-2 transition cursor-pointer shrink-0 ${
               activeTab === 'list'
                 ? 'border-emerald-600 text-emerald-700'
                 : 'border-transparent text-neutral-500 hover:text-neutral-800'
@@ -546,7 +588,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
           <button
             type="button"
             onClick={() => setActiveTab('create')}
-            className={`pb-2.5 px-3 text-xs font-black flex items-center gap-1.5 border-b-2 transition cursor-pointer ${
+            className={`pb-2.5 px-3 text-xs font-black flex items-center gap-1.5 border-b-2 transition cursor-pointer shrink-0 ${
               activeTab === 'create'
                 ? 'border-emerald-600 text-emerald-700'
                 : 'border-transparent text-neutral-500 hover:text-neutral-800'
@@ -558,20 +600,55 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
 
           <button
             type="button"
+            onClick={() => setActiveTab('profiles')}
+            className={`pb-2.5 px-3 text-xs font-black flex items-center gap-1.5 border-b-2 transition cursor-pointer shrink-0 ${
+              activeTab === 'profiles'
+                ? 'border-emerald-600 text-emerald-700'
+                : 'border-transparent text-neutral-500 hover:text-neutral-800'
+            }`}
+          >
+            <Shield className="w-4 h-4" />
+            <span>Perfis & Funções ({ALL_USER_PROFILES.length})</span>
+          </button>
+
+          <button
+            type="button"
             onClick={runDiagnostic}
-            className={`pb-2.5 px-3 text-xs font-black flex items-center gap-1.5 border-b-2 transition cursor-pointer ${
+            className={`pb-2.5 px-3 text-xs font-black flex items-center gap-1.5 border-b-2 transition cursor-pointer shrink-0 ${
               activeTab === 'diagnostic'
                 ? 'border-emerald-600 text-emerald-700'
                 : 'border-transparent text-neutral-500 hover:text-neutral-800'
             }`}
           >
             <Activity className="w-4 h-4" />
-            <span>Diagnóstico & Como Saber</span>
+            <span>Diagnóstico</span>
           </button>
         </div>
 
         {/* Content Area */}
         <div className="flex-1 overflow-y-auto p-4 bg-neutral-50/50">
+          {/* Global Sync / Restore Status Notification across all tabs */}
+          {syncStatusMsg && (
+            <div
+              className={`mb-3 p-3 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-xs transition-all ${
+                syncStatusMsg.type === 'success'
+                  ? 'bg-emerald-50 text-emerald-900 border border-emerald-300'
+                  : syncStatusMsg.type === 'info'
+                  ? 'bg-blue-50 text-blue-900 border border-blue-200'
+                  : 'bg-rose-50 text-rose-900 border border-rose-300'
+              }`}
+            >
+              {syncStatusMsg.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-700" />
+              ) : syncStatusMsg.type === 'info' ? (
+                <RefreshCw className="w-4 h-4 shrink-0 text-blue-700 animate-spin" />
+              ) : (
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-700" />
+              )}
+              <span>{syncStatusMsg.text}</span>
+            </div>
+          )}
+
           {activeTab === 'diagnostic' ? (
             <div className="flex flex-col gap-3.5 max-w-lg mx-auto py-1">
               <div className="p-4 bg-white rounded-2xl border border-neutral-200 shadow-xs flex flex-col gap-3">
@@ -715,6 +792,29 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
             </div>
           ) : activeTab === 'create' ? (
             <form onSubmit={handleCreateUser} className="flex flex-col gap-3.5 max-w-md mx-auto py-1">
+              {/* Card de Restauração Rápida da Planilha */}
+              <div className="p-3 bg-emerald-50/90 rounded-2xl border border-emerald-200 flex items-center justify-between gap-2 shadow-2xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                    <FileSpreadsheet className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-black text-emerald-950 block">Restaurar da Planilha</span>
+                    <span className="text-[10.5px] text-emerald-800 block">Importa os operadores já existentes na aba USUARIOS_CMDIT.</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRestoreFromSpreadsheet}
+                  disabled={isSyncingSheet}
+                  className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer shrink-0 disabled:opacity-50 active:scale-95"
+                  title="Restaurar operadores existentes na planilha oficial"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingSheet ? 'animate-spin text-white' : 'text-white'}`} />
+                  <span>📥 Restaurar</span>
+                </button>
+              </div>
+
               {formMsg && (
                 <div
                   className={`p-3 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-xs ${
@@ -795,20 +895,92 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                   </p>
                 </div>
 
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-black text-neutral-700">Função / Perfil de Acesso:</label>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black text-neutral-700">Função / Perfil de Acesso:</label>
+                    <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      {getUserProfileDefinition(newRole).badgeLabel}
+                    </span>
+                  </div>
                   <select
                     value={newRole}
-                    onChange={(e) => setNewRole(e.target.value as UserRole)}
-                    className="bg-neutral-50 border border-neutral-300 rounded-xl px-3 py-2 text-xs font-bold text-neutral-900 focus:bg-white focus:border-emerald-600 outline-none transition"
+                    onChange={(e) => {
+                      const r = e.target.value as UserRole;
+                      setNewRole(r);
+                      setNewCustomOps(getAllowedOperationsForRole(r));
+                    }}
+                    className="bg-white border-2 border-emerald-600 rounded-xl px-3 py-2.5 text-xs font-bold text-neutral-900 focus:bg-white focus:border-emerald-700 outline-none transition shadow-2xs cursor-pointer"
                   >
-                    <option value="patio">Operador do Pátio (Todas as 5 operações do pátio)</option>
-                    <option value="entrada_saida">Operador de Entrada e Saída (Apenas Entrada e Saída)</option>
-                    <option value="combustivel">Operador do Combustível (Apenas Abastecimento)</option>
-                    <option value="pdc">Operador da Fila PDC (Apenas Fila PDC)</option>
-                    <option value="qualidade_51">Operador 51 Qualidade (Bolsão 51 ➔ P1, P2, P3, R1, ADM, outros)</option>
-                    <option value="master">Administrador Master (Acesso total + Gestão de Usuários e Planilha)</option>
+                    <option value="entrada">Operador de Entrada (Apenas registro de Entrada de veículos)</option>
+                    <option value="saida">Operador de Saída (Apenas registro de Saída e liberação)</option>
+                    <option value="entrada_saida">Operador de Entrada / Saída (Portaria: Entrada e Saída)</option>
+                    <option value="pdc">Operador Fila PDC (Lavagem e oficina / Fila PDC)</option>
+                    <option value="qualidade_51">Operador Qualidade 51 (Bolsão 51 ➔ P1, P2, P3, R1 e ADM)</option>
+                    <option value="combustivel">Operador de Abastecimento / Posto (Combustível, odômetro e litros)</option>
+                    <option value="movimentacao">Operador de Movimentação (Remanejamento e manobra de vagas)</option>
+                    <option value="inventario">Operador de Inventário (Auditoria de placa e localização)</option>
+                    <option value="patio">Operador de Pátio Geral (Todas as 7 operações do pátio)</option>
+                    <option value="master">Operador de Pátio Geral / Master (Acesso total + Gestão de Usuários e Planilha)</option>
                   </select>
+
+                  {/* Detalhes do Perfil Selecionado */}
+                  <div className="mt-1">
+                    {renderProfileDetailsBox(newRole)}
+                  </div>
+
+                  {/* Personalização Avançada de Operações */}
+                  <div className="mt-1 p-2.5 bg-neutral-50 rounded-xl border border-neutral-200 flex flex-col gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomOps(!showCustomOps)}
+                      className="text-xs font-bold text-neutral-800 flex items-center justify-between cursor-pointer"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Sliders className="w-3.5 h-3.5 text-emerald-700" />
+                        <span>Personalizar Permissões Específicas</span>
+                      </span>
+                      <span className="text-[11px] text-emerald-700 font-bold">
+                        {showCustomOps ? '▲ Recolher' : '▼ Ajustar Operações Liberadas'}
+                      </span>
+                    </button>
+
+                    {showCustomOps && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-2 border-t border-neutral-200">
+                        {ALL_OPERATIONS_AVAILABLE.map((op) => {
+                          const currentOps = newCustomOps || getAllowedOperationsForRole(newRole);
+                          const isChecked = currentOps.includes(op);
+                          const opInfo = getOperationDisplayInfo(op);
+                          return (
+                            <label
+                              key={op}
+                              className={`flex items-start gap-2 p-2 rounded-lg border text-xs cursor-pointer transition ${
+                                isChecked
+                                  ? 'bg-emerald-50 border-emerald-300 text-emerald-950 font-bold'
+                                  : 'bg-white border-neutral-200 text-neutral-600 font-normal hover:bg-neutral-100'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => {
+                                  const current = newCustomOps || getAllowedOperationsForRole(newRole);
+                                  const updated = isChecked
+                                    ? current.filter((x) => x !== op)
+                                    : [...current, op];
+                                  setNewCustomOps(updated);
+                                }}
+                                className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500"
+                              />
+                              <div className="flex flex-col">
+                                <span className="text-[11px] leading-tight">{opInfo.name}</span>
+                                <span className="text-[9.5px] text-neutral-500 line-clamp-1">{opInfo.shortDesc}</span>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -821,6 +993,111 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                 <span>{isSubmitting ? 'Gravando na Planilha...' : 'Salvar e Sincronizar na Planilha'}</span>
               </button>
             </form>
+          ) : activeTab === 'profiles' ? (
+            <div className="flex flex-col gap-3 max-w-xl mx-auto py-1">
+              <div className="bg-white p-3.5 rounded-2xl border border-neutral-200 shadow-xs flex flex-col gap-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
+                      <Shield className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-black text-neutral-900">Catálogo de Funções & Perfis de Acesso</h3>
+                      <p className="text-[11px] text-neutral-500">
+                        {ALL_USER_PROFILES.length} perfis operacionais com telas e permissões restritas
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-neutral-400" />
+                  <input
+                    type="text"
+                    placeholder="Filtrar perfis por nome, responsabilidade ou tela..."
+                    value={profileSearchTerm}
+                    onChange={(e) => setProfileSearchTerm(e.target.value)}
+                    className="w-full bg-neutral-50 border border-neutral-200 rounded-xl pl-8.5 pr-3 py-1.5 text-xs text-neutral-800 outline-none focus:bg-white focus:border-emerald-600"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2.5">
+                {ALL_USER_PROFILES.filter(
+                  (p) =>
+                    p.title.toLowerCase().includes(profileSearchTerm.toLowerCase()) ||
+                    p.description.toLowerCase().includes(profileSearchTerm.toLowerCase()) ||
+                    p.category.toLowerCase().includes(profileSearchTerm.toLowerCase()) ||
+                    p.responsibilities.some((r) => r.toLowerCase().includes(profileSearchTerm.toLowerCase()))
+                ).map((profile) => (
+                  <div
+                    key={profile.role}
+                    className={`p-3.5 rounded-2xl border ${profile.borderClass} ${profile.bgClass} shadow-xs flex flex-col gap-2.5`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-neutral-700 bg-white/90 px-2 py-0.5 rounded border border-neutral-300">
+                            {profile.category}
+                          </span>
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded border uppercase ${profile.badgeClass}`}>
+                            {profile.badgeLabel}
+                          </span>
+                        </div>
+                        <h4 className="text-xs font-black text-neutral-900 mt-0.5">{profile.title}</h4>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewRole(profile.role);
+                          setNewCustomOps(getAllowedOperationsForRole(profile.role));
+                          setActiveTab('create');
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 font-bold text-[11px] shrink-0 transition flex items-center gap-1 shadow-2xs cursor-pointer"
+                      >
+                        <UserPlus className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Cadastrar com este Cargo</span>
+                      </button>
+                    </div>
+
+                    <p className="text-xs text-neutral-700 leading-relaxed font-medium">
+                      {profile.description}
+                    </p>
+
+                    <div className="flex flex-col gap-1 pt-1.5 border-t border-black/10">
+                      <span className="text-[10px] font-black text-neutral-700 uppercase tracking-wider">
+                        Operações Liberadas no App ({profile.allowedOperations.length}):
+                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {profile.allowedOperations.map((op) => {
+                          const opInfo = getOperationDisplayInfo(op);
+                          return (
+                            <span
+                              key={op}
+                              className={`text-[9px] font-bold px-2 py-0.5 rounded border ${opInfo.badgeClass}`}
+                            >
+                              {opInfo.name}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-1 pt-1 border-t border-black/10">
+                      <span className="text-[10px] font-black text-neutral-700 uppercase tracking-wider">
+                        Atribuições & Fluxos:
+                      </span>
+                      <ul className="text-[11px] text-neutral-700 space-y-0.5 pl-3 list-disc">
+                        {profile.responsibilities.map((resp, i) => (
+                          <li key={i}>{resp}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           ) : (
             <div className="flex flex-col gap-3">
               {/* Top Sync & Search Bar */}
@@ -860,28 +1137,6 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                   </button>
                 </div>
               </div>
-
-              {/* Status Message */}
-              {syncStatusMsg && (
-                <div
-                  className={`p-3 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-xs ${
-                    syncStatusMsg.type === 'success'
-                      ? 'bg-emerald-50 text-emerald-900 border border-emerald-300'
-                      : syncStatusMsg.type === 'info'
-                      ? 'bg-blue-50 text-blue-900 border border-blue-200'
-                      : 'bg-rose-50 text-rose-900 border border-rose-300'
-                  }`}
-                >
-                  {syncStatusMsg.type === 'success' ? (
-                    <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-700" />
-                  ) : syncStatusMsg.type === 'info' ? (
-                    <RefreshCw className="w-4 h-4 shrink-0 text-blue-700 animate-spin" />
-                  ) : (
-                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-700" />
-                  )}
-                  <span>{syncStatusMsg.text}</span>
-                </div>
-              )}
 
               {/* Users List */}
               <div className="flex flex-col gap-2">
@@ -965,6 +1220,21 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                                     </a>
                                   </>
                                 )}
+                              </div>
+
+                              {/* Operações Permitidas do Operador */}
+                              <div className="flex items-center gap-1 mt-1 flex-wrap">
+                                {getUserAllowedOperations(user).map((op) => {
+                                  const opInfo = getOperationDisplayInfo(op);
+                                  return (
+                                    <span
+                                      key={op}
+                                      className={`text-[8.5px] font-bold px-1.5 py-0.2 rounded border ${opInfo.badgeClass}`}
+                                    >
+                                      {opInfo.name}
+                                    </span>
+                                  );
+                                })}
                               </div>
                             </div>
                           </div>
@@ -1143,20 +1413,92 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ onClos
                   />
                 </div>
 
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-black text-neutral-700">Função / Perfil de Acesso:</label>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black text-neutral-700">Função / Perfil de Acesso:</label>
+                    <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      {getUserProfileDefinition(editRole).badgeLabel}
+                    </span>
+                  </div>
                   <select
                     value={editRole}
-                    onChange={(e) => setEditRole(e.target.value as UserRole)}
-                    className="bg-white border border-neutral-300 rounded-xl px-3 py-2 text-xs font-bold text-neutral-900 focus:border-emerald-600 outline-none"
+                    onChange={(e) => {
+                      const r = e.target.value as UserRole;
+                      setEditRole(r);
+                      setEditCustomOps(getAllowedOperationsForRole(r));
+                    }}
+                    className="bg-white border-2 border-emerald-600 rounded-xl px-3 py-2.5 text-xs font-bold text-neutral-900 focus:border-emerald-700 outline-none cursor-pointer"
                   >
-                    <option value="patio">Operador do Pátio (Todas as operações)</option>
-                    <option value="entrada_saida">Operador Entrada/Saída</option>
-                    <option value="combustivel">Operador Combustível</option>
-                    <option value="pdc">Operador Fila PDC</option>
-                    <option value="qualidade_51">Operador 51 Qualidade</option>
-                    <option value="master">Administrador Master</option>
+                    <option value="entrada">Operador de Entrada (Apenas registro de Entrada de veículos)</option>
+                    <option value="saida">Operador de Saída (Apenas registro de Saída e liberação)</option>
+                    <option value="entrada_saida">Operador de Entrada / Saída (Portaria: Entrada e Saída)</option>
+                    <option value="pdc">Operador Fila PDC (Lavagem e oficina / Fila PDC)</option>
+                    <option value="qualidade_51">Operador Qualidade 51 (Bolsão 51 ➔ P1, P2, P3, R1 e ADM)</option>
+                    <option value="combustivel">Operador de Abastecimento / Posto (Combustível, odômetro e litros)</option>
+                    <option value="movimentacao">Operador de Movimentação (Remanejamento e manobra de vagas)</option>
+                    <option value="inventario">Operador de Inventário (Auditoria de placa e localização)</option>
+                    <option value="patio">Operador de Pátio Geral (Todas as 7 operações do pátio)</option>
+                    <option value="master">Operador de Pátio Geral / Master (Acesso total + Gestão de Usuários e Planilha)</option>
                   </select>
+
+                  {/* Detalhes do Perfil */}
+                  <div className="mt-1">
+                    {renderProfileDetailsBox(editRole)}
+                  </div>
+
+                  {/* Personalização Avançada de Operações */}
+                  <div className="mt-1 p-2.5 bg-neutral-50 rounded-xl border border-neutral-200 flex flex-col gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowEditCustomOps(!showEditCustomOps)}
+                      className="text-xs font-bold text-neutral-800 flex items-center justify-between cursor-pointer"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Sliders className="w-3.5 h-3.5 text-emerald-700" />
+                        <span>Personalizar Permissões Específicas</span>
+                      </span>
+                      <span className="text-[11px] text-emerald-700 font-bold">
+                        {showEditCustomOps ? '▲ Recolher' : '▼ Ajustar Operações Liberadas'}
+                      </span>
+                    </button>
+
+                    {showEditCustomOps && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-2 border-t border-neutral-200">
+                        {ALL_OPERATIONS_AVAILABLE.map((op) => {
+                          const currentOps = editCustomOps || getAllowedOperationsForRole(editRole);
+                          const isChecked = currentOps.includes(op);
+                          const opInfo = getOperationDisplayInfo(op);
+                          return (
+                            <label
+                              key={op}
+                              className={`flex items-start gap-2 p-2 rounded-lg border text-xs cursor-pointer transition ${
+                                isChecked
+                                  ? 'bg-emerald-50 border-emerald-300 text-emerald-950 font-bold'
+                                  : 'bg-white border-neutral-200 text-neutral-600 font-normal hover:bg-neutral-100'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => {
+                                  const current = editCustomOps || getAllowedOperationsForRole(editRole);
+                                  const updated = isChecked
+                                    ? current.filter((x) => x !== op)
+                                    : [...current, op];
+                                  setEditCustomOps(updated);
+                                }}
+                                className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500"
+                              />
+                              <div className="flex flex-col">
+                                <span className="text-[11px] leading-tight">{opInfo.name}</span>
+                                <span className="text-[9.5px] text-neutral-500 line-clamp-1">{opInfo.shortDesc}</span>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-neutral-200 mt-1">

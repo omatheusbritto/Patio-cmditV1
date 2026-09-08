@@ -5,19 +5,25 @@ import { getPgPool, getDbPool } from './db';
 export type UserRole =
   | 'master'
   | 'patio'
-  | 'qualidade_51'
+  | 'entrada'
+  | 'saida'
   | 'pdc'
+  | 'qualidade_51'
   | 'combustivel'
+  | 'movimentacao'
+  | 'inventario'
   | 'entrada_saida'
   | 'operador'
   | 'vistoriador'
-  | 'motorista';
+  | 'motorista'
+  | 'manobrista';
 
 export interface UserAccount {
   id: string;
   username: string;
   name: string;
   role: UserRole;
+  allowedOperations?: string[];
   whatsapp?: string;
   password?: string;
   createdAt: string;
@@ -253,10 +259,14 @@ export async function restoreUsersFromSpreadsheetAsync(
       if (r.includes('master') || r.includes('admin') || u === 'mastercmdit' || n.includes('administrador master') || u === 'desenvolvedor') return 'master';
       if (r.includes('51') || r.includes('qualidade')) return 'qualidade_51';
       if (r.includes('pdc') || r.includes('fila')) return 'pdc';
-      if (r.includes('combust') || r.includes('abastec')) return 'combustivel';
-      if (r.includes('entrada') || r.includes('saida') || r.includes('saída')) return 'entrada_saida';
-      if (r.includes('vistoria')) return 'vistoriador';
-      if (r.includes('motor')) return 'motorista';
+      if (r.includes('combust') || r.includes('abastec') || r.includes('posto')) return 'combustivel';
+      if (r.includes('entrada') && (r.includes('saida') || r.includes('saída') || r.includes('portaria'))) return 'entrada_saida';
+      if (r.includes('entrada')) return 'entrada';
+      if (r.includes('saida') || r.includes('saída')) return 'saida';
+      if (r.includes('moviment') || r.includes('manobr')) return 'movimentacao';
+      if (r.includes('inventar') || r.includes('estoque') || r.includes('confer')) return 'inventario';
+      if (r.includes('vistoria')) return 'qualidade_51';
+      if (r.includes('motor')) return 'entrada';
       if (r.includes('patio') || r.includes('pátio')) return 'patio';
       return 'operador';
     };
@@ -450,15 +460,20 @@ export async function restoreUsersFromSpreadsheetAsync(
           resolvedPassword = restoredUsers[existingIdx].password!;
         }
 
+        const existingUser = existingIdx !== -1 ? restoredUsers[existingIdx] : undefined;
+        const roleFromSheet = parseRole(rowRole, cleanUser, rowName);
+        const resolvedRole: UserRole = existingUser && existingUser.role && existingUser.role !== 'operador' ? existingUser.role : roleFromSheet;
+
         const parsedAccount: UserAccount = {
-          id: existingIdx !== -1 ? restoredUsers[existingIdx].id : `user-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          id: existingUser ? existingUser.id : `user-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           username: cleanUser,
           name: rowName || cleanUser.toUpperCase(),
-          role: parseRole(rowRole, cleanUser, rowName),
-          whatsapp: rowWhatsapp && !rowWhatsapp.includes('@') ? rowWhatsapp : (existingIdx !== -1 ? restoredUsers[existingIdx].whatsapp : undefined),
+          role: resolvedRole,
+          allowedOperations: existingUser ? existingUser.allowedOperations : undefined,
+          whatsapp: rowWhatsapp && !rowWhatsapp.includes('@') ? rowWhatsapp : (existingUser ? existingUser.whatsapp : undefined),
           password: resolvedPassword,
-          createdAt: rowCreated || (existingIdx !== -1 && restoredUsers[existingIdx].createdAt ? restoredUsers[existingIdx].createdAt : new Date().toISOString()),
-          lastLogin: rowLastAccess || (existingIdx !== -1 ? restoredUsers[existingIdx].lastLogin : undefined),
+          createdAt: rowCreated || (existingUser && existingUser.createdAt ? existingUser.createdAt : new Date().toISOString()),
+          lastLogin: rowLastAccess || (existingUser ? existingUser.lastLogin : undefined),
           isActive: rowIsActive,
         };
 
@@ -543,7 +558,8 @@ export async function createServerUserAsync(
   name: string,
   password: string,
   role: UserRole = 'operador',
-  whatsapp?: string
+  whatsapp?: string,
+  allowedOperations?: string[]
 ): Promise<{ success: boolean; error?: string; user?: UserAccount }> {
   const cleanUsername = username.trim().toLowerCase();
   if (!cleanUsername) return { success: false, error: 'Usuário / Matrícula é obrigatório.' };
@@ -557,6 +573,7 @@ export async function createServerUserAsync(
     username: cleanUsername,
     name: name.trim(),
     role,
+    allowedOperations,
     whatsapp: cleanWhatsapp || undefined,
     password: password.trim(),
     createdAt: new Date().toISOString(),
@@ -684,6 +701,7 @@ export async function updateServerUserAsync(
     username: cleanUsername,
     name: updatedData.name !== undefined ? updatedData.name.trim() : current.name,
     role: updatedData.role !== undefined ? updatedData.role : current.role,
+    allowedOperations: updatedData.allowedOperations !== undefined ? updatedData.allowedOperations : current.allowedOperations,
     whatsapp: updatedData.whatsapp !== undefined ? (updatedData.whatsapp.trim() || undefined) : current.whatsapp,
     password: updatedData.password !== undefined && updatedData.password.trim() ? updatedData.password.trim() : current.password,
     isActive: updatedData.isActive !== undefined ? Boolean(updatedData.isActive) : current.isActive,
@@ -967,13 +985,15 @@ export async function authenticateServerUserAsync(
         if (u.is_active === false || u.is_active === 0) {
           return { success: false, error: 'Este usuário está bloqueado. Contate o Administrador Master.' };
         }
+        const localUserPg = loadServerUsers().find((x) => x.username.toLowerCase() === cleanUsername);
         return {
           success: true,
           user: {
             id: String(u.id),
             username: String(u.username),
             name: String(u.full_name || u.username),
-            role: (u.role as UserRole) || 'operador',
+            role: (u.role as UserRole) || localUserPg?.role || 'operador',
+            allowedOperations: localUserPg?.allowedOperations,
             createdAt: new Date().toISOString(),
             isActive: true,
           },
@@ -1004,13 +1024,15 @@ export async function authenticateServerUserAsync(
         if (u.is_active === 0 || u.is_active === false) {
           return { success: false, error: 'Este usuário está bloqueado. Contate o Administrador Master.' };
         }
+        const localUserMySql = loadServerUsers().find((x) => x.username.toLowerCase() === cleanUsername);
         return {
           success: true,
           user: {
             id: String(u.id),
             username: String(u.username),
             name: String(u.full_name || u.username),
-            role: (u.role as UserRole) || 'operador',
+            role: (u.role as UserRole) || localUserMySql?.role || 'operador',
+            allowedOperations: localUserMySql?.allowedOperations,
             createdAt: new Date().toISOString(),
             isActive: true,
           },
@@ -1138,7 +1160,7 @@ export async function loadServerRecordsAsync(): Promise<any[]> {
                   else if (kLow.includes('condut') || kLow.includes('motor')) rCondutor = str;
                   else if (kLow.includes('km') || kLow.includes('odomet')) rKm = str;
                   else if (kLow.includes('combust') || kLow.includes('nivel') || kLow.includes('nível')) rFuel = str;
-                  else if (kLow.includes('dest')) rDestino = str;
+                  else if (kLow.includes('dest') || kLow.includes('local') || kLow.includes('vaga') || kLow.includes('poste') || kLow.includes('setor')) rDestino = str;
                   else if (kLow.includes('operad')) rOperator = str;
                   else if (kLow.includes('obs')) rObs = str;
                 }
@@ -1165,6 +1187,8 @@ export async function loadServerRecordsAsync(): Promise<any[]> {
                     odometer: rKm || '-',
                     fuelLevel: rFuel || '-',
                     destination: rDestino || '-',
+                    destino: rDestino || '-',
+                    location: rDestino || '-',
                     operatorName: rOperator || 'OPERADOR',
                     notes: rObs || '',
                     status: opType === 'saida' ? 'outside' : 'inside',

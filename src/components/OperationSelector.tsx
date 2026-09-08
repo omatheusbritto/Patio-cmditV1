@@ -3,6 +3,7 @@ import {
   OperationType,
   UserRole,
   getAllowedOperationsForRole,
+  getUserAllowedOperations,
   getRoleBadgeStyle,
   getRoleDisplayName,
   getUserProfileDefinition,
@@ -146,9 +147,10 @@ export const OperationSelector: React.FC<OperationSelectorProps> = ({
   const [isEditPlateOpen, setIsEditPlateOpen] = useState<boolean>(false);
 
   // Determina o cargo/função do usuário atual
-  const activeRole = userRole || getCurrentSession()?.user.role || 'patio';
+  const sessionUser = getCurrentSession()?.user;
+  const activeRole = userRole || sessionUser?.role || 'patio';
   const profile = getUserProfileDefinition(activeRole);
-  const allowedOps = profile.allowedOperations;
+  const allowedOps = getUserAllowedOperations(sessionUser || activeRole);
   const roleBadge = getRoleBadgeStyle(activeRole);
   const roleTitle = profile.title;
 

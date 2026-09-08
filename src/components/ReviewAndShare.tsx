@@ -207,9 +207,13 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
     const upperCharacteristic = characteristic ? String(characteristic).trim().toUpperCase() : undefined;
     const upperLocation = location ? (String(location).trim().toUpperCase() as LocationCode) : undefined;
 
-    // Save to local history immediately
-    const qualityOrPatioLoc = upperLocation || (operationType === 'qualidade_51' ? 'P1' : (operationType === 'pdc' ? 'PDC' : undefined));
-    const effectiveDestination = upperDestination || (operationType === 'qualidade_51' ? (qualityOrPatioLoc || 'P1') : undefined);
+    // For 51 Qualidade: Destination is strictly the location chosen (P1, P2, P3, R1, ADM, or OUTROS/custom)
+    const qualityOrPatioLoc = operationType === 'qualidade_51'
+      ? (upperLocation || upperDestination || 'P1')
+      : (upperLocation || (operationType === 'pdc' ? 'PDC' : undefined));
+    const effectiveDestination = operationType === 'qualidade_51'
+      ? qualityOrPatioLoc
+      : (upperDestination || undefined);
 
     onSaveToHistory({
       photoDataUrl,
@@ -853,7 +857,7 @@ export const ReviewAndShare: React.FC<ReviewAndShareProps> = ({
                 <div>
                   <span className="text-[10px] text-neutral-500 block">Destino:</span>
                   <span className="font-black text-indigo-950 font-mono text-sm">
-                    {getLocationMeaning(location || undefined) || 'P1 (Poste 1)'}
+                    {location || destination || 'P1'}
                   </span>
                 </div>
 

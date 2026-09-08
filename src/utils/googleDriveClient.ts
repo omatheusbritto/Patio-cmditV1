@@ -1174,10 +1174,10 @@ function doPost(e) {
 
     // Local / Destino do veículo
     var locQualidade = String(
-      (data.location && data.location !== "-") ? data.location :
-      (data.local && data.local !== "-") ? data.local :
       (data.destination && data.destination !== "-") ? data.destination :
       (data.destino && data.destino !== "-") ? data.destino :
+      (data.location && data.location !== "-") ? data.location :
+      (data.local && data.local !== "-") ? data.local :
       "P1"
     ).toUpperCase().trim();
 
@@ -1261,7 +1261,7 @@ function doPost(e) {
         condutor,         // Col D: CONDUTOR
         caracteristica,   // Col E: CARACTERISTICAS DO VEICULO
         nivelCombustivel, // Col F: NIVEL DO COMBUSTIVEL
-        locQualidade,     // Col G: DESTINO(P1, P2, P3, R1, ADM) / LOCAL DO VEÍCULO
+        destino || locQualidade || "P1", // Col G: DESTINO (P1, P2, P3, R1, ADM, OUTROS)
         operador          // Col H: OPERADOR DO REGISTRO
       ];
     } else if (tabCategory === "combustivel") {
@@ -1333,9 +1333,63 @@ function doPost(e) {
     }
 
     // Inserção no topo (Linha 2, logo abaixo do cabeçalho na Linha 1)
+    var currentHeaderCols = sheet.getLastColumn() || 1;
+    var finalRow = customRow;
+    if (currentHeaderCols > 1) {
+      try {
+        var existingHeaders = sheet.getRange(1, 1, 1, currentHeaderCols).getValues()[0];
+        if (existingHeaders && existingHeaders.length > 0 && String(existingHeaders[0]).trim()) {
+          var mapped = [];
+          for (var hIdx = 0; hIdx < existingHeaders.length; hIdx++) {
+            var hText = String(existingHeaders[hIdx] || "").toLowerCase().trim();
+            if (hText.indexOf("data") !== -1 || hText === "dt" || hText.indexOf("date") !== -1 || hText === "dia") {
+              mapped.push(dateStr);
+            } else if (hText.indexOf("hora") !== -1 || hText === "hr" || hText.indexOf("horario") !== -1 || hText.indexOf("time") !== -1) {
+              mapped.push(timeStr);
+            } else if (hText.indexOf("plac") !== -1 || hText.indexOf("veic") !== -1 || hText.indexOf("plate") !== -1) {
+              mapped.push(placa);
+            } else if (hText.indexOf("condut") !== -1 || hText.indexOf("motor") !== -1 || hText.indexOf("driver") !== -1) {
+              mapped.push(condutor);
+            } else if (hText.indexOf("caracter") !== -1 || hText.indexOf("perfil") !== -1 || hText.indexOf("classif") !== -1) {
+              mapped.push(caracteristica);
+            } else if (hText.indexOf("nivel") !== -1 || hText.indexOf("marcad") !== -1 || hText.indexOf("tanque") !== -1 || (hText.indexOf("combust") !== -1 && hText.indexOf("tipo") === -1 && hText.indexOf("litr") === -1)) {
+              mapped.push(nivelCombustivel);
+            } else if (hText.indexOf("dest") !== -1 || hText.indexOf("local") !== -1 || hText.indexOf("vaga") !== -1 || hText.indexOf("poste") !== -1 || hText.indexOf("setor") !== -1 || hText.indexOf("para") !== -1) {
+              mapped.push(destino);
+            } else if (hText.indexOf("operad") !== -1 || hText.indexOf("audit") !== -1 || hText.indexOf("usuario") !== -1 || hText.indexOf("registro") !== -1) {
+              mapped.push(operador);
+            } else if (hText.indexOf("km") !== -1 || hText.indexOf("odomet") !== -1) {
+              mapped.push(km);
+            } else if (hText.indexOf("chave") !== -1) {
+              mapped.push(chaveReserva);
+            } else if (hText.indexOf("orig") !== -1 || hText.indexOf("proced") !== -1) {
+              mapped.push(origem);
+            } else if (hText.indexOf("tipo") !== -1 || hText.indexOf("frota") !== -1) {
+              mapped.push(tipoVeiculo);
+            } else if (hText.indexOf("foto") !== -1 || hText.indexOf("doc") !== -1) {
+              mapped.push(fotoDoc);
+            } else if (hText.indexOf("litr") !== -1) {
+              mapped.push(litrosClean);
+            } else if (hText.indexOf("obs") !== -1 || hText.indexOf("nota") !== -1 || hText.indexOf("detalh") !== -1) {
+              mapped.push(observacoes);
+            } else if (hIdx < customRow.length) {
+              mapped.push(customRow[hIdx]);
+            } else {
+              mapped.push("-");
+            }
+          }
+          if (mapped.length > 0) {
+            finalRow = mapped;
+          }
+        }
+      } catch (mapErr) {
+        finalRow = customRow;
+      }
+    }
+
     sheet.insertRowAfter(1);
-    var targetRange = sheet.getRange(2, 1, 1, customRow.length);
-    targetRange.setValues([customRow]);
+    var targetRange = sheet.getRange(2, 1, 1, finalRow.length);
+    targetRange.setValues([finalRow]);
     targetRange.setFontWeight("normal");
     targetRange.setBackground(null);
     targetRange.setFontColor("#000000");
@@ -1542,12 +1596,24 @@ export async function restoreLogsFromSheet(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
         ...getAuthHeaders(),
       },
       body: JSON.stringify({ webhookUrl }),
     });
 
-    const data = await resp.json();
+    const responseText = await resp.text();
+    let data: any = null;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      return {
+        success: false,
+        totalRestored: 0,
+        logs: [],
+        error: 'O servidor retornou uma resposta não-JSON ao restaurar histórico.',
+      };
+    }
     return data;
   } catch (err: any) {
     return {

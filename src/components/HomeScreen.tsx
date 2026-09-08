@@ -22,6 +22,7 @@ import {
   getRoleBadgeStyle,
   getRoleDisplayName,
   getUserProfileDefinition,
+  getUserAllowedOperations,
 } from '../types';
 import { GoogleSheetsIntegration } from './GoogleSheetsIntegration';
 import { getCurrentSession } from '../utils/authService';
@@ -52,9 +53,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onToggleAutoRead,
 }) => {
   const session = getCurrentSession();
-  const userRole = session?.user.role || 'patio';
-  const isMaster = userRole === 'master' || session?.user.username.toLowerCase() === 'mastercmdit';
+  const sessionUser = session?.user;
+  const userRole = sessionUser?.role || 'patio';
+  const isMaster = userRole === 'master' || sessionUser?.username.toLowerCase() === 'mastercmdit';
   const profile = getUserProfileDefinition(userRole);
+  const userAllowedOps = getUserAllowedOperations(sessionUser || userRole);
   const roleBadge = getRoleBadgeStyle(userRole);
   const roleName = profile.title;
 
@@ -62,7 +65,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   let mainBtnText = 'Fotografar e Registrar';
   let subtitleText = 'Fotografe • Escolha a Operação • Compartilhe';
 
-  if (userRole === 'qualidade_51' || userRole === 'vistoriador') {
+  if (userRole === 'entrada') {
+    mainBtnText = 'Fotografar & Entrada';
+    subtitleText = 'Portaria • Registro Exclusivo de Entrada';
+  } else if (userRole === 'saida') {
+    mainBtnText = 'Fotografar & Saída';
+    subtitleText = 'Portaria • Registro Exclusivo de Saída / Liberação';
+  } else if (userRole === 'qualidade_51' || userRole === 'vistoriador') {
     mainBtnText = 'Fotografar & 51 Qualidade';
     subtitleText = 'Bolsão 51 ➔ Destinos P1, P2, P3, R1 e ADM';
   } else if (userRole === 'combustivel') {
@@ -239,38 +248,42 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       </div>
 
       {/* Fast Navigation Buttons */}
-      <div className="w-full grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="w-full flex items-center justify-center flex-wrap gap-2">
         <button
           type="button"
           onClick={onOpenPatio}
-          className="py-2.5 px-2 rounded-xl bg-white border border-neutral-300 text-neutral-800 hover:bg-neutral-50 font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition cursor-pointer"
+          className="flex-1 min-w-[75px] py-2.5 px-2 rounded-xl bg-white border border-neutral-300 text-neutral-800 hover:bg-neutral-50 font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition cursor-pointer"
         >
           <Layers className="w-3.5 h-3.5 text-emerald-700" />
           <span>Pátio</span>
         </button>
 
-        <button
-          type="button"
-          onClick={onOpenMovement}
-          className="py-2.5 px-2 rounded-xl bg-white border border-teal-300 bg-teal-50/50 text-teal-950 hover:bg-teal-100 font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition cursor-pointer"
-        >
-          <ArrowLeftRight className="w-3.5 h-3.5 text-teal-700" />
-          <span>Movimentar</span>
-        </button>
+        {(isMaster || userAllowedOps.includes('movimentacao')) && onOpenMovement && (
+          <button
+            type="button"
+            onClick={onOpenMovement}
+            className="flex-1 min-w-[75px] py-2.5 px-2 rounded-xl bg-white border border-teal-300 bg-teal-50/50 text-teal-950 hover:bg-teal-100 font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition cursor-pointer"
+          >
+            <ArrowLeftRight className="w-3.5 h-3.5 text-teal-700" />
+            <span>Movimentar</span>
+          </button>
+        )}
 
-        <button
-          type="button"
-          onClick={onOpenInventory}
-          className="py-2.5 px-2 rounded-xl bg-white border border-blue-300 bg-blue-50/50 text-blue-950 hover:bg-blue-100 font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition cursor-pointer"
-        >
-          <ClipboardCheck className="w-3.5 h-3.5 text-blue-700" />
-          <span>Inventário</span>
-        </button>
+        {(isMaster || userAllowedOps.includes('inventario')) && onOpenInventory && (
+          <button
+            type="button"
+            onClick={onOpenInventory}
+            className="flex-1 min-w-[75px] py-2.5 px-2 rounded-xl bg-white border border-blue-300 bg-blue-50/50 text-blue-950 hover:bg-blue-100 font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition cursor-pointer"
+          >
+            <ClipboardCheck className="w-3.5 h-3.5 text-blue-700" />
+            <span>Inventário</span>
+          </button>
+        )}
 
         <button
           type="button"
           onClick={onOpenHistory}
-          className="py-2.5 px-2 rounded-xl bg-white border border-neutral-300 text-neutral-800 hover:bg-neutral-50 font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition cursor-pointer"
+          className="flex-1 min-w-[75px] py-2.5 px-2 rounded-xl bg-white border border-neutral-300 text-neutral-800 hover:bg-neutral-50 font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition cursor-pointer"
         >
           <Search className="w-3.5 h-3.5 text-neutral-600" />
           <span>Histórico</span>

@@ -165,12 +165,14 @@ export interface OcrResult {
 export type UserRole =
   | 'master'
   | 'patio'
-  | 'entrada_saida'
+  | 'entrada'
+  | 'saida'
+  | 'pdc'
+  | 'qualidade_51'
+  | 'combustivel'
   | 'movimentacao'
   | 'inventario'
-  | 'qualidade_51'
-  | 'pdc'
-  | 'combustivel'
+  | 'entrada_saida'
   | 'operador'
   | 'vistoriador'
   | 'motorista'
@@ -220,6 +222,155 @@ export const ALL_USER_PROFILES: UserProfileDefinition[] = [
     ],
   },
   {
+    role: 'entrada',
+    title: 'Operador de Entrada',
+    category: 'Portaria & Entrada',
+    badgeLabel: 'Operador de Entrada',
+    badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+    borderClass: 'border-emerald-300',
+    bgClass: 'bg-emerald-50',
+    textClass: 'text-emerald-900',
+    description:
+      'Exclusivo para registro de entrada de veículos no pátio CMDIT. Responsável por realizar o check-in na portaria, registrar condutor, odômetro, nível de combustível, chave reserva e foto do documento.',
+    responsibilities: [
+      'Execução exclusiva do fluxo de Entrada de Veículos',
+      'Registro de condutor, odômetro, nível de tanque e chave reserva',
+      'Captura fotográfica do documento do veículo',
+      'Sincronização imediata na aba ENTRADA da planilha oficial',
+    ],
+    allowedOperations: ['entrada'],
+  },
+  {
+    role: 'saida',
+    title: 'Operador de Saída',
+    category: 'Portaria & Expedição',
+    badgeLabel: 'Operador de Saída',
+    badgeClass: 'bg-rose-100 text-rose-800 border-rose-300',
+    borderClass: 'border-rose-300',
+    bgClass: 'bg-rose-50',
+    textClass: 'text-rose-900',
+    description:
+      'Exclusivo para registro de saída e liberação de veículos no portão do pátio CMDIT. Responsável pelo check-out com condutor autorizado, destino de saída e checklist de liberação.',
+    responsibilities: [
+      'Execução exclusiva do fluxo de Saída / Liberação de Veículos',
+      'Registro de condutor autorizado e destino de encaminhamento',
+      'Validação de checklist de liberação no portão',
+      'Sincronização imediata na aba SAIDA da planilha oficial',
+    ],
+    allowedOperations: ['saida'],
+  },
+  {
+    role: 'pdc',
+    title: 'Operador Fila PDC',
+    category: 'Preparação & Manutenção',
+    badgeLabel: 'Operador Fila PDC',
+    badgeClass: 'bg-amber-100 text-amber-800 border-amber-300',
+    borderClass: 'border-amber-300',
+    bgClass: 'bg-amber-50',
+    textClass: 'text-amber-900',
+    description:
+      'Exclusivo para movimentação e encaminhamento de veículos na Fila PDC (Lavagem Geral, Higienização e Oficina de Reparos preventivos e corretivos).',
+    responsibilities: [
+      'Execução exclusiva da movimentação para Fila PDC',
+      'Registro do nível de combustível e motivo da preparação/manutenção',
+      'Sincronização imediata na aba FILA PDC da planilha oficial',
+    ],
+    allowedOperations: ['pdc'],
+  },
+  {
+    role: 'qualidade_51',
+    title: 'Operador Qualidade 51',
+    category: 'Vistoria & Inspeção',
+    badgeLabel: 'Operador Qualidade 51',
+    badgeClass: 'bg-indigo-100 text-indigo-800 border-indigo-300',
+    borderClass: 'border-indigo-300',
+    bgClass: 'bg-indigo-50',
+    textClass: 'text-indigo-900',
+    description:
+      'Exclusivo para movimentação, vistoria técnica e destinação de veículos no Bolsão 51 (Classificação DT, Revenda, Consumidor, Outros e Destino obrigatório para P1, P2, P3, R1, ADM ou outros).',
+    responsibilities: [
+      'Execução exclusiva da movimentação e vistoria 51 Qualidade',
+      'Classificação visual padronizada (🟣 DT, 🟠 REVENDA, 🟢 CONSUMIDOR, ⚪ OUTROS)',
+      'Registro obrigatório de Destino/Local (P1, P2, P3, R1, ADM) gravado na Coluna G',
+      'Sincronização imediata na aba QUALIDADE 51 da planilha oficial',
+    ],
+    allowedOperations: ['qualidade_51'],
+  },
+  {
+    role: 'combustivel',
+    title: 'Operador de Abastecimento',
+    category: 'Abastecimento & Posto',
+    badgeLabel: 'Operador Abastecimento',
+    badgeClass: 'bg-rose-100 text-rose-800 border-rose-300',
+    borderClass: 'border-rose-300',
+    bgClass: 'bg-rose-50',
+    textClass: 'text-rose-900',
+    description:
+      'Exclusivo para controle de abastecimento da frota no posto interno. Realiza o registro fotográfico do painel, odômetro, nível do tanque, combustível e litros abastecidos.',
+    responsibilities: [
+      'Execução exclusiva do fluxo de Abastecimento e Posto Interno',
+      'Captura obrigatória de foto do painel (KM e nível do tanque)',
+      'Lançamento de tipo de combustível e litros abastecidos',
+      'Sincronização imediata na aba COMBUSTIVEL da planilha oficial',
+    ],
+    allowedOperations: ['abastecimento'],
+  },
+  {
+    role: 'movimentacao',
+    title: 'Operador de Movimentação & Manobra',
+    category: 'Manobra & Remanejamento',
+    badgeLabel: 'Operador Movimentação',
+    badgeClass: 'bg-cyan-100 text-cyan-800 border-cyan-300',
+    borderClass: 'border-cyan-300',
+    bgClass: 'bg-cyan-50',
+    textClass: 'text-cyan-900',
+    description:
+      'Exclusivo para transferências físicas internas entre vagas e bolsões do pátio CMDIT (Origem ➔ Destino).',
+    responsibilities: [
+      'Execução exclusiva de movimentação e remanejamento interno',
+      'Registro de Origem e Destino da manobra no pátio',
+      'Atualização de odômetro e nível de combustível nas manobras',
+      'Sincronização imediata na aba MOVIMENTACAO da planilha oficial',
+    ],
+    allowedOperations: ['movimentacao'],
+  },
+  {
+    role: 'inventario',
+    title: 'Operador de Inventário / Conferente',
+    category: 'Auditoria & Estoque',
+    badgeLabel: 'Operador Inventário',
+    badgeClass: 'bg-violet-100 text-violet-800 border-violet-300',
+    borderClass: 'border-violet-300',
+    bgClass: 'bg-violet-50',
+    textClass: 'text-violet-900',
+    description:
+      'Exclusivo para contagem e auditoria física de estoque veicular no pátio. Registra a placa e localização de cada veículo na aba inventario.',
+    responsibilities: [
+      'Execução exclusiva de auditoria e contagem física de estoque',
+      'Registro rápido de Placa e Local do veículo',
+      'Sincronização imediata na aba inventario da planilha oficial',
+    ],
+    allowedOperations: ['inventario'],
+  },
+  {
+    role: 'entrada_saida',
+    title: 'Operador de Portaria (Entrada & Saída)',
+    category: 'Portaria & Fluxo',
+    badgeLabel: 'Portaria (Entrada/Saída)',
+    badgeClass: 'bg-teal-100 text-teal-800 border-teal-300',
+    borderClass: 'border-teal-300',
+    bgClass: 'bg-teal-50',
+    textClass: 'text-teal-900',
+    description:
+      'Controle de portaria com permissão dupla para realizar tanto registros de Entrada quanto de Saída de veículos.',
+    responsibilities: [
+      'Registro de check-in de entrada e check-out de saída na portaria',
+      'Conferência de condutores, odômetros e autorizações de saída',
+      'Sincronização nas abas Entrada e Saída da planilha oficial',
+    ],
+    allowedOperations: ['entrada', 'saida'],
+  },
+  {
     role: 'patio',
     title: 'Operador Geral do Pátio',
     category: 'Operação Geral',
@@ -239,122 +390,6 @@ export const ALL_USER_PROFILES: UserProfileDefinition[] = [
     ],
     allowedOperations: ['entrada', 'saida', 'abastecimento', 'pdc', 'qualidade_51', 'movimentacao', 'inventario'],
   },
-  {
-    role: 'entrada_saida',
-    title: 'Operador de Portaria (Entrada/Saída)',
-    category: 'Portaria & Fluxo',
-    badgeLabel: 'Portaria (Entrada/Saída)',
-    badgeClass: 'bg-teal-100 text-teal-800 border-teal-300',
-    borderClass: 'border-teal-300',
-    bgClass: 'bg-teal-50',
-    textClass: 'text-teal-900',
-    description:
-      'Controle rigoroso do fluxo de veículos na portaria principal. Registra a chegada (com identificação do condutor, odômetro, nível de combustível, chave reserva e foto do documento) e a expedição de veículos com destino autorizado.',
-    responsibilities: [
-      'Check-in de entrada com foto de documento, chave reserva e checklist',
-      'Check-out e liberação de saída com registro de condutor e destino',
-      'Movimentação de veículos entre portaria e bolsões de triagem',
-      'Conferência de inventário na área de portaria e estacionamentos externos',
-    ],
-    allowedOperations: ['entrada', 'saida', 'movimentacao', 'inventario'],
-  },
-  {
-    role: 'movimentacao',
-    title: 'Operador de Movimentação & Manobra',
-    category: 'Manobra & Remanejamento',
-    badgeLabel: 'Movimentação & Manobra',
-    badgeClass: 'bg-cyan-100 text-cyan-800 border-cyan-300',
-    borderClass: 'border-cyan-300',
-    bgClass: 'bg-cyan-50',
-    textClass: 'text-cyan-900',
-    description:
-      'Especialista em remanejamento interno e manobras no pátio. Responsável pela transferência de veículos entre vagas, bolsões e setores (Origem ➔ Destino), mantendo a fluidez das vias e a organização do pátio.',
-    responsibilities: [
-      'Registro detalhado de transferência entre setores (Origem e Destino)',
-      'Atualização de KM odômetro e nível de combustível durante manobras',
-      'Anotação de observações relevantes de deslocamento interno',
-      'Suporte direto às contagens e conferências de inventário',
-    ],
-    allowedOperations: ['movimentacao', 'inventario'],
-  },
-  {
-    role: 'inventario',
-    title: 'Operador de Inventário / Conferente',
-    category: 'Auditoria & Estoque',
-    badgeLabel: 'Inventário & Auditoria',
-    badgeClass: 'bg-violet-100 text-violet-800 border-violet-300',
-    borderClass: 'border-violet-300',
-    bgClass: 'bg-violet-50',
-    textClass: 'text-violet-900',
-    description:
-      'Focado na auditoria contínua, localização e contagem física do estoque veicular. Registra de forma rápida a Placa e o Local exato de cada veículo (com campos complementares opcionais de Combustível, KM e Observações) na aba "inventario".',
-    responsibilities: [
-      'Conferência física sistemática de veículos em todas as vagas e bolsões',
-      'Sincronização instantânea na aba "inventario" da planilha (6 colunas: Data, Hora, Placa, Local, Observação, Operador)',
-      'Identificação rápida de divergências de localização física versus sistema',
-      'Remanejamento corretivo de veículos estacionados em locais indevidos',
-    ],
-    allowedOperations: ['inventario', 'movimentacao'],
-  },
-  {
-    role: 'qualidade_51',
-    title: 'Operador 51 Qualidade (Vistoria)',
-    category: 'Vistoria & Inspeção',
-    badgeLabel: '51 Qualidade (P1-P3, R1, ADM)',
-    badgeClass: 'bg-indigo-100 text-indigo-800 border-indigo-300',
-    borderClass: 'border-indigo-300',
-    bgClass: 'bg-indigo-50',
-    textClass: 'text-indigo-900',
-    description:
-      'Responsável pela inspeção técnica, triagem e encaminhamento de veículos no Bolsão 51. Classifica as características veiculares (DT, Revenda, Consumidor, Outros), confere o combustível e destina o veículo para os setores autorizados (P1, P2, P3, R1, ADM).',
-    responsibilities: [
-      'Vistoria técnica detalhada de veículos no Bolsão 51',
-      'Classificação visual padronizada (🟣 DT, 🟠 REVENDA, 🟢 CONSUMIDOR, ⚪ OUTROS)',
-      'Registro obrigatório do local/destino de qualidade (P1, P2, P3, R1, ADM)',
-      'Gravação garantida do local na Coluna G da aba "QUALIDADE 51"',
-      'Apoio a manobras e auditoria de inventário das vagas de qualidade',
-    ],
-    allowedOperations: ['qualidade_51', 'movimentacao', 'inventario'],
-  },
-  {
-    role: 'pdc',
-    title: 'Operador da Fila PDC (Lavagem/Oficina)',
-    category: 'Preparação & Manutenção',
-    badgeLabel: 'Fila PDC (Lavagem/Oficina)',
-    badgeClass: 'bg-amber-100 text-amber-800 border-amber-300',
-    borderClass: 'border-amber-300',
-    bgClass: 'bg-amber-50',
-    textClass: 'text-amber-900',
-    description:
-      'Responsável pelo controle da fila de veículos destinados aos serviços de preparação, higienização, lavagem geral e manutenção preventiva ou corretiva na oficina. Registra a condição de recebimento e nível de combustível.',
-    responsibilities: [
-      'Recepção e organização da fila de veículos para PDC',
-      'Direcionamento para lavagem, higienização e oficina de reparos',
-      'Registro do nível de combustível e observações sobre o estado do veículo',
-      'Remanejamento e conferência de inventário da fila de espera',
-    ],
-    allowedOperations: ['pdc', 'movimentacao', 'inventario'],
-  },
-  {
-    role: 'combustivel',
-    title: 'Operador do Posto / Abastecimento',
-    category: 'Abastecimento & Posto',
-    badgeLabel: 'Posto de Combustível',
-    badgeClass: 'bg-rose-100 text-rose-800 border-rose-300',
-    borderClass: 'border-rose-300',
-    bgClass: 'bg-rose-50',
-    textClass: 'text-rose-900',
-    description:
-      'Responsável exclusivo pelo controle de combustível da frota no posto interno. Realiza a captura fotográfica do painel/odômetro, conferência do nível do tanque, tipo de combustível e quantidade exata de litros abastecidos.',
-    responsibilities: [
-      'Operação e controle do posto de combustível interno da unidade',
-      'Registro fotográfico obrigatório do painel (KM odômetro e nível do tanque)',
-      'Lançamento exato do tipo de combustível (Diesel S10, Gasolina, Etanol) e litros abastecidos',
-      'Sincronização imediata na aba "COMBUSTIVEL" da planilha',
-      'Conferência de inventário dos veículos abastecidos',
-    ],
-    allowedOperations: ['abastecimento', 'movimentacao', 'inventario'],
-  },
 ];
 
 export interface UserAccount {
@@ -362,6 +397,7 @@ export interface UserAccount {
   username: string; // Matrícula ou nome de usuário
   name: string;
   role: UserRole;
+  allowedOperations?: OperationType[]; // Operações específicas autorizadas (opcional)
   whatsapp?: string; // Número do WhatsApp (opcional)
   password?: string;
   createdAt: string;
@@ -375,6 +411,7 @@ export interface AuthSession {
     username: string;
     name: string;
     role: UserRole;
+    allowedOperations?: OperationType[];
   };
   loginTimestamp: number;
   expiresAt: number; // 9 horas após login
@@ -389,11 +426,11 @@ export function getUserProfileDefinition(role?: UserRole): UserProfileDefinition
     if (p.role === clean) return true;
     if (clean === 'operador' && p.role === 'patio') return true;
     if (clean === 'vistoriador' && p.role === 'qualidade_51') return true;
-    if (clean === 'motorista' && p.role === 'entrada_saida') return true;
+    if (clean === 'motorista' && p.role === 'entrada') return true;
     if (clean === 'manobrista' && p.role === 'movimentacao') return true;
     return false;
   });
-  return found || ALL_USER_PROFILES[1]; // default 'patio'
+  return found || ALL_USER_PROFILES.find((p) => p.role === 'patio') || ALL_USER_PROFILES[0];
 }
 
 /**
@@ -402,6 +439,22 @@ export function getUserProfileDefinition(role?: UserRole): UserProfileDefinition
 export function getAllowedOperationsForRole(role?: UserRole): OperationType[] {
   const profile = getUserProfileDefinition(role);
   return profile.allowedOperations;
+}
+
+/**
+ * Retorna as operações permitidas levando em conta customizações por usuário
+ */
+export function getUserAllowedOperations(
+  userOrRole?: { role?: UserRole; allowedOperations?: OperationType[] } | UserRole | null
+): OperationType[] {
+  if (!userOrRole) return getAllowedOperationsForRole('patio');
+  if (typeof userOrRole === 'string') {
+    return getAllowedOperationsForRole(userOrRole);
+  }
+  if (userOrRole.allowedOperations && Array.isArray(userOrRole.allowedOperations) && userOrRole.allowedOperations.length > 0) {
+    return userOrRole.allowedOperations;
+  }
+  return getAllowedOperationsForRole(userOrRole.role);
 }
 
 /**

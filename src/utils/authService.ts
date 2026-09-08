@@ -1,4 +1,4 @@
-import { UserAccount, AuthSession, UserRole } from '../types';
+import { UserAccount, AuthSession, UserRole, OperationType } from '../types';
 
 const STORAGE_KEYS = {
   USERS: 'cmdit_users_store',
@@ -135,20 +135,55 @@ export async function restoreUsersFromSheetClient(
   webhookUrl?: string
 ): Promise<{ success: boolean; totalRestored?: number; users?: UserAccount[]; error?: string }> {
   try {
+    let targetWebhook = webhookUrl;
+    if (!targetWebhook) {
+      try {
+        const rawDrive = localStorage.getItem('cmdit_google_drive_config');
+        if (rawDrive) {
+          const parsed = JSON.parse(rawDrive);
+          if (parsed && typeof parsed.webhookUrl === 'string' && parsed.webhookUrl.startsWith('http')) {
+            targetWebhook = parsed.webhookUrl;
+          }
+        }
+      } catch {}
+    }
+
+    const session = getCurrentSession();
+    const authHeaders = getAuthHeaders();
+
     const res = await fetch('/api/users/restore-from-sheet', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ webhookUrl }),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        ...authHeaders,
+      },
+      body: JSON.stringify({
+        webhookUrl: targetWebhook,
+        userRole: session?.user?.role || 'master',
+        requestUsername: session?.user?.username || 'mastercmdit',
+      }),
     });
 
-    const data = await res.json();
-    if (data.success && Array.isArray(data.users)) {
+    const responseText = await res.text();
+    let data: any = null;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      console.warn('Resposta não-JSON ao restaurar usuários:', responseText.slice(0, 150));
+      return {
+        success: false,
+        error: 'O servidor retornou uma resposta inesperada. Verifique se você está conectado como Administrador Master ou se o Webhook está ativo.',
+      };
+    }
+
+    if (data && data.success && Array.isArray(data.users)) {
       const localUsers = getAllUsers();
       const merged = mergeUsersList(localUsers, data.users);
       saveUsersList(merged);
-      return { success: true, totalRestored: data.totalRestored || data.users.length, users: merged };
+      return { success: true, totalRestored: data.totalRestored ?? data.users.length, users: merged };
     }
-    return { success: false, error: data.error || 'Não foi possível restaurar usuários da planilha.' };
+    return { success: false, error: data?.error || 'Não foi possível restaurar usuários da planilha.' };
   } catch (err: any) {
     return { success: false, error: err.message || 'Erro ao conectar ao servidor para restaurar da planilha.' };
   }
@@ -173,7 +208,8 @@ export async function createNewUser(
   name: string,
   password: string,
   role: UserRole = 'operador',
-  whatsapp?: string
+  whatsapp?: string,
+  allowedOperations?: OperationType[]
 ): Promise<{ success: boolean; error?: string; user?: UserAccount }> {
   const cleanUsername = username.trim().toLowerCase();
   const cleanWhatsapp = whatsapp ? whatsapp.trim() : undefined;
@@ -201,6 +237,7 @@ export async function createNewUser(
         password: password.trim(),
         role,
         whatsapp: cleanWhatsapp,
+        allowedOperations,
       }),
     });
 
@@ -227,6 +264,7 @@ export async function createNewUser(
       username: cleanUsername,
       name: name.trim(),
       role,
+      allowedOperations,
       whatsapp: cleanWhatsapp,
       password: password.trim(),
       createdAt: new Date().toISOString(),
@@ -460,6 +498,7 @@ export async function loginUser(
           username: localUser.username,
           name: localUser.name,
           role: localUser.role,
+          allowedOperations: localUser.allowedOperations,
         },
         loginTimestamp: now,
         expiresAt: now + SESSION_DURATION_MS,
@@ -503,6 +542,7 @@ export async function loginUser(
       username: user.username,
       name: user.name,
       role: user.role,
+      allowedOperations: user.allowedOperations,
     },
     loginTimestamp: now,
     expiresAt: now + SESSION_DURATION_MS,
