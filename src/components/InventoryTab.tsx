@@ -19,6 +19,11 @@ import {
   ChevronRight,
   Database,
   Trash2,
+  Camera,
+  Upload,
+  Image as ImageIcon,
+  Sparkles,
+  Loader2,
 } from 'lucide-react';
 import { VehicleInventory, VehicleRecord, FuelLevel } from '../types';
 import { fetchInventories, createInventory, deleteInventory } from '../utils/inventoryService';
@@ -26,6 +31,9 @@ import { getCurrentSession } from '../utils/authService';
 import { YardLocationPickerModal } from './YardLocationPickerModal';
 import { FuelSelector } from './FuelSelector';
 import { formatPlateForDisplay } from '../utils/plateNormalizer';
+import { SharePhotoModal } from './SharePhotoModal';
+import { compressAndStampImage } from '../utils/imageOptimizer';
+import { smartRecognizePlate } from '../utils/geminiPlateService';
 
 interface InventoryTabProps {
   parkedVehicles: VehicleRecord[];
@@ -53,9 +61,39 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
   const [observation, setObservation] = useState('');
   const [fuelLevel, setFuelLevel] = useState<FuelLevel | undefined>(undefined);
   const [odometer, setOdometer] = useState('');
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [isRecognizingPlate, setIsRecognizingPlate] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Sharing modal states
+  const [isShareFormModalOpen, setIsShareFormModalOpen] = useState(false);
+  const [shareModalInventory, setShareModalInventory] = useState<VehicleInventory | null>(null);
+
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const handleCapturePhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setIsRecognizingPlate(true);
+      const stamped = await compressAndStampImage(file);
+      setPhotoUrl(stamped);
+
+      // Auto-recognize plate with AI / OCR
+      const recognized = await smartRecognizePlate(stamped);
+      if (recognized.success && recognized.plate) {
+        setPlate(recognized.plate);
+      }
+    } catch (err) {
+      console.warn('Erro ao processar foto no inventário:', err);
+    } finally {
+      setIsRecognizingPlate(false);
+      if (e.target) e.target.value = '';
+    }
+  };
 
   // Modal para escolher local do pátio
   const [isLocationPickerOpen, setIsLocationPickerOpen] = useState(false);
@@ -100,6 +138,9 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
     if (v.km) {
       setOdometer(String(v.km));
     }
+    if (v.photoUrl) {
+      setPhotoUrl(v.photoUrl);
+    }
     setIsFormOpen(true);
     setErrorMessage(null);
   };
@@ -110,6 +151,7 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
     setObservation('');
     setFuelLevel(undefined);
     setOdometer('');
+    setPhotoUrl(null);
     setErrorMessage(null);
     setSuccessMessage(null);
     setIsFormOpen(true);
@@ -140,6 +182,7 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
         fuelLevel: fuelLevel,
         odometer: odometer.trim() ? odometer.trim().toUpperCase() : undefined,
         operatorName,
+        photoUrl: photoUrl || undefined,
       });
 
       if (!res.success || !res.inventory) {
@@ -160,6 +203,7 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
         setObservation('');
         setFuelLevel(undefined);
         setOdometer('');
+        setPhotoUrl(null);
         setSuccessMessage(null);
       }, 1400);
     } catch (err: any) {
@@ -348,6 +392,92 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
                       </button>
                     ))}
                   </div>
+                </div>
+              )}
+            </div>
+
+            {/* FOTO DO VEÍCULO / PLACA NO INVENTÁRIO */}
+            <div className="bg-emerald-50/40 rounded-2xl p-3 border border-emerald-200/80 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-neutral-800 flex items-center gap-1.5">
+                  <Camera className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>Foto do Veículo / Placa</span>
+                </span>
+                {isRecognizingPlate && (
+                  <span className="text-[10px] text-emerald-700 font-bold flex items-center gap-1">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <span>Lendo placa...</span>
+                  </span>
+                )}
+              </div>
+
+              {/* Hidden file inputs */}
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={handleCapturePhoto}
+              />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleCapturePhoto}
+              />
+
+              {photoUrl ? (
+                <div className="space-y-2">
+                  <div className="relative rounded-xl overflow-hidden border border-neutral-300 bg-neutral-900">
+                    <img
+                      src={photoUrl}
+                      alt="Foto capturada do inventário"
+                      className="w-full h-36 object-cover"
+                    />
+                    <div className="absolute bottom-2 left-2 bg-black/70 px-2 py-0.5 rounded text-[10px] font-bold text-white">
+                      Foto Registrada
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPhotoUrl(null)}
+                      className="absolute top-2 right-2 bg-rose-600/90 hover:bg-rose-700 text-white rounded-full p-1 transition cursor-pointer"
+                      title="Remover foto"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Botão de Compartilhar Foto e Dados do Inventário */}
+                  <button
+                    type="button"
+                    onClick={() => setIsShareFormModalOpen(true)}
+                    className="w-full py-2.5 px-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition active:scale-98 cursor-pointer"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>Compartilhar Foto e Dados do Inventário</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => cameraInputRef.current?.click()}
+                    className="py-2.5 px-3 rounded-xl border border-emerald-300 bg-emerald-100/70 hover:bg-emerald-100 text-emerald-950 text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                  >
+                    <Camera className="w-4 h-4 text-emerald-700" />
+                    <span>Tirar Foto</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="py-2.5 px-3 rounded-xl border border-neutral-300 bg-white hover:bg-neutral-100 text-neutral-700 text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                  >
+                    <Upload className="w-4 h-4 text-neutral-500" />
+                    <span>Galeria</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -574,11 +704,12 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
-                      onClick={() => handleShareWhatsApp(inv)}
-                      className="p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-50 transition"
-                      title="Compartilhar no WhatsApp"
+                      onClick={() => setShareModalInventory(inv)}
+                      className="p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-50 transition flex items-center gap-1 font-bold text-xs"
+                      title="Compartilhar Foto e Dados via WhatsApp / Aplicativos"
                     >
                       <Share2 className="w-4 h-4" />
+                      <span className="hidden sm:inline">Compartilhar</span>
                     </button>
                     {isMaster && (
                       <button
@@ -592,6 +723,24 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
                     )}
                   </div>
                 </div>
+
+                {/* Foto anexada ao inventário se houver */}
+                {inv.photoUrl && (
+                  <div
+                    onClick={() => setShareModalInventory(inv)}
+                    className="relative rounded-xl overflow-hidden border border-neutral-200 bg-neutral-900 cursor-pointer group"
+                  >
+                    <img
+                      src={inv.photoUrl}
+                      alt={`Foto do inventário ${inv.plate}`}
+                      className="w-full h-32 object-cover group-hover:opacity-90 transition"
+                    />
+                    <div className="absolute bottom-2 left-2 bg-black/75 px-2 py-0.5 rounded text-[10px] font-bold text-white flex items-center gap-1">
+                      <Camera className="w-3 h-3 text-emerald-400" />
+                      <span>Foto Registrada (Toque para Compartilhar)</span>
+                    </div>
+                  </div>
+                )}
 
                 {inv.observation && (
                   <p className="text-xs text-neutral-700 bg-neutral-50 p-2 rounded-lg border border-neutral-100">
@@ -640,6 +789,44 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
         }}
         title="Selecionar Local no Pátio"
       />
+
+      {/* Share Photo Modal for Inventory Form */}
+      <SharePhotoModal
+        isOpen={isShareFormModalOpen}
+        onClose={() => setIsShareFormModalOpen(false)}
+        photoUrl={photoUrl}
+        plate={plate || 'NOVO INVENTÁRIO'}
+        title="Inventário de Veículo"
+        dataFields={[
+          { label: 'Local no Pátio', value: location || 'Não informado' },
+          { label: 'Observação', value: observation || '-' },
+          { label: 'Combustível', value: fuelLevel },
+          { label: 'Odômetro', value: odometer ? `${odometer} KM` : undefined },
+          { label: 'Operador', value: operatorName },
+        ]}
+      />
+
+      {/* Share Photo Modal for existing Inventory Record */}
+      {shareModalInventory && (
+        <SharePhotoModal
+          isOpen={Boolean(shareModalInventory)}
+          onClose={() => setShareModalInventory(null)}
+          photoUrl={shareModalInventory.photoUrl}
+          plate={shareModalInventory.plate}
+          title="Inventário de Veículo"
+          dataFields={[
+            { label: 'Local no Pátio', value: shareModalInventory.location },
+            { label: 'Observação', value: shareModalInventory.observation },
+            { label: 'Combustível', value: shareModalInventory.fuelLevel },
+            {
+              label: 'Odômetro',
+              value: shareModalInventory.odometer ? `${shareModalInventory.odometer} KM` : undefined,
+            },
+            { label: 'Operador', value: shareModalInventory.operatorName },
+            { label: 'Data/Hora', value: `${shareModalInventory.dateFormatted} às ${shareModalInventory.timeFormatted}` },
+          ]}
+        />
+      )}
     </div>
   );
 };

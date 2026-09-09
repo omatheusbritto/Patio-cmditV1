@@ -449,6 +449,37 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
         ],
         rows: [],
       },
+      movimentacao: {
+        name: 'MOVIMENTAÇÃO',
+        category: 'movimentacao',
+        headers: [
+          'DATA',
+          'HORA',
+          'PLACA',
+          'ORIGEM',
+          'DESTINO',
+          'OBSERVAÇÃO',
+          'COMBUSTIVEL',
+          'KM ODOMETRO',
+          'OPERADOR',
+        ],
+        rows: [],
+      },
+      inventario: {
+        name: 'INVENTÁRIO',
+        category: 'inventario',
+        headers: [
+          'DATA',
+          'HORA',
+          'PLACA',
+          'LOCAL',
+          'OBSERVAÇÃO',
+          'COMBUSTIVEL',
+          'KM ODOMETRO',
+          'OPERADOR',
+        ],
+        rows: [],
+      },
       all: {
         name: '📊 Todos os Registros',
         category: 'all',
@@ -481,6 +512,8 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
         else if (lower.includes('combust') || lower.includes('abastec')) cat = 'combustivel';
         else if (lower.includes('51') || lower.includes('qualidade')) cat = 'qualidade51';
         else if (lower.includes('pdc') || lower.includes('fila')) cat = 'pdc';
+        else if (lower.includes('moviment') || lower.includes('mov')) cat = 'movimentacao';
+        else if (lower.includes('invent') || lower.includes('inv')) cat = 'inventario';
 
         if (!result[cat]) {
           result[cat] = {
@@ -599,6 +632,33 @@ export const OnlineSpreadsheetViewerModal: React.FC<OnlineSpreadsheetViewerModal
             'NIVEL DO COMBUSTIVEL': nivelCombustivel,
             'OBSERVAÇÕES': observacoes,
             'CONDUTOR(OPERADOR DO REGISTRO)': condutor && condutor !== '-' ? `${condutor} (${operador})` : operador,
+            _rawDate: rec.createdAt,
+            _plate: placa,
+          });
+        } else if (op === 'movimentacao') {
+          result.movimentacao.rows.push({
+            DATA: dateStr,
+            HORA: timeStr,
+            PLACA: placa,
+            ORIGEM: (rec.origin || (rec as any).origem || '-').toUpperCase(),
+            DESTINO: (destino || '-').toUpperCase(),
+            'OBSERVAÇÃO': observacoes,
+            COMBUSTIVEL: nivelCombustivel,
+            'KM ODOMETRO': km,
+            OPERADOR: operador,
+            _rawDate: rec.createdAt,
+            _plate: placa,
+          });
+        } else if (op === 'inventario') {
+          result.inventario.rows.push({
+            DATA: dateStr,
+            HORA: timeStr,
+            PLACA: placa,
+            LOCAL: (rec.location || (rec as any).local || '-').toUpperCase(),
+            'OBSERVAÇÃO': observacoes,
+            COMBUSTIVEL: nivelCombustivel,
+            'KM ODOMETRO': km,
+            OPERADOR: operador,
             _rawDate: rec.createdAt,
             _plate: placa,
           });

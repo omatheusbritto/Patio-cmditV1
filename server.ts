@@ -246,6 +246,20 @@ async function startServer() {
       const bodyData = {
         action: 'record_movement',
         tab: 'movimentacao',
+        operation: 'movimentacao',
+        operationType: 'movimentacao',
+        targetTabName: 'MOVIMENTAÇÃO',
+        customRow: [
+          movement.dateFormatted,
+          movement.timeFormatted,
+          movement.plate,
+          movement.origin || '-',
+          movement.destination || '-',
+          movement.observation || '-',
+          movement.fuelLevel || '',
+          movement.odometer || '',
+          movement.operatorName || '',
+        ],
         movement: {
           data: movement.dateFormatted,
           hora: movement.timeFormatted,
@@ -287,30 +301,16 @@ async function startServer() {
       }
 
       // Regra rigorosa de colunas da aba "inventario" da planilha Google Sheets:
-      // A: Data
-      // B: Hora
-      // C: Placa
-      // D: Local
-      // E: Observação (contendo o Local obrigatório e detalhes adicionais de Combustível/KM)
-      // F: Operador
+      // A: DATA; B: HORA; C: PLACA; D: LOCAL; E: OBSERVAÇÃO; F: COMBUSTIVEL; G: KM ODOMETRO; H: OPERADOR;
       const locClean = String(inventory.location || '').toUpperCase().trim();
-      let obsFinal = `Local: ${locClean}`;
-      if (inventory.observation && String(inventory.observation).trim() && String(inventory.observation).trim() !== '-') {
-        obsFinal += ` | ${String(inventory.observation).trim()}`;
-      }
-      if (inventory.fuelLevel && inventory.fuelLevel !== '-') {
-        obsFinal += ` | Combustível: ${inventory.fuelLevel}`;
-      }
-      if (inventory.odometer && inventory.odometer !== '-') {
-        obsFinal += ` | KM: ${inventory.odometer}`;
-      }
+      const obsClean = inventory.observation && String(inventory.observation).trim() ? String(inventory.observation).trim() : '-';
 
       const bodyData = {
         action: 'record_inventory',
         tab: 'inventario',
         operation: 'inventario',
         operationType: 'inventario',
-        targetTabName: '📋 INVENTÁRIO',
+        targetTabName: 'INVENTÁRIO',
         data: inventory.dateFormatted,
         hora: inventory.timeFormatted,
         dateFormatted: inventory.dateFormatted,
@@ -319,9 +319,9 @@ async function startServer() {
         plate: inventory.plate,
         local: locClean,
         location: locClean,
-        observacao: obsFinal,
-        observacoes: obsFinal,
-        notes: obsFinal,
+        observacao: obsClean,
+        observacoes: obsClean,
+        notes: obsClean,
         operador: inventory.operatorName || '',
         operatorName: inventory.operatorName || '',
         fuel: inventory.fuelLevel || '',
@@ -331,8 +331,10 @@ async function startServer() {
           inventory.dateFormatted,
           inventory.timeFormatted,
           inventory.plate,
-          locClean,
-          obsFinal,
+          locClean || '-',
+          obsClean,
+          inventory.fuelLevel || '',
+          inventory.odometer || '',
           inventory.operatorName || '',
         ],
         inventory: {
@@ -342,8 +344,8 @@ async function startServer() {
           plate: inventory.plate,
           local: locClean,
           location: locClean,
-          observacao: obsFinal,
-          observacoes: obsFinal,
+          observacao: obsClean,
+          observacoes: obsClean,
           combustivel: inventory.fuelLevel || '',
           km: inventory.odometer || '',
           operador: inventory.operatorName || '',

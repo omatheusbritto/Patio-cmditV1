@@ -110,8 +110,19 @@ export const HEADERS_MOVIMENTACAO = [
   'ORIGEM',
   'DESTINO',
   'OBSERVAÇÃO',
-  'COMBUSTÍVEL',
-  'KM ODÔMETRO',
+  'COMBUSTIVEL',
+  'KM ODOMETRO',
+  'OPERADOR',
+];
+
+export const HEADERS_INVENTARIO = [
+  'DATA',
+  'HORA',
+  'PLACA',
+  'LOCAL',
+  'OBSERVAÇÃO',
+  'COMBUSTIVEL',
+  'KM ODOMETRO',
   'OPERADOR',
 ];
 
@@ -169,7 +180,7 @@ export const TAB_DEFINITIONS = {
     title: 'inventario',
     aliases: ['inventario', 'inventário', 'inventarios', 'estoque', 'conferencia'],
     color: { red: 0.1, green: 0.65, blue: 0.45 },
-    headers: ['DATA', 'HORA', 'PLACA', 'LOCAL', 'OBSERVAÇÃO', 'OPERADOR'],
+    headers: HEADERS_INVENTARIO,
   },
 };
 
@@ -334,7 +345,7 @@ async function initializeSpreadsheetHeaders(spreadsheetId: string, accessToken: 
  */
 async function ensureTargetTab(
   spreadsheetId: string,
-  categoryKey: 'entrada' | 'saida' | 'combustivel' | 'pdc' | 'qualidade' | 'usuarios' | 'inventario',
+  categoryKey: 'entrada' | 'saida' | 'combustivel' | 'pdc' | 'qualidade' | 'usuarios' | 'inventario' | 'movimentacao',
   accessToken: string
 ): Promise<{ title: string; sheetId?: number }> {
   const tabDef = TAB_DEFINITIONS[categoryKey];
@@ -642,7 +653,7 @@ export async function appendVehicleRecordToSheet(
     ? `${String(record.liters).trim().replace(/\s*l/i, '').toUpperCase()} L`
     : '-';
 
-  let categoryKey: 'entrada' | 'saida' | 'combustivel' | 'pdc' | 'qualidade' | 'inventario' = 'entrada';
+  let categoryKey: 'entrada' | 'saida' | 'combustivel' | 'pdc' | 'qualidade' | 'inventario' | 'movimentacao' = 'entrada';
   let customRow: string[] = [];
 
   if (record.operationType === 'saida') {
@@ -707,29 +718,36 @@ export async function appendVehicleRecordToSheet(
       destino || 'P1',
       operador,
     ];
+  } else if (record.operationType === 'movimentacao') {
+    categoryKey = 'movimentacao';
+    // MOVIMENTAÇÃO: 9 Colunas Exatas:
+    // A: DATA | B: HORA | C: PLACA | D: ORIGEM | E: DESTINO | F: OBSERVAÇÃO | G: COMBUSTIVEL | H: KM ODOMETRO | I: OPERADOR
+    const origem = String(record.origin || (record as any).origem || '-').trim();
+    const dest = String(record.destination || (record as any).destino || '-').trim();
+    customRow = [
+      dateStr,
+      timeStr,
+      placa,
+      origem || '-',
+      dest || '-',
+      observacoes,
+      nivelCombustivel,
+      kmClean,
+      operador,
+    ];
   } else if (record.operationType === 'inventario') {
     categoryKey = 'inventario';
-    // INVENTÁRIO: 6 Colunas Exatas:
-    // A: DATA | B: HORA | C: PLACA | D: LOCAL | E: OBSERVAÇÃO (com Local + Combustível/KM) | F: OPERADOR
+    // INVENTÁRIO: 8 Colunas Exatas:
+    // A: DATA | B: HORA | C: PLACA | D: LOCAL | E: OBSERVAÇÃO | F: COMBUSTIVEL | G: KM ODOMETRO | H: OPERADOR
     const locInv = String(record.location || (record as any).local || '-').toUpperCase().trim();
-    let obsInv = locInv && locInv !== '-' ? `Local: ${locInv}` : '';
-    if (observacoes && observacoes !== '-' && !obsInv.includes(observacoes)) {
-      obsInv = obsInv ? `${obsInv} | ${observacoes}` : observacoes;
-    }
-    if (nivelCombustivel && nivelCombustivel !== '-' && !obsInv.includes('Combustível:')) {
-      obsInv = obsInv ? `${obsInv} | Combustível: ${nivelCombustivel}` : `Combustível: ${nivelCombustivel}`;
-    }
-    if (kmClean && kmClean !== '-' && !obsInv.includes('KM:')) {
-      obsInv = obsInv ? `${obsInv} | KM: ${kmClean}` : `KM: ${kmClean}`;
-    }
-    if (!obsInv) obsInv = locInv ? `Local: ${locInv}` : '-';
-
     customRow = [
       dateStr,
       timeStr,
       placa,
       locInv || '-',
-      obsInv,
+      observacoes,
+      nivelCombustivel,
+      kmClean,
       operador,
     ];
   } else {

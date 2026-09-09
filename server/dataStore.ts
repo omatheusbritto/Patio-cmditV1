@@ -200,6 +200,7 @@ export async function restoreUsersFromSpreadsheetAsync(
       method: 'GET',
       headers: { 'Accept': 'application/json' },
       redirect: 'follow',
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!resp.ok) {
@@ -1774,6 +1775,7 @@ export async function restoreLogsFromSpreadsheetAsync(
       method: 'GET',
       headers: { Accept: 'application/json' },
       redirect: 'follow',
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!resp.ok) {

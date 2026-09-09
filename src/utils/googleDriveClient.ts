@@ -565,8 +565,8 @@ var TAB_CONFIGS = {
       "ORIGEM",
       "DESTINO",
       "OBSERVAÇÃO",
-      "COMBUSTÍVEL",
-      "KM ODÔMETRO",
+      "COMBUSTIVEL",
+      "KM ODOMETRO",
       "OPERADOR"
     ]
   },
@@ -653,6 +653,8 @@ var TAB_CONFIGS = {
       "PLACA",
       "LOCAL",
       "OBSERVAÇÃO",
+      "COMBUSTIVEL",
+      "KM ODOMETRO",
       "OPERADOR"
     ]
   }
@@ -1295,40 +1297,24 @@ function doPost(e) {
         origem,           // Col D: ORIGEM
         destino,          // Col E: DESTINO
         observacoes,      // Col F: OBSERVAÇÃO
-        nivelCombustivel, // Col G: COMBUSTÍVEL
-        km,               // Col H: KM ODÔMETRO
+        nivelCombustivel, // Col G: COMBUSTIVEL
+        km,               // Col H: KM ODOMETRO
         operador          // Col I: OPERADOR
       ];
     } else if (tabCategory === "inventario") {
       var locInv = String(data.location || data.local || (data.inventory && (data.inventory.local || data.inventory.location)) || "").toUpperCase().trim();
-      var obsRaw = data.observation || data.observacao || data.observacoes || (data.inventory && (data.inventory.observation || data.inventory.observacao || data.inventory.observacoes)) || "";
-      obsRaw = String(obsRaw).replace(/\\r?\\n/g, ' - ').trim();
-
-      var obsInventario = locInv ? ("Local: " + locInv) : "";
-      if (obsRaw && obsRaw !== "-" && obsRaw !== obsInventario) {
-        if (obsRaw.indexOf("Local:") === 0) {
-          obsInventario = obsRaw;
-        } else {
-          obsInventario = (obsInventario ? obsInventario + " | " : "") + obsRaw;
-        }
-      }
-      if (nivelCombustivel && nivelCombustivel !== "-" && obsInventario.indexOf("Combustível:") === -1) {
-        obsInventario += (obsInventario ? " | " : "") + "Combustível: " + nivelCombustivel;
-      }
-      if (km && km !== "-" && obsInventario.indexOf("KM:") === -1) {
-        obsInventario += (obsInventario ? " | " : "") + "KM: " + km;
-      }
-      if (!obsInventario) {
-        obsInventario = locInv ? ("Local: " + locInv) : "-";
-      }
+      var obsRaw = data.observation || data.observacao || data.observacoes || (data.inventory && (data.inventory.observation || data.inventory.observacao || data.inventory.observacoes)) || "-";
+      obsRaw = String(obsRaw).replace(/\r?\n/g, ' - ').trim() || "-";
 
       customRow = [
         dateStr,          // Col A: DATA
         timeStr,          // Col B: HORA
         placa,            // Col C: PLACA
         locInv || "-",    // Col D: LOCAL
-        obsInventario,    // Col E: OBSERVAÇÃO (contendo o Local obrigatório e detalhes adicionais de Combustível/KM)
-        operador          // Col F: OPERADOR
+        obsRaw,           // Col E: OBSERVAÇÃO
+        nivelCombustivel, // Col F: COMBUSTIVEL
+        km,               // Col G: KM ODOMETRO
+        operador          // Col H: OPERADOR
       ];
     }
 

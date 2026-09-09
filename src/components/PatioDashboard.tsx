@@ -29,10 +29,12 @@ import {
   Radio,
   Building2,
   ParkingSquare,
+  Camera,
 } from 'lucide-react';
 import { LocationCode, PatioMetrics, VehicleRecord } from '../types';
 import { formatPlateForDisplay } from '../utils/plateNormalizer';
 import { generateWhatsAppMessage, openWhatsAppShare } from '../utils/shareService';
+import { SharePhotoModal } from './SharePhotoModal';
 import {
   BASE_YARD_LOCATIONS,
   KEY_YARD_SLOTS,
@@ -68,6 +70,7 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
   const [expandedQuadrant, setExpandedQuadrant] = useState<number | null>(1);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [viewMode, setViewMode] = useState<'vagas' | 'quadrantes' | 'especiais' | 'todos'>('vagas');
+  const [shareModalVehicle, setShareModalVehicle] = useState<VehicleRecord | null>(null);
 
   // Veículos atualmente estacionados no pátio (status === 'parked')
   const parkedRecords = records.filter((r) => r.status === 'parked');
@@ -1021,24 +1024,8 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
 
                       <button
                         type="button"
-                        onClick={() => {
-                          const msg = generateWhatsAppMessage({
-                            operationType: v.operationType || 'entrada',
-                            plate: v.plate,
-                            fuel: v.fuel,
-                            driverName: v.driverName,
-                            origin: v.origin,
-                            destination: v.destination,
-                            km: v.km,
-                            hasSpareKey: v.hasSpareKey,
-                            fleetType: v.fleetType,
-                            characteristic: v.characteristic,
-                            location: v.location,
-                            timestamp: new Date(v.createdAt),
-                          });
-                          openWhatsAppShare(msg);
-                        }}
-                        title="Enviar no WhatsApp"
+                        onClick={() => setShareModalVehicle(v)}
+                        title="Compartilhar Foto e Dados no WhatsApp"
                         className="p-2 rounded-xl bg-[#25D366]/15 hover:bg-[#25D366]/25 text-emerald-900 text-xs font-bold flex items-center gap-1 active:scale-95 transition cursor-pointer"
                       >
                         <Share2 className="w-3.5 h-3.5 text-emerald-700" />
@@ -1056,6 +1043,24 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
                     </div>
                   </div>
 
+                  {/* Foto anexada se houver */}
+                  {(v.photoUrl || v.dashboardPhotoUrl) && (
+                    <div
+                      onClick={() => setShareModalVehicle(v)}
+                      className="relative rounded-xl overflow-hidden border border-neutral-200 bg-neutral-900 cursor-pointer group"
+                    >
+                      <img
+                        src={v.photoUrl || v.dashboardPhotoUrl || ''}
+                        alt={`Foto do veículo ${v.plate}`}
+                        className="w-full h-28 object-cover group-hover:opacity-90 transition"
+                      />
+                      <div className="absolute bottom-2 left-2 bg-black/75 px-2 py-0.5 rounded text-[10px] font-bold text-white flex items-center gap-1">
+                        <Camera className="w-3 h-3 text-emerald-400" />
+                        <span>Foto Registrada (Toque para Compartilhar)</span>
+                      </div>
+                    </div>
+                  )}
+
                   {v.notes && (
                     <p className="text-[11px] text-neutral-500 bg-neutral-50 p-2 rounded-lg border border-neutral-100">
                       📝 {v.notes}
@@ -1067,6 +1072,28 @@ export const PatioDashboard: React.FC<PatioDashboardProps> = ({
           </div>
         )}
       </div>
+
+      {/* Share Photo & Data Modal */}
+      {shareModalVehicle && (
+        <SharePhotoModal
+          isOpen={Boolean(shareModalVehicle)}
+          onClose={() => setShareModalVehicle(null)}
+          photoUrl={shareModalVehicle.photoUrl || shareModalVehicle.dashboardPhotoUrl}
+          plate={shareModalVehicle.plate}
+          title={`Veículo no Pátio (${shareModalVehicle.operationType?.toUpperCase() || 'ENTRADA'})`}
+          dataFields={[
+            { label: 'Local / Vaga', value: shareModalVehicle.location },
+            { label: 'Tipo de Frota', value: shareModalVehicle.fleetType },
+            { label: 'Característica', value: shareModalVehicle.characteristic },
+            { label: 'Motorista', value: shareModalVehicle.driverName },
+            { label: 'Origem', value: shareModalVehicle.origin },
+            { label: 'Destino', value: shareModalVehicle.destination },
+            { label: 'Combustível', value: shareModalVehicle.fuel },
+            { label: 'KM', value: shareModalVehicle.km ? `${shareModalVehicle.km} km` : undefined },
+            { label: 'Observação', value: shareModalVehicle.notes },
+          ]}
+        />
+      )}
     </div>
   );
 };

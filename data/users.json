@@ -36,9 +36,9 @@
     "name": "Eduardo Fukuda",
     "role": "master",
     "password": "Eduardo@CMDIT",
+    "whatsapp": "11930114104",
     "createdAt": "04/09/2026 12:51:50",
-    "isActive": true,
-    "whatsapp": "11930114104"
+    "isActive": true
   },
   {
     "id": "user-1788612675973-s76ci",
@@ -46,9 +46,9 @@
     "name": "Amanda Aquele",
     "role": "qualidade_51",
     "password": "Cmdit",
+    "whatsapp": "11984986781",
     "createdAt": "05/09/2026 09:49:48",
-    "isActive": true,
-    "whatsapp": "11984986781"
+    "isActive": true
   },
   {
     "id": "user-1788698182611-w40k4",
@@ -56,23 +56,12 @@
     "name": "Marcos Atalla",
     "role": "patio",
     "password": "user@cmdit",
+    "whatsapp": "11940736136",
     "createdAt": "06/09/2026 09:36:22",
-    "isActive": true,
-    "whatsapp": "11940736136"
+    "isActive": true
   },
   {
-    "id": "user-1788879924914-2phzw",
-    "username": "luanaalves",
-    "name": "Luana Alves",
-    "role": "patio",
-    "whatsapp": "11963363063",
-    "password": "user321",
-    "createdAt": "04/09/2026 10:56:52",
-    "isActive": true,
-    "lastLogin": "03/09/2026 09:10:32"
-  },
-  {
-    "id": "user-1788879924937-eoqpc",
+    "id": "user-1788954405565-ffqw",
     "username": "michelpedrozo",
     "name": "Michel Pedrozo",
     "role": "operador",

@@ -87,6 +87,7 @@ export interface VehicleRecord {
   id: string;
   createdAt: number;
   photoDataUrl: string;
+  photoUrl?: string;
   photoBlob?: Blob;
   dashboardPhotoUrl?: string;
   dashboardPhotoBlob?: Blob;

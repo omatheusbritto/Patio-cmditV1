@@ -530,6 +530,9 @@ export default function App() {
     if (tab === 'logs' && authSession?.user.role !== 'master') {
       return;
     }
+    if (tab === 'register') {
+      setCurrentStep('home');
+    }
     setActiveTab(tab);
   };
 

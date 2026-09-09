@@ -1,5 +1,5 @@
 import React from 'react';
-import { Camera, Layers, History, ShieldCheck, ArrowLeftRight, ClipboardCheck } from 'lucide-react';
+import { Home, Layers, History, ShieldCheck, ArrowLeftRight, ClipboardCheck } from 'lucide-react';
 import { NavTab, OperationType } from '../types';
 
 interface AndroidBottomNavProps {
@@ -26,8 +26,8 @@ export const AndroidBottomNav: React.FC<AndroidBottomNavProps> = ({
   const allTabs = [
     {
       id: 'register' as NavTab,
-      label: 'Registrar',
-      icon: Camera,
+      label: 'Menu Principal',
+      icon: Home,
       badge: null,
       visible: true,
     },
@@ -103,7 +103,12 @@ export const AndroidBottomNav: React.FC<AndroidBottomNavProps> = ({
               </div>
 
               {/* Label */}
-              <span className={`text-[10px] tracking-tight mt-0.5 leading-none ${isActive ? 'font-black text-emerald-900' : 'font-semibold'}`}>
+              <span
+                className={`text-[9.5px] sm:text-[10px] tracking-tight mt-0.5 leading-none whitespace-nowrap truncate max-w-full text-center ${
+                  isActive ? 'font-black text-emerald-900' : 'font-semibold'
+                }`}
+                title={tab.label}
+              >
                 {tab.label}
               </span>
             </button>
