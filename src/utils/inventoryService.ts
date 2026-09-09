@@ -1,5 +1,6 @@
-import { VehicleInventory } from '../types';
+import { VehicleMovement, VehicleInventory } from '../types';
 import { getCurrentSession } from './authService';
+import { getStoredDriveConfig } from './googleDriveClient';
 
 export async function fetchInventories(): Promise<VehicleInventory[]> {
   try {
@@ -36,11 +37,15 @@ export async function createInventory(inventoryData: {
     const dateFormatted = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()}`;
     const timeFormatted = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 
+    const driveConfig = getStoredDriveConfig();
+
     const payload = {
       ...inventoryData,
       operatorName,
       dateFormatted,
       timeFormatted,
+      webhookUrl: driveConfig.webhookUrl || undefined,
+      spreadsheetId: driveConfig.spreadsheetId || undefined,
     };
 
     const res = await fetch('/api/inventories', {

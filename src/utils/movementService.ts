@@ -1,5 +1,6 @@
 import { VehicleMovement } from '../types';
 import { getCurrentSession } from './authService';
+import { getStoredDriveConfig } from './googleDriveClient';
 
 export async function fetchMovements(): Promise<VehicleMovement[]> {
   try {
@@ -37,11 +38,15 @@ export async function createMovement(movementData: {
     const dateFormatted = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()}`;
     const timeFormatted = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 
+    const driveConfig = getStoredDriveConfig();
+
     const payload = {
       ...movementData,
       operatorName,
       dateFormatted,
       timeFormatted,
+      webhookUrl: driveConfig.webhookUrl || undefined,
+      spreadsheetId: driveConfig.spreadsheetId || undefined,
     };
 
     const res = await fetch('/api/movements', {

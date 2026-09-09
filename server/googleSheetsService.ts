@@ -177,8 +177,8 @@ export const TAB_DEFINITIONS = {
     headers: HEADERS_USUARIOS,
   },
   inventario: {
-    title: 'inventario',
-    aliases: ['inventario', 'inventário', 'inventarios', 'estoque', 'conferencia'],
+    title: 'INVENTÁRIO',
+    aliases: ['inventario', 'inventário', 'inventarios', 'estoque', 'conferencia', 'INVENTÁRIO', 'INVENTARIO'],
     color: { red: 0.1, green: 0.65, blue: 0.45 },
     headers: HEADERS_INVENTARIO,
   },
@@ -305,6 +305,10 @@ async function initializeSpreadsheetHeaders(spreadsheetId: string, accessToken: 
     {
       range: `'${TAB_DEFINITIONS.usuarios.title}'!A1:${String.fromCharCode(64 + TAB_DEFINITIONS.usuarios.headers.length)}1`,
       values: [TAB_DEFINITIONS.usuarios.headers],
+    },
+    {
+      range: `'${TAB_DEFINITIONS.inventario.title}'!A1:${String.fromCharCode(64 + TAB_DEFINITIONS.inventario.headers.length)}1`,
+      values: [TAB_DEFINITIONS.inventario.headers],
     },
     {
       range: "'📊 Visão Geral'!A1:G11",

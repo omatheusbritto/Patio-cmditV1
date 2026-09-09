@@ -1066,9 +1066,9 @@ function doPost(e) {
     }
 
     // ------------------------------------------------------------------------
-    // 2. GRAVAÇÃO DE REGISTRO VEICULAR NAS 5 ABAS OFICIAIS
+    // 2. GRAVAÇÃO DE REGISTRO VEICULAR NAS ABAS OFICIAIS
     // ------------------------------------------------------------------------
-    var op = String(data.operationType || data.operationCategory || '').toLowerCase().trim();
+    var op = String(data.operationType || data.operationCategory || data.operation || data.tab || data.action || '').toLowerCase().trim();
     
     var tabCategory = "entrada";
     if (op === "saida" || op === "saída" || op.indexOf("said") !== -1) {
@@ -1079,9 +1079,9 @@ function doPost(e) {
       tabCategory = "qualidade";
     } else if (op === "pdc" || op.indexOf("pdc") !== -1 || op.indexOf("fila") !== -1) {
       tabCategory = "pdc";
-    } else if (op === "movimentacao" || op === "movimentação" || op.indexOf("movimen") !== -1 || data.action === 'record_movement') {
+    } else if (op === "movimentacao" || op === "movimentação" || op.indexOf("movimen") !== -1 || data.action === 'record_movement' || String(data.targetTabName || '').toUpperCase().indexOf("MOVIMEN") !== -1) {
       tabCategory = "movimentacao";
-    } else if (op === "inventario" || op === "inventário" || op.indexOf("inventar") !== -1 || data.action === 'record_inventory') {
+    } else if (op === "inventario" || op === "inventário" || op.indexOf("inventar") !== -1 || data.action === 'record_inventory' || String(data.targetTabName || '').toUpperCase().indexOf("INVENTAR") !== -1) {
       tabCategory = "inventario";
     }
 
@@ -1092,36 +1092,52 @@ function doPost(e) {
     // Busca inteligente da aba
     var sheet = null;
     var allSheets = ss.getSheets();
-    for (var i = 0; i < allSheets.length; i++) {
-      var sName = allSheets[i].getName().toLowerCase();
-      if (tabCategory === "saida" && (sName.indexOf("saida") !== -1 || sName.indexOf("saída") !== -1)) {
-        sheet = allSheets[i];
-        tabName = allSheets[i].getName();
-        break;
-      } else if (tabCategory === "combustivel" && (sName.indexOf("abastec") !== -1 || sName.indexOf("combust") !== -1 || sName.indexOf("posto") !== -1)) {
-        sheet = allSheets[i];
-        tabName = allSheets[i].getName();
-        break;
-      } else if (tabCategory === "qualidade" && (sName.indexOf("51") !== -1 || sName.indexOf("qualidade") !== -1)) {
-        sheet = allSheets[i];
-        tabName = allSheets[i].getName();
-        break;
-      } else if (tabCategory === "pdc" && (sName.indexOf("pdc") !== -1 || sName.indexOf("fila") !== -1)) {
-        sheet = allSheets[i];
-        tabName = allSheets[i].getName();
-        break;
-      } else if (tabCategory === "movimentacao" && (sName.indexOf("movimen") !== -1 || sName.indexOf("transfer") !== -1)) {
-        sheet = allSheets[i];
-        tabName = allSheets[i].getName();
-        break;
-      } else if (tabCategory === "inventario" && (sName.indexOf("inventar") !== -1 || sName.indexOf("confer") !== -1)) {
-        sheet = allSheets[i];
-        tabName = allSheets[i].getName();
-        break;
-      } else if (tabCategory === "entrada" && (sName.indexOf("entrada") !== -1 || sName.indexOf("chegada") !== -1)) {
-        sheet = allSheets[i];
-        tabName = allSheets[i].getName();
-        break;
+
+    // 1. Tenta pelo targetTabName exato primeiro se informado
+    if (data.targetTabName) {
+      var searchTarget = String(data.targetTabName).toUpperCase().trim();
+      for (var i = 0; i < allSheets.length; i++) {
+        if (allSheets[i].getName().toUpperCase().trim() === searchTarget) {
+          sheet = allSheets[i];
+          tabName = allSheets[i].getName();
+          break;
+        }
+      }
+    }
+
+    // 2. Se não achou, busca pelas palavras-chave da categoria
+    if (!sheet) {
+      for (var i = 0; i < allSheets.length; i++) {
+        var sName = allSheets[i].getName().toLowerCase();
+        if (tabCategory === "saida" && (sName.indexOf("saida") !== -1 || sName.indexOf("saída") !== -1)) {
+          sheet = allSheets[i];
+          tabName = allSheets[i].getName();
+          break;
+        } else if (tabCategory === "combustivel" && (sName.indexOf("abastec") !== -1 || sName.indexOf("combust") !== -1 || sName.indexOf("posto") !== -1)) {
+          sheet = allSheets[i];
+          tabName = allSheets[i].getName();
+          break;
+        } else if (tabCategory === "qualidade" && (sName.indexOf("51") !== -1 || sName.indexOf("qualidade") !== -1)) {
+          sheet = allSheets[i];
+          tabName = allSheets[i].getName();
+          break;
+        } else if (tabCategory === "pdc" && (sName.indexOf("pdc") !== -1 || sName.indexOf("fila") !== -1)) {
+          sheet = allSheets[i];
+          tabName = allSheets[i].getName();
+          break;
+        } else if (tabCategory === "movimentacao" && (sName.indexOf("movimen") !== -1 || sName.indexOf("transfer") !== -1 || sName.indexOf("movimento") !== -1)) {
+          sheet = allSheets[i];
+          tabName = allSheets[i].getName();
+          break;
+        } else if (tabCategory === "inventario" && (sName.indexOf("inventar") !== -1 || sName.indexOf("confer") !== -1 || sName.indexOf("estoque") !== -1)) {
+          sheet = allSheets[i];
+          tabName = allSheets[i].getName();
+          break;
+        } else if (tabCategory === "entrada" && (sName.indexOf("entrada") !== -1 || sName.indexOf("chegada") !== -1)) {
+          sheet = allSheets[i];
+          tabName = allSheets[i].getName();
+          break;
+        }
       }
     }
     
@@ -1169,10 +1185,16 @@ function doPost(e) {
       return opStr ? opStr.toUpperCase() : "OPERADOR";
     };
 
-    var operador = extractCleanOperatorName(data.operatorName || data.operador, data.username);
-    var condutor = String(data.driverName || data.condutor || data.motorista || "-").toUpperCase().trim();
-    var placa = String(data.plate || data.placa || "").toUpperCase().trim();
-    var origem = String(data.origin || data.origem || (tabCategory === "entrada" ? "PÁTIO PRINCIPAL" : "-")).toUpperCase().trim();
+    var subObj = data.movement || data.inventory || data.record || {};
+    var operador = extractCleanOperatorName(data.operatorName || data.operador || subObj.operatorName || subObj.operador, data.username);
+    var condutor = String(data.driverName || data.condutor || data.motorista || subObj.driverName || subObj.condutor || "-").toUpperCase().trim();
+    var placa = String(data.plate || data.placa || subObj.plate || subObj.placa || "").toUpperCase().trim();
+    var origem = String(data.origin || data.origem || subObj.origin || subObj.origem || (tabCategory === "entrada" ? "PÁTIO PRINCIPAL" : "-")).toUpperCase().trim();
+
+    var locInv = String(
+      data.location || data.local || subObj.location || subObj.local || 
+      data.destination || data.destino || subObj.destination || subObj.destino || ""
+    ).toUpperCase().trim();
 
     // Local / Destino do veículo
     var locQualidade = String(
@@ -1184,14 +1206,18 @@ function doPost(e) {
     ).toUpperCase().trim();
 
     var destino = String(
+      tabCategory === "inventario" ? (locInv || "-") :
       tabCategory === "qualidade" ? locQualidade :
       (data.destination && data.destination !== "-") ? data.destination :
       (data.destino && data.destino !== "-") ? data.destino :
+      (subObj.destination && subObj.destination !== "-") ? subObj.destination :
+      (subObj.destino && subObj.destino !== "-") ? subObj.destino :
       (tabCategory === "pdc" ? "FILA PDC (LAVAGEM/OFICINA)" : (tabCategory === "entrada" ? "BOLSÃO 40" : "-"))
     ).toUpperCase().trim();
 
-    var km = data.km ? (String(data.km).replace(/\\s*km/i, '').toUpperCase().trim() + " KM") : (data.odometro ? (String(data.odometro).replace(/\\s*km/i, '').toUpperCase().trim() + " KM") : "-");
-    var nivelCombustivel = formatFuelLevel(data.nivelCombustivel || data.fuel || data.combustivel);
+    var kmVal = data.km || data.odometro || data.odometer || subObj.km || subObj.odometro || subObj.odometer;
+    var km = kmVal ? (String(kmVal).replace(/\\s*km/i, '').toUpperCase().trim() + " KM") : "-";
+    var nivelCombustivel = formatFuelLevel(data.nivelCombustivel || data.fuel || data.combustivel || data.fuelLevel || subObj.fuelLevel || subObj.fuel || subObj.combustivel);
     
     var chaveReserva = "-";
     if (data.hasSpareKey === true || String(data.hasSpareKey).toLowerCase() === "true" || String(data.chaveReserva).toUpperCase() === "SIM") {
@@ -1200,7 +1226,7 @@ function doPost(e) {
       chaveReserva = "NÃO";
     }
 
-    var tipoVeiculo = String(data.fleetType || data.tipoVeiculo || data.tipo || "GF").toUpperCase().trim();
+    var tipoVeiculo = String(data.fleetType || data.tipoVeiculo || data.tipo || subObj.fleetType || "GF").toUpperCase().trim();
 
     var rawChar = data.characteristic || data.caracteristica || data.tipoCaracteristica || "-";
     var caracteristica = String(rawChar).trim();
@@ -1214,8 +1240,10 @@ function doPost(e) {
       caracteristica = "-";
     }
 
-    var observacoes = data.notes || data.observacao || data.observacoes || data.description || "";
-    observacoes = String(observacoes).replace(/\\r?\\n/g, ' - ').trim();
+    var obsRaw = data.observation || data.observacao || data.observacoes || data.notes || data.description ||
+                 subObj.observation || subObj.observacao || subObj.observacoes || subObj.notes || "";
+    obsRaw = String(obsRaw).replace(/\\r?\\n/g, ' - ').trim();
+    var observacoes = obsRaw || "-";
 
     var hasDoc = data.hasDocumentPhoto === true || String(data.hasDocumentPhoto).toLowerCase() === "true" || !!data.documentPhotoUrl;
     var fotoDoc = hasDoc ? "SIM (REGISTRADA)" : "NÃO";
@@ -1302,16 +1330,12 @@ function doPost(e) {
         operador          // Col I: OPERADOR
       ];
     } else if (tabCategory === "inventario") {
-      var locInv = String(data.location || data.local || (data.inventory && (data.inventory.local || data.inventory.location)) || "").toUpperCase().trim();
-      var obsRaw = data.observation || data.observacao || data.observacoes || (data.inventory && (data.inventory.observation || data.inventory.observacao || data.inventory.observacoes)) || "-";
-      obsRaw = String(obsRaw).replace(/\\r?\\n/g, ' - ').trim() || "-";
-
       customRow = [
         dateStr,          // Col A: DATA
         timeStr,          // Col B: HORA
         placa,            // Col C: PLACA
         locInv || "-",    // Col D: LOCAL
-        obsRaw,           // Col E: OBSERVAÇÃO
+        observacoes,      // Col E: OBSERVAÇÃO
         nivelCombustivel, // Col F: COMBUSTIVEL
         km,               // Col G: KM ODOMETRO
         operador          // Col H: OPERADOR
@@ -1334,30 +1358,32 @@ function doPost(e) {
               mapped.push(timeStr);
             } else if (hText.indexOf("plac") !== -1 || hText.indexOf("veic") !== -1 || hText.indexOf("plate") !== -1) {
               mapped.push(placa);
+            } else if (hText.indexOf("orig") !== -1 || hText.indexOf("proced") !== -1) {
+              mapped.push(origem);
+            } else if (tabCategory === "inventario" && (hText.indexOf("local") !== -1 || hText.indexOf("vaga") !== -1 || hText.indexOf("poste") !== -1 || hText.indexOf("setor") !== -1)) {
+              mapped.push(locInv || "-");
+            } else if (hText.indexOf("dest") !== -1 || hText.indexOf("local") !== -1 || hText.indexOf("vaga") !== -1 || hText.indexOf("poste") !== -1 || hText.indexOf("setor") !== -1 || hText.indexOf("para") !== -1) {
+              mapped.push(destino);
+            } else if (hText.indexOf("obs") !== -1 || hText.indexOf("nota") !== -1 || hText.indexOf("detalh") !== -1) {
+              mapped.push(observacoes);
             } else if (hText.indexOf("condut") !== -1 || hText.indexOf("motor") !== -1 || hText.indexOf("driver") !== -1) {
               mapped.push(condutor);
             } else if (hText.indexOf("caracter") !== -1 || hText.indexOf("perfil") !== -1 || hText.indexOf("classif") !== -1) {
               mapped.push(caracteristica);
             } else if (hText.indexOf("nivel") !== -1 || hText.indexOf("marcad") !== -1 || hText.indexOf("tanque") !== -1 || (hText.indexOf("combust") !== -1 && hText.indexOf("tipo") === -1 && hText.indexOf("litr") === -1)) {
               mapped.push(nivelCombustivel);
-            } else if (hText.indexOf("dest") !== -1 || hText.indexOf("local") !== -1 || hText.indexOf("vaga") !== -1 || hText.indexOf("poste") !== -1 || hText.indexOf("setor") !== -1 || hText.indexOf("para") !== -1) {
-              mapped.push(destino);
-            } else if (hText.indexOf("operad") !== -1 || hText.indexOf("audit") !== -1 || hText.indexOf("usuario") !== -1 || hText.indexOf("registro") !== -1) {
-              mapped.push(operador);
             } else if (hText.indexOf("km") !== -1 || hText.indexOf("odomet") !== -1) {
               mapped.push(km);
             } else if (hText.indexOf("chave") !== -1) {
               mapped.push(chaveReserva);
-            } else if (hText.indexOf("orig") !== -1 || hText.indexOf("proced") !== -1) {
-              mapped.push(origem);
+            } else if (hText.indexOf("operad") !== -1 || hText.indexOf("audit") !== -1 || hText.indexOf("usuario") !== -1 || hText.indexOf("registro") !== -1) {
+              mapped.push(operador);
             } else if (hText.indexOf("tipo") !== -1 || hText.indexOf("frota") !== -1) {
               mapped.push(tipoVeiculo);
             } else if (hText.indexOf("foto") !== -1 || hText.indexOf("doc") !== -1) {
               mapped.push(fotoDoc);
             } else if (hText.indexOf("litr") !== -1) {
-              mapped.push(litrosClean);
-            } else if (hText.indexOf("obs") !== -1 || hText.indexOf("nota") !== -1 || hText.indexOf("detalh") !== -1) {
-              mapped.push(observacoes);
+              mapped.push(litrosAbastecidos);
             } else if (hIdx < customRow.length) {
               mapped.push(customRow[hIdx]);
             } else {

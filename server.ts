@@ -243,33 +243,90 @@ async function startServer() {
         return { success: false, reason: 'No webhook configured' };
       }
 
+      if (customWebhookUrl && !settings.sheetsWebhookUrl) {
+        saveServerSettingsAsync({ sheetsWebhookUrl: customWebhookUrl }).catch(() => {});
+      }
+
+      const obsClean = movement.observation && String(movement.observation).trim() ? String(movement.observation).trim() : '-';
+      const origClean = movement.origin && String(movement.origin).trim() ? String(movement.origin).trim() : '-';
+      const destClean = movement.destination && String(movement.destination).trim() ? String(movement.destination).trim() : '-';
+      const plateClean = String(movement.plate || '').toUpperCase().trim();
+      const opClean = movement.operatorName || 'Operador';
+      const fuelClean = movement.fuelLevel || '';
+      const kmClean = movement.odometer !== undefined && movement.odometer !== null && String(movement.odometer).trim() !== '' ? String(movement.odometer).trim() : '';
+
       const bodyData = {
         action: 'record_movement',
         tab: 'movimentacao',
         operation: 'movimentacao',
         operationType: 'movimentacao',
+        operationCategory: 'movimentacao',
         targetTabName: 'MOVIMENTAÇÃO',
+        plate: plateClean,
+        placa: plateClean,
+        origin: origClean,
+        origem: origClean,
+        destination: destClean,
+        destino: destClean,
+        local: destClean,
+        location: destClean,
+        observation: obsClean,
+        observacao: obsClean,
+        observacoes: obsClean,
+        notes: obsClean,
+        description: obsClean,
+        fuel: fuelClean,
+        combustivel: fuelClean,
+        fuelLevel: fuelClean,
+        nivelCombustivel: fuelClean,
+        km: kmClean,
+        odometro: kmClean,
+        odometer: kmClean,
+        operatorName: opClean,
+        operador: opClean,
+        dateFormatted: movement.dateFormatted,
+        timeFormatted: movement.timeFormatted,
+        data: movement.dateFormatted,
+        hora: movement.timeFormatted,
         customRow: [
           movement.dateFormatted,
           movement.timeFormatted,
-          movement.plate,
-          movement.origin || '-',
-          movement.destination || '-',
-          movement.observation || '-',
-          movement.fuelLevel || '',
-          movement.odometer || '',
-          movement.operatorName || '',
+          plateClean,
+          origClean,
+          destClean,
+          obsClean,
+          fuelClean,
+          kmClean ? `${kmClean} KM` : '-',
+          opClean,
         ],
         movement: {
           data: movement.dateFormatted,
           hora: movement.timeFormatted,
-          placa: movement.plate,
-          origem: movement.origin,
-          destino: movement.destination,
-          observacao: movement.observation,
-          combustivel: movement.fuelLevel || '',
-          km: movement.odometer || '',
-          operador: movement.operatorName || '',
+          placa: plateClean,
+          plate: plateClean,
+          origem: origClean,
+          origin: origClean,
+          destino: destClean,
+          destination: destClean,
+          observacao: obsClean,
+          observation: obsClean,
+          combustivel: fuelClean,
+          fuelLevel: fuelClean,
+          km: kmClean,
+          odometer: kmClean,
+          operador: opClean,
+          operatorName: opClean,
+        },
+        record: {
+          plate: plateClean,
+          origin: origClean,
+          destination: destClean,
+          observation: obsClean,
+          fuelLevel: fuelClean,
+          odometer: kmClean,
+          operatorName: opClean,
+          dateFormatted: movement.dateFormatted,
+          timeFormatted: movement.timeFormatted,
         },
         timestamp: new Date().toISOString(),
       };
@@ -300,55 +357,87 @@ async function startServer() {
         return { success: false, reason: 'No webhook configured' };
       }
 
-      // Regra rigorosa de colunas da aba "inventario" da planilha Google Sheets:
+      if (customWebhookUrl && !settings.sheetsWebhookUrl) {
+        saveServerSettingsAsync({ sheetsWebhookUrl: customWebhookUrl }).catch(() => {});
+      }
+
+      // Regra rigorosa de colunas da aba "INVENTÁRIO" da planilha Google Sheets:
       // A: DATA; B: HORA; C: PLACA; D: LOCAL; E: OBSERVAÇÃO; F: COMBUSTIVEL; G: KM ODOMETRO; H: OPERADOR;
-      const locClean = String(inventory.location || '').toUpperCase().trim();
+      const locClean = String(inventory.location || inventory.local || '').toUpperCase().trim();
       const obsClean = inventory.observation && String(inventory.observation).trim() ? String(inventory.observation).trim() : '-';
+      const plateClean = String(inventory.plate || inventory.placa || '').toUpperCase().trim();
+      const opClean = inventory.operatorName || inventory.operador || 'Operador';
+      const fuelClean = inventory.fuelLevel || inventory.fuel || inventory.combustivel || '';
+      const kmClean = inventory.odometer !== undefined && inventory.odometer !== null && String(inventory.odometer).trim() !== '' ? String(inventory.odometer).trim() : '';
 
       const bodyData = {
         action: 'record_inventory',
         tab: 'inventario',
         operation: 'inventario',
         operationType: 'inventario',
+        operationCategory: 'inventario',
         targetTabName: 'INVENTÁRIO',
         data: inventory.dateFormatted,
         hora: inventory.timeFormatted,
         dateFormatted: inventory.dateFormatted,
         timeFormatted: inventory.timeFormatted,
-        placa: inventory.plate,
-        plate: inventory.plate,
+        placa: plateClean,
+        plate: plateClean,
         local: locClean,
         location: locClean,
+        destination: locClean,
+        destino: locClean,
+        observation: obsClean,
         observacao: obsClean,
         observacoes: obsClean,
         notes: obsClean,
-        operador: inventory.operatorName || '',
-        operatorName: inventory.operatorName || '',
-        fuel: inventory.fuelLevel || '',
-        combustivel: inventory.fuelLevel || '',
-        km: inventory.odometer || '',
+        description: obsClean,
+        operador: opClean,
+        operatorName: opClean,
+        fuel: fuelClean,
+        combustivel: fuelClean,
+        fuelLevel: fuelClean,
+        nivelCombustivel: fuelClean,
+        km: kmClean,
+        odometro: kmClean,
+        odometer: kmClean,
         customRow: [
           inventory.dateFormatted,
           inventory.timeFormatted,
-          inventory.plate,
+          plateClean,
           locClean || '-',
           obsClean,
-          inventory.fuelLevel || '',
-          inventory.odometer || '',
-          inventory.operatorName || '',
+          fuelClean,
+          kmClean ? `${kmClean} KM` : '-',
+          opClean,
         ],
         inventory: {
           data: inventory.dateFormatted,
           hora: inventory.timeFormatted,
-          placa: inventory.plate,
-          plate: inventory.plate,
+          placa: plateClean,
+          plate: plateClean,
           local: locClean,
           location: locClean,
           observacao: obsClean,
+          observation: obsClean,
           observacoes: obsClean,
-          combustivel: inventory.fuelLevel || '',
-          km: inventory.odometer || '',
-          operador: inventory.operatorName || '',
+          combustivel: fuelClean,
+          fuelLevel: fuelClean,
+          km: kmClean,
+          odometer: kmClean,
+          operador: opClean,
+          operatorName: opClean,
+        },
+        record: {
+          plate: plateClean,
+          location: locClean,
+          destination: locClean,
+          observation: obsClean,
+          fuelLevel: fuelClean,
+          odometer: kmClean,
+          operatorName: opClean,
+          dateFormatted: inventory.dateFormatted,
+          timeFormatted: inventory.timeFormatted,
         },
         timestamp: new Date().toISOString(),
       };
@@ -503,6 +592,7 @@ async function startServer() {
         photoUrl,
         dateFormatted,
         timeFormatted,
+        webhookUrl,
       } = req.body;
 
       if (!plate || !origin || !destination || !observation) {
@@ -534,7 +624,7 @@ async function startServer() {
       });
 
       // Sincroniza em segundo plano com a aba MOVIMENTAÇÃO da planilha
-      syncMovementToGoogleSheetWebhook(newMovement).catch(() => {});
+      syncMovementToGoogleSheetWebhook(newMovement, webhookUrl).catch(() => {});
 
       res.json({ success: true, movement: newMovement });
     } catch (err: any) {
@@ -576,6 +666,7 @@ async function startServer() {
         photoUrl,
         dateFormatted,
         timeFormatted,
+        webhookUrl,
       } = req.body;
 
       if (!plate || !plate.trim()) {
@@ -625,7 +716,7 @@ async function startServer() {
       }
 
       // Sincroniza em segundo plano com a aba INVENTARIO da planilha
-      syncInventoryToGoogleSheetWebhook(newInventory).catch(() => {});
+      syncInventoryToGoogleSheetWebhook(newInventory, webhookUrl).catch(() => {});
 
       res.json({ success: true, inventory: newInventory });
     } catch (err: any) {
@@ -1074,6 +1165,12 @@ async function startServer() {
       } else if (rawOp === 'pdc' || rawOp.includes('pdc') || rawOp.includes('fila')) {
         normalizedCategory = 'pdc';
         expectedTabName = '📋 Fila PDC';
+      } else if (rawOp === 'movimentacao' || rawOp === 'movimentação' || rawOp.includes('movimen')) {
+        normalizedCategory = 'movimentacao';
+        expectedTabName = 'MOVIMENTAÇÃO';
+      } else if (rawOp === 'inventario' || rawOp === 'inventário' || rawOp.includes('inventar')) {
+        normalizedCategory = 'inventario';
+        expectedTabName = 'INVENTÁRIO';
       }
 
       // Helper for clean fuel level formatting (prevents Excel from auto-converting fractions like 4/8 into dates)
