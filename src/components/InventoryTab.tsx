@@ -562,30 +562,26 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
 
               {/* Combustível */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-neutral-700 flex items-center gap-1">
-                  <Fuel className="w-3.5 h-3.5 text-cyan-600" />
-                  <span>Nível de Combustível</span>
-                </label>
-                <div className="grid grid-cols-4 sm:grid-cols-8 gap-1 pt-1">
-                  {(['1/8', '2/8', '3/8', '4/8', '5/8', '6/8', '7/8', '8/8'] as FuelLevel[]).map(
-                    (level) => (
-                      <button
-                        key={level}
-                        type="button"
-                        onClick={() =>
-                          setFuelLevel(fuelLevel === level ? undefined : level)
-                        }
-                        className={`py-1.5 px-1 rounded-lg text-xs font-bold border text-center transition ${
-                          fuelLevel === level
-                            ? 'bg-cyan-700 text-white border-cyan-800 ring-2 ring-cyan-400'
-                            : 'bg-white text-neutral-700 border-neutral-300 hover:bg-neutral-100'
-                        }`}
-                      >
-                        {level}
-                      </button>
-                    )
+                <div className="flex items-center justify-between mb-0.5">
+                  <label className="text-xs font-bold text-neutral-700 flex items-center gap-1">
+                    <Fuel className="w-3.5 h-3.5 text-cyan-600" />
+                    <span>Nível de Combustível</span>
+                  </label>
+                  {fuelLevel && (
+                    <button
+                      type="button"
+                      onClick={() => setFuelLevel(undefined)}
+                      className="text-[10px] text-neutral-500 hover:text-rose-600 font-bold cursor-pointer"
+                    >
+                      Limpar
+                    </button>
                   )}
                 </div>
+                <FuelSelector
+                  compact
+                  selectedFuel={fuelLevel}
+                  onSelectFuel={(f) => setFuelLevel(fuelLevel === f ? undefined : f)}
+                />
               </div>
 
               {/* KM Odômetro */}

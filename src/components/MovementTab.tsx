@@ -552,8 +552,9 @@ _Sincronizado automaticamente no Render PostgreSQL e Google Sheets_`;
                 )}
               </div>
               <FuelSelector
-                selectedLevel={fuelLevel || '4/8'}
-                onSelect={(f) => setFuelLevel(f)}
+                compact
+                selectedFuel={fuelLevel}
+                onSelectFuel={(f) => setFuelLevel(fuelLevel === f ? undefined : f)}
               />
             </div>
 
