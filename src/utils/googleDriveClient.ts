@@ -1220,7 +1220,7 @@ function doPost(e) {
     var hasDoc = data.hasDocumentPhoto === true || String(data.hasDocumentPhoto).toLowerCase() === "true" || !!data.documentPhotoUrl;
     var fotoDoc = hasDoc ? "SIM (REGISTRADA)" : "NÃO";
     var tipoCombustivel = String(data.fuelType || data.tipoCombustivel || "DIESEL").toUpperCase().trim();
-    var litrosAbastecidos = (data.liters !== undefined && data.liters !== null && String(data.liters).trim() !== "") ? (String(data.liters).replace(/\s*l/i, '').toUpperCase().trim() + " L") : ((data.litros !== undefined && data.litros !== null && String(data.litros).trim() !== "") ? (String(data.litros).replace(/\s*l/i, '').toUpperCase().trim() + " L") : "-");
+    var litrosAbastecidos = (data.liters !== undefined && data.liters !== null && String(data.liters).trim() !== "") ? (String(data.liters).replace(/\\s*l/i, '').toUpperCase().trim() + " L") : ((data.litros !== undefined && data.litros !== null && String(data.litros).trim() !== "") ? (String(data.litros).replace(/\\s*l/i, '').toUpperCase().trim() + " L") : "-");
     var condutorOuOperador = condutor && condutor !== "-" ? (condutor + " (" + operador + ")") : operador;
 
     var customRow = [];
@@ -1304,7 +1304,7 @@ function doPost(e) {
     } else if (tabCategory === "inventario") {
       var locInv = String(data.location || data.local || (data.inventory && (data.inventory.local || data.inventory.location)) || "").toUpperCase().trim();
       var obsRaw = data.observation || data.observacao || data.observacoes || (data.inventory && (data.inventory.observation || data.inventory.observacao || data.inventory.observacoes)) || "-";
-      obsRaw = String(obsRaw).replace(/\r?\n/g, ' - ').trim() || "-";
+      obsRaw = String(obsRaw).replace(/\\r?\\n/g, ' - ').trim() || "-";
 
       customRow = [
         dateStr,          // Col A: DATA
