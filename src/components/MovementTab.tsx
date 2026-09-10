@@ -23,9 +23,12 @@ import {
   Image as ImageIcon,
   Sparkles,
   Loader2,
+  Pencil,
+  Trash2,
+  Save,
 } from 'lucide-react';
 import { VehicleMovement, VehicleRecord, FuelLevel } from '../types';
-import { fetchMovements, createMovement } from '../utils/movementService';
+import { fetchMovements, createMovement, updateMovement, deleteMovement } from '../utils/movementService';
 import { getCurrentSession } from '../utils/authService';
 import { YardLocationPickerModal } from './YardLocationPickerModal';
 import { FuelSelector } from './FuelSelector';
@@ -78,6 +81,88 @@ export const MovementTab: React.FC<MovementTabProps> = ({
 
   const session = getCurrentSession();
   const operatorName = session?.user.name || session?.user.username || 'Operador CMDIT';
+  const isMaster = session?.user.role === 'master';
+
+  // Master Edit Modal State
+  const [editingMovement, setEditingMovement] = useState<VehicleMovement | null>(null);
+  const [editPlate, setEditPlate] = useState('');
+  const [editOrigin, setEditOrigin] = useState('');
+  const [editDestination, setEditDestination] = useState('');
+  const [editObservation, setEditObservation] = useState('');
+  const [editFuelLevel, setEditFuelLevel] = useState<FuelLevel | undefined>(undefined);
+  const [editOdometer, setEditOdometer] = useState('');
+  const [editOperatorName, setEditOperatorName] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  const handleStartEdit = (mov: VehicleMovement) => {
+    setEditingMovement(mov);
+    setEditPlate(mov.plate);
+    setEditOrigin(mov.origin || '');
+    setEditDestination(mov.destination || '');
+    setEditObservation(mov.observation || '');
+    setEditFuelLevel(mov.fuelLevel as FuelLevel | undefined);
+    setEditOdometer(mov.odometer ? String(mov.odometer) : '');
+    setEditOperatorName(mov.operatorName || '');
+    setEditError(null);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingMovement) return;
+    if (!editPlate.trim() || !editDestination.trim()) {
+      setEditError('Placa e Destino são obrigatórios.');
+      return;
+    }
+
+    setIsSavingEdit(true);
+    setEditError(null);
+    try {
+      const res = await updateMovement(editingMovement.id, {
+        plate: editPlate.toUpperCase().trim(),
+        origin: editOrigin.trim(),
+        destination: editDestination.trim(),
+        observation: editObservation.trim(),
+        fuelLevel: editFuelLevel,
+        odometer: editOdometer ? Number(editOdometer) || editOdometer : undefined,
+        operatorName: editOperatorName.trim(),
+      });
+
+      if (res.success && res.movement) {
+        setMovements((prev) =>
+          prev.map((m) => (m.id === editingMovement.id ? res.movement! : m))
+        );
+        setEditingMovement(null);
+        setSuccessMessage('Movimentação atualizada com sucesso no banco de dados e na planilha!');
+        setTimeout(() => setSuccessMessage(null), 5000);
+      } else {
+        setEditError(res.message || 'Falha ao salvar alterações da movimentação.');
+      }
+    } catch (err: any) {
+      setEditError(err.message || 'Erro inesperado ao salvar alterações.');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleDeleteMovementItem = async (mov: VehicleMovement) => {
+    const confirmMsg = `Tem certeza que deseja excluir a movimentação da placa ${formatPlateForDisplay(
+      mov.plate
+    )} (${mov.origin} ➔ ${mov.destination})?\n\nEsta alteração apagará o registro no Banco de Dados e na Planilha Google Sheets!`;
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      const res = await deleteMovement(mov.id);
+      if (res.success) {
+        setMovements((prev) => prev.filter((m) => m.id !== mov.id));
+        setSuccessMessage(`Movimentação da placa ${mov.plate} excluída do banco e da planilha.`);
+        setTimeout(() => setSuccessMessage(null), 5000);
+      } else {
+        alert(res.message || 'Não foi possível excluir o registro de movimentação.');
+      }
+    } catch (err: any) {
+      alert(`Erro ao excluir movimentação: ${err.message}`);
+    }
+  };
 
   const handleCapturePhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -678,15 +763,41 @@ export const MovementTab: React.FC<MovementTabProps> = ({
                   </span>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setShareModalMovement(mov)}
-                  title="Compartilhar Foto e Dados via WhatsApp / Aplicativos"
-                  className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition cursor-pointer flex items-center gap-1 text-xs font-bold"
-                >
-                  <Share2 className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Compartilhar</span>
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setShareModalMovement(mov)}
+                    title="Compartilhar Foto e Dados via WhatsApp / Aplicativos"
+                    className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition cursor-pointer flex items-center gap-1 text-xs font-bold"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Compartilhar</span>
+                  </button>
+
+                  {isMaster && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleStartEdit(mov)}
+                        title="Editar movimentação no banco e planilha (Master)"
+                        className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 transition cursor-pointer flex items-center gap-1 text-xs font-bold"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Editar</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteMovementItem(mov)}
+                        title="Excluir movimentação no banco e planilha (Master)"
+                        className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 transition cursor-pointer flex items-center gap-1 text-xs font-bold"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Excluir</span>
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
 
               {/* Foto anexada à movimentação se houver */}
@@ -792,6 +903,134 @@ export const MovementTab: React.FC<MovementTabProps> = ({
             { label: 'Observação', value: shareModalMovement.observation || '-' },
           ]}
         />
+      )}
+
+      {/* Master Edit Movement Modal */}
+      {editingMovement && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl border border-neutral-200">
+            <div className="bg-neutral-900 text-white p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Pencil className="w-5 h-5 text-blue-400" />
+                <div>
+                  <h3 className="font-black text-sm">Editar Movimentação (Master)</h3>
+                  <p className="text-[11px] text-neutral-400">Atualiza no Banco de Dados e na Planilha</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingMovement(null)}
+                className="p-1.5 rounded-full hover:bg-white/10 text-neutral-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-3 max-h-[75vh] overflow-y-auto">
+              {editError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-medium">
+                  {editError}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 mb-1">Placa do Veículo *</label>
+                <input
+                  type="text"
+                  value={editPlate}
+                  onChange={(e) => setEditPlate(e.target.value.toUpperCase())}
+                  className="w-full px-3 py-2 border border-neutral-300 rounded-xl font-mono font-bold text-sm uppercase bg-neutral-50"
+                  maxLength={8}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 mb-1">Origem</label>
+                  <input
+                    type="text"
+                    value={editOrigin}
+                    onChange={(e) => setEditOrigin(e.target.value)}
+                    className="w-full px-3 py-2 border border-neutral-300 rounded-xl text-xs"
+                    placeholder="Ex: P1, R1, Entrada..."
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 mb-1">Destino *</label>
+                  <input
+                    type="text"
+                    value={editDestination}
+                    onChange={(e) => setEditDestination(e.target.value)}
+                    className="w-full px-3 py-2 border border-neutral-300 rounded-xl text-xs font-semibold text-emerald-800"
+                    placeholder="Ex: P3, PDC, Rua..."
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 mb-1">Observação</label>
+                <textarea
+                  value={editObservation}
+                  onChange={(e) => setEditObservation(e.target.value)}
+                  className="w-full px-3 py-2 border border-neutral-300 rounded-xl text-xs resize-none"
+                  rows={2}
+                  placeholder="Motivo do deslocamento ou detalhes..."
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 mb-1">Odômetro (KM)</label>
+                  <input
+                    type="text"
+                    value={editOdometer}
+                    onChange={(e) => setEditOdometer(e.target.value)}
+                    className="w-full px-3 py-2 border border-neutral-300 rounded-xl text-xs font-mono"
+                    placeholder="Ex: 45200"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 mb-1">Operador / Responsável</label>
+                  <input
+                    type="text"
+                    value={editOperatorName}
+                    onChange={(e) => setEditOperatorName(e.target.value)}
+                    className="w-full px-3 py-2 border border-neutral-300 rounded-xl text-xs"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-neutral-50 border-t border-neutral-200 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditingMovement(null)}
+                disabled={isSavingEdit}
+                className="px-4 py-2 border border-neutral-300 rounded-xl text-xs font-bold text-neutral-700 hover:bg-neutral-100"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveEdit}
+                disabled={isSavingEdit}
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow flex items-center gap-1.5"
+              >
+                {isSavingEdit ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Salvando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    <span>Salvar no Banco e Planilha</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

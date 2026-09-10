@@ -960,3 +960,102 @@ export async function appendVehicleRecordToSheet(
   };
 }
 
+/**
+ * Direct deletion of a row from a Google Spreadsheet using Sheets API v4
+ */
+export async function deleteSpreadsheetRowDirect(
+  spreadsheetId: string,
+  categoryKey: 'entrada' | 'saida' | 'combustivel' | 'pdc' | 'qualidade' | 'usuarios' | 'inventario' | 'movimentacao',
+  plate: string,
+  dateStr?: string,
+  timeStr?: string,
+  accessToken?: string
+): Promise<{ success: boolean; deletedRow?: number; tabName?: string; error?: string }> {
+  if (!accessToken || !spreadsheetId || !plate) {
+    return { success: false, error: 'Parâmetros incompletos' };
+  }
+
+  try {
+    const targetSheet = await ensureTargetTab(spreadsheetId, categoryKey, accessToken);
+    const tabTitle = targetSheet.title;
+    const sheetId = targetSheet.sheetId;
+
+    if (typeof sheetId !== 'number') {
+      return { success: false, error: 'sheetId não encontrado' };
+    }
+
+    const range = `'${encodeURIComponent(tabTitle)}'!A1:Z500`;
+    const readResp = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    );
+
+    if (!readResp.ok) {
+      return { success: false, error: 'Falha ao ler linhas da planilha' };
+    }
+
+    const data = await readResp.json();
+    const rows: string[][] = data.values || [];
+    if (rows.length <= 1) {
+      return { success: false, error: 'Aba vazia' };
+    }
+
+    const cleanTargetPlate = plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    let foundRowZeroIndex = -1;
+
+    // Identifica coluna da placa
+    let plateColIdx = 2; // Padrão Coluna C
+    const headers = rows[0].map(h => String(h || '').toUpperCase());
+    const foundPlateCol = headers.findIndex(h => h.includes('PLACA') || h.includes('VEICULO'));
+    if (foundPlateCol !== -1) plateColIdx = foundPlateCol;
+
+    for (let r = 1; r < rows.length; r++) {
+      const rowPlate = String(rows[r][plateColIdx] || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (rowPlate === cleanTargetPlate) {
+        foundRowZeroIndex = r;
+        break;
+      }
+    }
+
+    if (foundRowZeroIndex === -1) {
+      return { success: false, error: 'Placa não encontrada na planilha' };
+    }
+
+    const batchResp = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          requests: [
+            {
+              deleteDimension: {
+                range: {
+                  sheetId,
+                  dimension: 'ROWS',
+                  startIndex: foundRowZeroIndex,
+                  endIndex: foundRowZeroIndex + 1,
+                },
+              },
+            },
+          ],
+        }),
+      }
+    );
+
+    if (batchResp.ok) {
+      return { success: true, deletedRow: foundRowZeroIndex + 1, tabName: tabTitle };
+    }
+    return { success: false, error: await batchResp.text() };
+  } catch (err: any) {
+    console.warn('deleteSpreadsheetRowDirect error:', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+

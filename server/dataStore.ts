@@ -90,6 +90,8 @@ export interface AccessLog {
 export interface AppSettings {
   sheetsWebhookUrl?: string | null;
   spreadsheetId?: string | null;
+  activeSpreadsheetId?: string | null;
+  sheetsAccessToken?: string | null;
   spreadsheetUrl?: string | null;
   spreadsheetTitle?: string | null;
   autoSync?: boolean;
@@ -1430,6 +1432,24 @@ export async function deleteServerRecordAsync(id: string): Promise<any[]> {
   return deleteServerRecord(id);
 }
 
+export async function getServerRecordByIdAsync(id: string): Promise<any | undefined> {
+  const pg = getPgPool();
+  if (pg) {
+    try {
+      const res = await pg.query('SELECT raw_data FROM vehicle_records WHERE id = $1 LIMIT 1', [id]);
+      if (res.rows.length > 0 && res.rows[0].raw_data) {
+        return typeof res.rows[0].raw_data === 'string'
+          ? JSON.parse(res.rows[0].raw_data)
+          : res.rows[0].raw_data;
+      }
+    } catch (err: any) {
+      console.warn('Postgres getServerRecordById error:', err.message);
+    }
+  }
+  const records = loadServerRecords();
+  return records.find((r) => r.id === id);
+}
+
 export function deleteServerRecord(id: string): any[] {
   const records = loadServerRecords().filter((r) => r.id !== id);
   saveServerRecords(records);
@@ -2075,6 +2095,24 @@ export async function saveMovementAsync(movement: VehicleMovementRecord): Promis
   return normMovement;
 }
 
+export async function getMovementByIdAsync(id: string): Promise<VehicleMovementRecord | undefined> {
+  const pgPool = getPgPool();
+  if (pgPool) {
+    try {
+      const res = await pgPool.query('SELECT raw_data FROM vehicle_movements WHERE id = $1 LIMIT 1', [id]);
+      if (res.rows.length > 0 && res.rows[0].raw_data) {
+        return typeof res.rows[0].raw_data === 'string'
+          ? JSON.parse(res.rows[0].raw_data)
+          : res.rows[0].raw_data;
+      }
+    } catch (err: any) {
+      console.warn('PostgreSQL getMovementById error:', err.message);
+    }
+  }
+  const localList = loadLocalMovements();
+  return localList.find((m) => m.id === id);
+}
+
 export async function deleteMovementAsync(id: string): Promise<boolean> {
   const pgPool = getPgPool();
   if (pgPool) {
@@ -2225,6 +2263,24 @@ export async function saveInventoryAsync(inventory: VehicleInventoryRecord): Pro
   saveLocalInventories(localList.slice(0, 500));
 
   return normInventory;
+}
+
+export async function getInventoryByIdAsync(id: string): Promise<VehicleInventoryRecord | undefined> {
+  const pgPool = getPgPool();
+  if (pgPool) {
+    try {
+      const res = await pgPool.query('SELECT raw_data FROM vehicle_inventories WHERE id = $1 LIMIT 1', [id]);
+      if (res.rows.length > 0 && res.rows[0].raw_data) {
+        return typeof res.rows[0].raw_data === 'string'
+          ? JSON.parse(res.rows[0].raw_data)
+          : res.rows[0].raw_data;
+      }
+    } catch (err: any) {
+      console.warn('PostgreSQL getInventoryById error:', err.message);
+    }
+  }
+  const localList = loadLocalInventories();
+  return localList.find((i) => i.id === id);
 }
 
 export async function deleteInventoryAsync(id: string): Promise<boolean> {

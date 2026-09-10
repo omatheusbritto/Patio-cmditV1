@@ -19,6 +19,8 @@ import {
   HardDrive,
   Activity,
   Radio,
+  Copy,
+  RotateCcw,
 } from 'lucide-react';
 import {
   checkDatabaseHealth,
@@ -27,6 +29,9 @@ import {
   DatabaseDiagnosticResult,
   getCurrentSession,
 } from '../utils/authService';
+
+const DEFAULT_RENDER_DATABASE_URL =
+  'postgresql://adm_patiocmdit:BXrnPw0WxeLXMGcqgxgb2v6z4yUWv8JC@dpg-daan43hsrm7s73fe0920-a.oregon-postgres.render.com/patiocmdit_db';
 
 interface DatabaseTestModalProps {
   isOpen: boolean;
@@ -123,6 +128,36 @@ export const DatabaseTestModal: React.FC<DatabaseTestModalProps> = ({
       }
     } catch (err: any) {
       setSaveMessage({ text: err.message || 'Erro ao conectar.', isError: true });
+    } finally {
+      setSavingUrl(false);
+    }
+  };
+
+  const [copiedUrl, setCopiedUrl] = useState(false);
+  const handleCopyRenderUrl = () => {
+    navigator.clipboard?.writeText(DEFAULT_RENDER_DATABASE_URL);
+    setCopiedUrl(true);
+    setTimeout(() => setCopiedUrl(false), 2000);
+  };
+
+  const handleRestoreRenderUrl = async () => {
+    setSavingUrl(true);
+    setSaveMessage(null);
+    try {
+      const res = await configureDatabaseUrl(DEFAULT_RENDER_DATABASE_URL);
+      if (res.success) {
+        setSaveMessage({ text: 'Conexão com o banco OnRender restaurada com sucesso!', isError: false });
+        if (res.diagnostic) {
+          setDiagnostic(res.diagnostic);
+        } else {
+          runTest();
+        }
+        setCustomDbUrl('');
+      } else {
+        setSaveMessage({ text: res.message || 'Falha ao conectar no banco OnRender.', isError: true });
+      }
+    } catch (err: any) {
+      setSaveMessage({ text: err.message || 'Erro ao conectar no banco OnRender.', isError: true });
     } finally {
       setSavingUrl(false);
     }
@@ -352,12 +387,55 @@ export const DatabaseTestModal: React.FC<DatabaseTestModalProps> = ({
             </div>
           </div>
 
+          {/* Card Banco Oficial OnRender */}
+          <div className="bg-indigo-50/70 border border-indigo-200 rounded-2xl p-3.5 space-y-2.5">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-black text-xs shrink-0">
+                  R
+                </div>
+                <div>
+                  <div className="text-xs font-black text-indigo-950">Banco Oficial OnRender (Nuvem)</div>
+                  <div className="text-[11px] text-indigo-700">oregon-postgres.render.com • 24h Online</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleRestoreRenderUrl}
+                disabled={savingUrl}
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm active:scale-95 transition cursor-pointer"
+              >
+                <RotateCcw className={`w-3.5 h-3.5 ${savingUrl ? 'animate-spin' : ''}`} />
+                <span>Restaurar Banco Oficial Render</span>
+              </button>
+            </div>
+
+            <div className="bg-white p-2.5 rounded-xl border border-indigo-200/80 flex items-center justify-between gap-2">
+              <code className="text-[11px] font-mono text-slate-800 break-all select-all flex-1">
+                {DEFAULT_RENDER_DATABASE_URL}
+              </code>
+              <button
+                type="button"
+                onClick={handleCopyRenderUrl}
+                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-lg shrink-0 flex items-center gap-1 transition cursor-pointer"
+                title="Copiar URL"
+              >
+                {copiedUrl ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedUrl ? 'Copiado!' : 'Copiar'}</span>
+              </button>
+            </div>
+            
+            <div className="text-[11px] text-slate-600 leading-relaxed bg-amber-50/70 border border-amber-200/80 rounded-xl p-2.5">
+              💡 <strong>Por que o banco local (127.0.0.1) não funcionou?</strong> Como esta aplicação roda nos servidores do Google Cloud, <code className="font-semibold text-slate-800">127.0.0.1</code> aponta para o próprio servidor em nuvem, não para o seu computador. O banco do Render resolve isso porque fica disponível na internet com SSL ativo.
+            </div>
+          </div>
+
           {/* OnRender Connection String Form */}
           <form onSubmit={handleSaveDbUrl} className="bg-neutral-50 p-4 rounded-2xl border border-neutral-200 space-y-2.5">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-neutral-800 flex items-center gap-1.5">
                 <Database className="w-3.5 h-3.5 text-indigo-600" />
-                <span>Configurar URL do PostgreSQL (Render):</span>
+                <span>Usar Outra URL de PostgreSQL (Render / Supabase / Neon):</span>
               </label>
             </div>
             <input

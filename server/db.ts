@@ -386,11 +386,13 @@ export async function getDatabaseDiagnosticAsync(customUrl?: string): Promise<Da
   const rawUrl =
     customUrl ||
     configuredDatabaseUrl ||
-    process.env.AUTH_DATABASE_URL ||
+    loadSavedDbUrl() ||
+    process.env.INTERNAL_DATABASE_URL ||
     process.env.DATABASE_URL ||
+    process.env.AUTH_DATABASE_URL ||
     process.env.POSTGRES_URL ||
     process.env.RENDER_DATABASE_URL ||
-    '';
+    DEFAULT_RENDER_DATABASE_URL;
 
   const isRender = rawUrl.includes('render.com') || rawUrl.includes('dpg-');
   let maskedUrl = '';

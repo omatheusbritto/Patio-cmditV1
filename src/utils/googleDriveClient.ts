@@ -1066,6 +1066,234 @@ function doPost(e) {
     }
 
     // ------------------------------------------------------------------------
+    // 1.2 EXCLUSÃO DE QUALQUER GRAVAÇÃO (Planilha: Inventário, Movimentação, Registros Pátio)
+    // ------------------------------------------------------------------------
+    var isDeleteAction = data.action === 'delete_row' || data.action === 'delete_record' ||
+                         data.action === 'delete_movement' || data.action === 'delete_inventory';
+
+    if (isDeleteAction) {
+      var targetPlate = String(data.plate || data.placa || '').toUpperCase().trim();
+      var targetDate = String(data.dateFormatted || data.data || '').trim();
+      var targetTime = String(data.timeFormatted || data.hora || '').trim();
+      var targetCategory = String(data.operationType || data.operation || data.tab || data.category || '').toLowerCase().trim();
+      var specificTabName = data.targetTabName ? String(data.targetTabName).toUpperCase().trim() : '';
+
+      var sheetsToSearch = [];
+      var allSheetsDel = ss.getSheets();
+
+      if (specificTabName) {
+        for (var sIdx = 0; sIdx < allSheetsDel.length; sIdx++) {
+          if (allSheetsDel[sIdx].getName().toUpperCase().trim() === specificTabName) {
+            sheetsToSearch.push(allSheetsDel[sIdx]);
+            break;
+          }
+        }
+      }
+
+      if (sheetsToSearch.length === 0 && targetCategory) {
+        var mappedConfig = TAB_CONFIGS[targetCategory];
+        var mappedName = mappedConfig ? mappedConfig.tabName.toUpperCase() : '';
+        for (var sIdx2 = 0; sIdx2 < allSheetsDel.length; sIdx2++) {
+          var curSName = allSheetsDel[sIdx2].getName().toUpperCase();
+          if (mappedName && curSName.indexOf(mappedName) !== -1) {
+            sheetsToSearch.push(allSheetsDel[sIdx2]);
+            break;
+          }
+        }
+      }
+
+      if (sheetsToSearch.length === 0) {
+        sheetsToSearch = allSheetsDel;
+      }
+
+      var deletedCount = 0;
+      var deletedFromTab = '';
+      var deletedRowIndex = -1;
+
+      for (var sh = 0; sh < sheetsToSearch.length; sh++) {
+        var curSheet = sheetsToSearch[sh];
+        var sheetName = curSheet.getName();
+        if (sheetName.indexOf('Visão Geral') !== -1 || sheetName.indexOf('LOG') !== -1) continue;
+
+        var dataValues = curSheet.getDataRange().getValues();
+        if (dataValues.length <= 1) continue;
+
+        var headersRow = dataValues[0];
+        var plateColIdx = -1;
+        var dateColIdx = -1;
+        var timeColIdx = -1;
+
+        for (var h = 0; h < headersRow.length; h++) {
+          var hName = String(headersRow[h] || '').toUpperCase();
+          if (hName.indexOf('PLACA') !== -1 || hName.indexOf('VEICULO') !== -1) {
+            plateColIdx = h;
+          } else if (hName.indexOf('DATA') !== -1) {
+            dateColIdx = h;
+          } else if (hName.indexOf('HORA') !== -1) {
+            timeColIdx = h;
+          }
+        }
+        if (plateColIdx === -1) plateColIdx = 2;
+
+        var cleanTargetPlate = targetPlate.replace(/[^A-Z0-9]/g, '');
+
+        for (var r = 1; r < dataValues.length; r++) {
+          var rowPlate = String(dataValues[r][plateColIdx] || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+          if (cleanTargetPlate && rowPlate === cleanTargetPlate) {
+            var matchDate = true;
+            var matchTime = true;
+
+            if (targetDate && dateColIdx !== -1) {
+              var rowDate = String(dataValues[r][dateColIdx] || '').trim();
+              if (rowDate && rowDate !== targetDate) matchDate = false;
+            }
+            if (targetTime && timeColIdx !== -1) {
+              var rowTime = String(dataValues[r][timeColIdx] || '').trim();
+              if (rowTime && rowTime.substring(0, 5) !== targetTime.substring(0, 5)) matchTime = false;
+            }
+
+            if (matchDate && matchTime) {
+              curSheet.deleteRow(r + 1);
+              deletedCount++;
+              deletedFromTab = sheetName;
+              deletedRowIndex = r + 1;
+              break;
+            }
+          }
+        }
+
+        if (deletedCount > 0) break;
+      }
+
+      return ContentService.createTextOutput(JSON.stringify({
+        success: true,
+        action: data.action,
+        deleted: deletedCount > 0,
+        plate: targetPlate,
+        tabName: deletedFromTab,
+        rowIndex: deletedRowIndex,
+        message: deletedCount > 0 
+          ? ("Gravação da placa " + targetPlate + " excluída com sucesso da aba " + deletedFromTab + "!")
+          : ("Registro da placa " + targetPlate + " processado.")
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ------------------------------------------------------------------------
+    // 1.3 ALTERAÇÃO DE QUALQUER GRAVAÇÃO (Planilha: Inventário, Movimentação, Registros Pátio)
+    // ------------------------------------------------------------------------
+    var isUpdateAction = data.action === 'update_row' || data.action === 'update_record' ||
+                         data.action === 'update_movement' || data.action === 'update_inventory';
+
+    if (isUpdateAction) {
+      var oldPlate = String(data.oldPlate || data.plate || data.placa || '').toUpperCase().trim();
+      var newPlate = String(data.plate || data.placa || oldPlate).toUpperCase().trim();
+      var specificTabNameU = data.targetTabName ? String(data.targetTabName).toUpperCase().trim() : '';
+      var targetCategoryU = String(data.operationType || data.operation || data.tab || data.category || '').toLowerCase().trim();
+
+      var sheetsToSearchU = [];
+      var allSheetsUpd = ss.getSheets();
+
+      if (specificTabNameU) {
+        for (var su = 0; su < allSheetsUpd.length; su++) {
+          if (allSheetsUpd[su].getName().toUpperCase().trim() === specificTabNameU) {
+            sheetsToSearchU.push(allSheetsUpd[su]);
+            break;
+          }
+        }
+      }
+
+      if (sheetsToSearchU.length === 0 && targetCategoryU) {
+        var mappedConfigU = TAB_CONFIGS[targetCategoryU];
+        var mappedNameU = mappedConfigU ? mappedConfigU.tabName.toUpperCase() : '';
+        for (var su2 = 0; su2 < allSheetsUpd.length; su2++) {
+          var curUName = allSheetsUpd[su2].getName().toUpperCase();
+          if (mappedNameU && curUName.indexOf(mappedNameU) !== -1) {
+            sheetsToSearchU.push(allSheetsUpd[su2]);
+            break;
+          }
+        }
+      }
+
+      if (sheetsToSearchU.length === 0) {
+        sheetsToSearchU = allSheetsUpd;
+      }
+
+      var updatedCount = 0;
+      var updatedTab = '';
+      var updatedRowIndex = -1;
+
+      for (var shu = 0; shu < sheetsToSearchU.length; shu++) {
+        var uTargetSheet = sheetsToSearchU[shu];
+        var uSheetName = uTargetSheet.getName();
+        if (uSheetName.indexOf('Visão Geral') !== -1 || uSheetName.indexOf('LOG') !== -1) continue;
+
+        var uDataValues = uTargetSheet.getDataRange().getValues();
+        if (uDataValues.length <= 1) continue;
+
+        var uHeaders = uDataValues[0];
+        var uPlateCol = -1;
+        for (var uh = 0; uh < uHeaders.length; uh++) {
+          var uhText = String(uHeaders[uh] || '').toUpperCase();
+          if (uhText.indexOf('PLACA') !== -1 || uhText.indexOf('VEICULO') !== -1) {
+            uPlateCol = uh;
+            break;
+          }
+        }
+        if (uPlateCol === -1) uPlateCol = 2;
+
+        var cleanOldPlate = oldPlate.replace(/[^A-Z0-9]/g, '');
+
+        for (var ur = 1; ur < uDataValues.length; ur++) {
+          var currPlate = String(uDataValues[ur][uPlateCol] || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+          if (cleanOldPlate && currPlate === cleanOldPlate) {
+            var rowVals = uDataValues[ur];
+            for (var c = 0; c < uHeaders.length; c++) {
+              var colHeader = String(uHeaders[c] || '').toUpperCase();
+              if (colHeader.indexOf('PLACA') !== -1 || colHeader.indexOf('VEICULO') !== -1) {
+                rowVals[c] = newPlate;
+              } else if (colHeader.indexOf('ORIGEM') !== -1 && (data.origin || data.origem)) {
+                rowVals[c] = String(data.origin || data.origem).toUpperCase().trim();
+              } else if ((colHeader.indexOf('DESTINO') !== -1 || colHeader.indexOf('LOCAL') !== -1) && (data.destination || data.destino || data.location || data.local)) {
+                rowVals[c] = String(data.destination || data.destino || data.location || data.local).toUpperCase().trim();
+              } else if ((colHeader.indexOf('OBS') !== -1 || colHeader.indexOf('NOTA') !== -1) && (data.observation || data.observacao || data.notes || data.description)) {
+                rowVals[c] = String(data.observation || data.observacao || data.notes || data.description).trim();
+              } else if ((colHeader.indexOf('KM') !== -1 || colHeader.indexOf('ODOMET') !== -1) && (data.km || data.odometer || data.odometro)) {
+                rowVals[c] = String(data.km || data.odometer || data.odometro).replace(/\\s*km/i, '').trim() + " KM";
+              } else if ((colHeader.indexOf('NIVEL') !== -1 || colHeader.indexOf('COMBUST') !== -1) && (data.fuelLevel || data.fuel || data.combustivel || data.nivelCombustivel)) {
+                rowVals[c] = String(data.fuelLevel || data.fuel || data.combustivel || data.nivelCombustivel).toUpperCase().trim();
+              } else if ((colHeader.indexOf('CONDUTOR') !== -1 || colHeader.indexOf('MOTORISTA') !== -1) && (data.driverName || data.condutor)) {
+                rowVals[c] = String(data.driverName || data.condutor).toUpperCase().trim();
+              } else if (colHeader.indexOf('OPERADOR') !== -1 && (data.operatorName || data.operador)) {
+                rowVals[c] = String(data.operatorName || data.operador).toUpperCase().trim();
+              }
+            }
+
+            uTargetSheet.getRange(ur + 1, 1, 1, rowVals.length).setValues([rowVals]);
+            updatedCount++;
+            updatedTab = uSheetName;
+            updatedRowIndex = ur + 1;
+            break;
+          }
+        }
+
+        if (updatedCount > 0) break;
+      }
+
+      return ContentService.createTextOutput(JSON.stringify({
+        success: true,
+        action: data.action,
+        updated: updatedCount > 0,
+        plate: newPlate,
+        tabName: updatedTab,
+        rowIndex: updatedRowIndex,
+        message: updatedCount > 0 
+          ? ("Gravação da placa " + newPlate + " alterada com sucesso na aba " + updatedTab + "!")
+          : ("Registro da placa " + newPlate + " processado.")
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ------------------------------------------------------------------------
     // 2. GRAVAÇÃO DE REGISTRO VEICULAR NAS ABAS OFICIAIS
     // ------------------------------------------------------------------------
     var op = String(data.operationType || data.operationCategory || data.operation || data.tab || data.action || '').toLowerCase().trim();

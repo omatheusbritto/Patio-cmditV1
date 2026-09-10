@@ -5,6 +5,7 @@
  */
 
 import { FuelLevel, LocationCode, OperationType, PatioMetrics, SectorConfig, VehicleFleetType, VehicleRecord, VehicleStatus } from '../types';
+import { getCurrentSession } from './authService';
 
 const DB_NAME = 'cmdit_vehiclereg_db';
 const STORE_NAME = 'vehicles';
@@ -352,7 +353,14 @@ export async function deleteRecord(id: string): Promise<void> {
   }
 
   try {
-    await fetch(`/api/records/${id}`, { method: 'DELETE' });
+    const session = getCurrentSession();
+    await fetch(`/api/records/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'x-user-role': session?.user.role || 'master',
+        'x-user-username': session?.user.username || '',
+      },
+    });
   } catch (err) {
     console.warn('Não foi possível sincronizar exclusão com o servidor:', err);
   }

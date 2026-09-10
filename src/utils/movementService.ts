@@ -75,14 +75,73 @@ export async function createMovement(movementData: {
   }
 }
 
-export async function deleteMovement(id: string): Promise<boolean> {
+export async function updateMovement(
+  id: string,
+  updateData: Partial<VehicleMovement>
+): Promise<{ success: boolean; movement?: VehicleMovement; message?: string }> {
   try {
-    const res = await fetch(`/api/movements/${id}`, { method: 'DELETE' });
+    const session = getCurrentSession();
+    const res = await fetch(`/api/movements/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-role': session?.user.role || 'master',
+        'x-user-username': session?.user.username || '',
+      },
+      body: JSON.stringify(updateData),
+    });
+
     const data = await res.json();
-    return Boolean(data.success);
-  } catch (err) {
+    if (!res.ok || !data.success) {
+      return { success: false, message: data.message || 'Falha ao atualizar movimentação' };
+    }
+
+    // Atualiza cache local
+    try {
+      const cachedList: VehicleMovement[] = JSON.parse(
+        localStorage.getItem('cached_movements') || '[]'
+      );
+      const idx = cachedList.findIndex((m) => m.id === id);
+      if (idx !== -1) {
+        cachedList[idx] = data.movement;
+        localStorage.setItem('cached_movements', JSON.stringify(cachedList));
+      }
+    } catch {}
+
+    return { success: true, movement: data.movement, message: data.message };
+  } catch (err: any) {
+    console.warn('updateMovement error:', err);
+    return { success: false, message: err.message || 'Erro de conexão ao atualizar movimentação' };
+  }
+}
+
+export async function deleteMovement(id: string): Promise<{ success: boolean; message?: string }> {
+  try {
+    const session = getCurrentSession();
+    const res = await fetch(`/api/movements/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'x-user-role': session?.user.role || 'master',
+        'x-user-username': session?.user.username || '',
+      },
+    });
+    const data = await res.json();
+
+    // Remove do cache local se sucesso
+    if (data.success) {
+      try {
+        const cachedList: VehicleMovement[] = JSON.parse(
+          localStorage.getItem('cached_movements') || '[]'
+        );
+        const filtered = cachedList.filter((m) => m.id !== id);
+        localStorage.setItem('cached_movements', JSON.stringify(filtered));
+      } catch {}
+    }
+
+    return { success: Boolean(data.success), message: data.message };
+  } catch (err: any) {
     console.warn('deleteMovement error:', err);
-    return false;
+    return { success: false, message: err.message };
   }
 }
 

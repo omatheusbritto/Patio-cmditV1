@@ -74,13 +74,71 @@ export async function createInventory(inventoryData: {
   }
 }
 
-export async function deleteInventory(id: string): Promise<boolean> {
+export async function updateInventory(
+  id: string,
+  updateData: Partial<VehicleInventory>
+): Promise<{ success: boolean; inventory?: VehicleInventory; message?: string }> {
   try {
-    const res = await fetch(`/api/inventories/${id}`, { method: 'DELETE' });
+    const session = getCurrentSession();
+    const res = await fetch(`/api/inventories/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-role': session?.user.role || 'master',
+        'x-user-username': session?.user.username || '',
+      },
+      body: JSON.stringify(updateData),
+    });
+
     const data = await res.json();
-    return Boolean(data.success);
+    if (!res.ok || !data.success) {
+      return { success: false, message: data.message || 'Falha ao atualizar inventário' };
+    }
+
+    // Atualiza cache local
+    try {
+      const cachedList: VehicleInventory[] = JSON.parse(
+        localStorage.getItem('cached_inventories') || '[]'
+      );
+      const idx = cachedList.findIndex((i) => i.id === id);
+      if (idx !== -1) {
+        cachedList[idx] = data.inventory;
+        localStorage.setItem('cached_inventories', JSON.stringify(cachedList));
+      }
+    } catch {}
+
+    return { success: true, inventory: data.inventory, message: data.message };
+  } catch (err: any) {
+    console.warn('updateInventory error:', err);
+    return { success: false, message: err.message || 'Erro de conexão ao atualizar inventário' };
+  }
+}
+
+export async function deleteInventory(id: string): Promise<{ success: boolean; message?: string }> {
+  try {
+    const session = getCurrentSession();
+    const res = await fetch(`/api/inventories/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'x-user-role': session?.user.role || 'master',
+        'x-user-username': session?.user.username || '',
+      },
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      try {
+        const cachedList: VehicleInventory[] = JSON.parse(
+          localStorage.getItem('cached_inventories') || '[]'
+        );
+        const filtered = cachedList.filter((i) => i.id !== id);
+        localStorage.setItem('cached_inventories', JSON.stringify(filtered));
+      } catch {}
+    }
+
+    return { success: Boolean(data.success), message: data.message };
   } catch (err) {
     console.warn('deleteInventory error:', err);
-    return false;
+    return { success: false };
   }
 }

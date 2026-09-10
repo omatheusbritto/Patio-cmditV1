@@ -19,6 +19,8 @@ import {
   ChevronRight,
   Database,
   Trash2,
+  Pencil,
+  Save,
   Camera,
   Upload,
   Image as ImageIcon,
@@ -26,7 +28,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { VehicleInventory, VehicleRecord, FuelLevel } from '../types';
-import { fetchInventories, createInventory, deleteInventory } from '../utils/inventoryService';
+import { fetchInventories, createInventory, deleteInventory, updateInventory } from '../utils/inventoryService';
 import { getCurrentSession } from '../utils/authService';
 import { YardLocationPickerModal } from './YardLocationPickerModal';
 import { FuelSelector } from './FuelSelector';
@@ -100,6 +102,84 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
   const session = getCurrentSession();
   const operatorName = session?.user.name || session?.user.username || 'Operador CMDIT';
   const isMaster = session?.user.role === 'master';
+
+  // Master Edit Modal State
+  const [editingInventory, setEditingInventory] = useState<VehicleInventory | null>(null);
+  const [editPlate, setEditPlate] = useState('');
+  const [editLocation, setEditLocation] = useState('');
+  const [editObservation, setEditObservation] = useState('');
+  const [editFuelLevel, setEditFuelLevel] = useState<FuelLevel | undefined>(undefined);
+  const [editOdometer, setEditOdometer] = useState('');
+  const [editOperatorName, setEditOperatorName] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  const handleStartEdit = (inv: VehicleInventory) => {
+    setEditingInventory(inv);
+    setEditPlate(inv.plate);
+    setEditLocation(inv.location || '');
+    setEditObservation(inv.observation || '');
+    setEditFuelLevel(inv.fuelLevel as FuelLevel | undefined);
+    setEditOdometer(inv.odometer ? String(inv.odometer) : '');
+    setEditOperatorName(inv.operatorName || '');
+    setEditError(null);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingInventory) return;
+    if (!editPlate.trim() || !editLocation.trim()) {
+      setEditError('Placa e Local são obrigatórios.');
+      return;
+    }
+
+    setIsSavingEdit(true);
+    setEditError(null);
+    try {
+      const res = await updateInventory(editingInventory.id, {
+        plate: editPlate.toUpperCase().trim(),
+        location: editLocation.trim(),
+        observation: editObservation.trim(),
+        fuelLevel: editFuelLevel,
+        odometer: editOdometer ? Number(editOdometer) || editOdometer : undefined,
+        operatorName: editOperatorName.trim(),
+      });
+
+      if (res.success && res.inventory) {
+        setInventories((prev) =>
+          prev.map((i) => (i.id === editingInventory.id ? res.inventory! : i))
+        );
+        setEditingInventory(null);
+        setSuccessMessage('Inventário atualizado com sucesso no banco de dados e na planilha!');
+        setTimeout(() => setSuccessMessage(null), 5000);
+      } else {
+        setEditError(res.message || 'Falha ao salvar alterações do inventário.');
+      }
+    } catch (err: any) {
+      setEditError(err.message || 'Erro inesperado ao salvar alterações.');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleDelete = async (id: string, invPlate: string) => {
+    const confirmMsg = `Tem certeza que deseja excluir o registro de inventário da placa ${formatPlateForDisplay(
+      invPlate
+    )}?\n\nEsta alteração apagará o registro no Banco de Dados e na Planilha Google Sheets!`;
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      const res = await deleteInventory(id);
+      if (res.success) {
+        setInventories((prev) => prev.filter((i) => i.id !== id));
+        setSuccessMessage(`Inventário da placa ${invPlate} excluído do banco e da planilha.`);
+        setTimeout(() => setSuccessMessage(null), 5000);
+      } else {
+        alert(res.message || 'Não foi possível excluir o inventário.');
+      }
+    } catch (err: any) {
+      alert(`Erro ao excluir inventário: ${err.message}`);
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -211,14 +291,6 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
       setErrorMessage(err.message || 'Erro inesperado ao salvar inventário.');
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handleDelete = async (id: string, invPlate: string) => {
-    if (!confirm(`Deseja excluir o registro de inventário da placa ${invPlate}?`)) return;
-    const ok = await deleteInventory(id);
-    if (ok) {
-      setInventories((prev) => prev.filter((i) => i.id !== id));
     }
   };
 
@@ -689,14 +761,26 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
                       <span className="hidden sm:inline">Compartilhar</span>
                     </button>
                     {isMaster && (
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(inv.id, inv.plate)}
-                        className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 transition"
-                        title="Excluir inventário"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleStartEdit(inv)}
+                          className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 transition flex items-center gap-1 font-bold text-xs"
+                          title="Editar inventário no banco e planilha (Master)"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Editar</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(inv.id, inv.plate)}
+                          className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 transition flex items-center gap-1 font-bold text-xs"
+                          title="Excluir inventário no banco e planilha (Master)"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Excluir</span>
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -781,6 +865,122 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
             { label: 'Local', value: shareModalInventory.location },
           ]}
         />
+      )}
+
+      {/* Master Edit Inventory Modal */}
+      {editingInventory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl border border-neutral-200">
+            <div className="bg-neutral-900 text-white p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Pencil className="w-5 h-5 text-blue-400" />
+                <div>
+                  <h3 className="font-black text-sm">Editar Inventário (Master)</h3>
+                  <p className="text-[11px] text-neutral-400">Atualiza no Banco de Dados e na Planilha</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingInventory(null)}
+                className="p-1.5 rounded-full hover:bg-white/10 text-neutral-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-3 max-h-[75vh] overflow-y-auto">
+              {editError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-medium">
+                  {editError}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 mb-1">Placa do Veículo *</label>
+                <input
+                  type="text"
+                  value={editPlate}
+                  onChange={(e) => setEditPlate(e.target.value.toUpperCase())}
+                  className="w-full px-3 py-2 border border-neutral-300 rounded-xl font-mono font-bold text-sm uppercase bg-neutral-50"
+                  maxLength={8}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 mb-1">Localização no Pátio *</label>
+                <input
+                  type="text"
+                  value={editLocation}
+                  onChange={(e) => setEditLocation(e.target.value)}
+                  className="w-full px-3 py-2 border border-neutral-300 rounded-xl text-xs font-semibold text-emerald-800"
+                  placeholder="Ex: P1 - Poste 1, R1, PDC..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 mb-1">Observação</label>
+                <textarea
+                  value={editObservation}
+                  onChange={(e) => setEditObservation(e.target.value)}
+                  className="w-full px-3 py-2 border border-neutral-300 rounded-xl text-xs resize-none"
+                  rows={2}
+                  placeholder="Observação da vistoria ou estado do veículo..."
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 mb-1">Odômetro (KM)</label>
+                  <input
+                    type="text"
+                    value={editOdometer}
+                    onChange={(e) => setEditOdometer(e.target.value)}
+                    className="w-full px-3 py-2 border border-neutral-300 rounded-xl text-xs font-mono"
+                    placeholder="Ex: 85400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 mb-1">Operador / Responsável</label>
+                  <input
+                    type="text"
+                    value={editOperatorName}
+                    onChange={(e) => setEditOperatorName(e.target.value)}
+                    className="w-full px-3 py-2 border border-neutral-300 rounded-xl text-xs"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-neutral-50 border-t border-neutral-200 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditingInventory(null)}
+                disabled={isSavingEdit}
+                className="px-4 py-2 border border-neutral-300 rounded-xl text-xs font-bold text-neutral-700 hover:bg-neutral-100"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveEdit}
+                disabled={isSavingEdit}
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow flex items-center gap-1.5"
+              >
+                {isSavingEdit ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Salvando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    <span>Salvar no Banco e Planilha</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

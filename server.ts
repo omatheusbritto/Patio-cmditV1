@@ -8,6 +8,7 @@ import {
   createStandardFleetSpreadsheet,
   appendVehicleRecordToSheet,
   initializeAllSpreadsheetTabs,
+  deleteSpreadsheetRowDirect,
 } from './server/googleSheetsService';
 import {
   initDatabase,
@@ -50,11 +51,14 @@ import {
   clearServerLogsAsync,
   restoreLogsFromSpreadsheetAsync,
   loadMovementsAsync,
+  getMovementByIdAsync,
   saveMovementAsync,
   deleteMovementAsync,
   loadInventoriesAsync,
+  getInventoryByIdAsync,
   saveInventoryAsync,
   deleteInventoryAsync,
+  getServerRecordByIdAsync,
   exportDatabaseBackupAsync,
   restoreDatabaseBackupAsync,
 } from './server/dataStore';
@@ -460,6 +464,120 @@ async function startServer() {
     }
   }
 
+  // Sincronização em tempo real de exclusão de qualquer registro na planilha Google Sheets (Inventário, Movimentação, Pátio)
+  async function syncDeleteRecordToGoogleSheet(
+    targetCategory: string,
+    plate: string,
+    dateFormatted?: string,
+    timeFormatted?: string,
+    targetTabName?: string
+  ) {
+    try {
+      const settings = await loadServerSettingsAsync();
+      const webhookUrl = settings.sheetsWebhookUrl;
+
+      // 1. Envia comando ao Webhook do Google Apps Script
+      if (webhookUrl && webhookUrl.startsWith('http')) {
+        const bodyData = {
+          action: 'delete_row',
+          tab: targetCategory,
+          operationType: targetCategory,
+          targetTabName: targetTabName || undefined,
+          plate: plate.toUpperCase().trim(),
+          placa: plate.toUpperCase().trim(),
+          dateFormatted: dateFormatted || undefined,
+          timeFormatted: timeFormatted || undefined,
+          timestamp: new Date().toISOString(),
+        };
+
+        fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(bodyData),
+          redirect: 'follow',
+        }).catch((e) => console.warn('syncDeleteRecordToGoogleSheet webhook warning:', e.message));
+      }
+
+      // 2. Se houver direct Google Sheets API configurado
+      const targetSheetId = settings.activeSpreadsheetId || settings.spreadsheetId;
+      if (settings.sheetsAccessToken && targetSheetId) {
+        let catKey: any = 'entrada';
+        const low = (targetCategory || '').toLowerCase();
+        if (low.includes('said')) catKey = 'saida';
+        else if (low.includes('combust') || low.includes('abastec')) catKey = 'combustivel';
+        else if (low.includes('qualidade') || low.includes('51')) catKey = 'qualidade';
+        else if (low.includes('pdc')) catKey = 'pdc';
+        else if (low.includes('movimen')) catKey = 'movimentacao';
+        else if (low.includes('inventar')) catKey = 'inventario';
+        else if (low.includes('usuario')) catKey = 'usuarios';
+
+        deleteSpreadsheetRowDirect(
+          targetSheetId,
+          catKey,
+          plate,
+          dateFormatted,
+          timeFormatted,
+          settings.sheetsAccessToken
+        ).catch((e) => console.warn('deleteSpreadsheetRowDirect warning:', e.message));
+      }
+    } catch (err: any) {
+      console.warn('syncDeleteRecordToGoogleSheet error:', err.message);
+    }
+  }
+
+  // Sincronização em tempo real de alteração de qualquer registro na planilha Google Sheets
+  async function syncUpdateRecordToGoogleSheet(
+    targetCategory: string,
+    oldPlate: string,
+    updatedData: any,
+    targetTabName?: string
+  ) {
+    try {
+      const settings = await loadServerSettingsAsync();
+      const webhookUrl = settings.sheetsWebhookUrl;
+
+      if (webhookUrl && webhookUrl.startsWith('http')) {
+        const bodyData = {
+          action: 'update_row',
+          tab: targetCategory,
+          operationType: targetCategory,
+          targetTabName: targetTabName || undefined,
+          oldPlate: oldPlate.toUpperCase().trim(),
+          plate: (updatedData.plate || updatedData.placa || oldPlate).toUpperCase().trim(),
+          placa: (updatedData.plate || updatedData.placa || oldPlate).toUpperCase().trim(),
+          origin: updatedData.origin || updatedData.origem || undefined,
+          origem: updatedData.origin || updatedData.origem || undefined,
+          destination: updatedData.destination || updatedData.destino || updatedData.location || updatedData.local || undefined,
+          destino: updatedData.destination || updatedData.destino || updatedData.location || updatedData.local || undefined,
+          location: updatedData.location || updatedData.local || undefined,
+          local: updatedData.location || updatedData.local || undefined,
+          observation: updatedData.observation || updatedData.observacao || updatedData.notes || undefined,
+          observacao: updatedData.observation || updatedData.observacao || updatedData.notes || undefined,
+          fuelLevel: updatedData.fuelLevel || updatedData.fuel || updatedData.combustivel || undefined,
+          combustivel: updatedData.fuelLevel || updatedData.fuel || updatedData.combustivel || undefined,
+          odometer: updatedData.odometer || updatedData.km || updatedData.odometro || undefined,
+          km: updatedData.odometer || updatedData.km || updatedData.odometro || undefined,
+          operatorName: updatedData.operatorName || updatedData.operador || undefined,
+          operador: updatedData.operatorName || updatedData.operador || undefined,
+          driverName: updatedData.driverName || updatedData.condutor || undefined,
+          condutor: updatedData.driverName || updatedData.condutor || undefined,
+          dateFormatted: updatedData.dateFormatted || updatedData.data || undefined,
+          timeFormatted: updatedData.timeFormatted || updatedData.hora || undefined,
+          timestamp: new Date().toISOString(),
+        };
+
+        fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(bodyData),
+          redirect: 'follow',
+        }).catch((e) => console.warn('syncUpdateRecordToGoogleSheet webhook warning:', e.message));
+      }
+    } catch (err: any) {
+      console.warn('syncUpdateRecordToGoogleSheet error:', err.message);
+    }
+  }
+
   // --------------------------------------------------------------------------
   // ROLE-BASED ACCESS CONTROL (RBAC) MIDDLEWARE: MASTER-ONLY PRIVILEGES
   // --------------------------------------------------------------------------
@@ -632,11 +750,77 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/movements/:id', async (req: Request, res: Response) => {
+  app.put('/api/movements/:id', requireMaster, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
+      const existing = await getMovementByIdAsync(id);
+      if (!existing) {
+        res.status(404).json({ success: false, message: 'Registro de movimentação não encontrado.' });
+        return;
+      }
+
+      const {
+        plate,
+        origin,
+        destination,
+        observation,
+        fuelLevel,
+        odometer,
+        operatorName,
+        photoUrl,
+        dateFormatted,
+        timeFormatted,
+      } = req.body;
+
+      const oldPlate = existing.plate;
+      const updatedMovement = await saveMovementAsync({
+        ...existing,
+        plate: plate ? plate.toUpperCase().trim() : existing.plate,
+        origin: origin !== undefined ? origin.trim() : existing.origin,
+        destination: destination !== undefined ? destination.trim() : existing.destination,
+        observation: observation !== undefined ? observation.trim() : existing.observation,
+        fuelLevel: fuelLevel !== undefined ? fuelLevel : existing.fuelLevel,
+        odometer: odometer !== undefined ? odometer : existing.odometer,
+        operatorName: operatorName !== undefined ? operatorName.trim() : existing.operatorName,
+        photoUrl: photoUrl !== undefined ? photoUrl : existing.photoUrl,
+        dateFormatted: dateFormatted || existing.dateFormatted,
+        timeFormatted: timeFormatted || existing.timeFormatted,
+      });
+
+      // Sincroniza em tempo real com a aba MOVIMENTAÇÃO na planilha Google Sheets
+      syncUpdateRecordToGoogleSheet('movimentacao', oldPlate, updatedMovement, 'MOVIMENTAÇÃO').catch(() => {});
+
+      res.json({
+        success: true,
+        movement: updatedMovement,
+        message: 'Movimentação atualizada com sucesso no banco de dados e na planilha!',
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  app.delete('/api/movements/:id', requireMaster, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const existing = await getMovementByIdAsync(id);
       const success = await deleteMovementAsync(id);
-      res.json({ success });
+
+      if (existing && existing.plate) {
+        // Remove a linha correspondente da aba MOVIMENTAÇÃO na planilha Google Sheets
+        syncDeleteRecordToGoogleSheet(
+          'movimentacao',
+          existing.plate,
+          existing.dateFormatted,
+          existing.timeFormatted,
+          'MOVIMENTAÇÃO'
+        ).catch(() => {});
+      }
+
+      res.json({
+        success,
+        message: 'Movimentação excluída com sucesso do banco de dados e da planilha!',
+      });
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
     }
@@ -724,11 +908,75 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/inventories/:id', async (req: Request, res: Response) => {
+  app.put('/api/inventories/:id', requireMaster, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
+      const existing = await getInventoryByIdAsync(id);
+      if (!existing) {
+        res.status(404).json({ success: false, message: 'Registro de inventário não encontrado.' });
+        return;
+      }
+
+      const {
+        plate,
+        location,
+        observation,
+        fuelLevel,
+        odometer,
+        operatorName,
+        photoUrl,
+        dateFormatted,
+        timeFormatted,
+      } = req.body;
+
+      const oldPlate = existing.plate;
+      const updatedInventory = await saveInventoryAsync({
+        ...existing,
+        plate: plate ? plate.toUpperCase().trim() : existing.plate,
+        location: location !== undefined ? location.trim() : existing.location,
+        observation: observation !== undefined ? observation.trim() : existing.observation,
+        fuelLevel: fuelLevel !== undefined ? fuelLevel : existing.fuelLevel,
+        odometer: odometer !== undefined ? odometer : existing.odometer,
+        operatorName: operatorName !== undefined ? operatorName.trim() : existing.operatorName,
+        photoUrl: photoUrl !== undefined ? photoUrl : existing.photoUrl,
+        dateFormatted: dateFormatted || existing.dateFormatted,
+        timeFormatted: timeFormatted || existing.timeFormatted,
+      });
+
+      // Sincroniza em tempo real com a aba INVENTÁRIO na planilha Google Sheets
+      syncUpdateRecordToGoogleSheet('inventario', oldPlate, updatedInventory, 'INVENTÁRIO').catch(() => {});
+
+      res.json({
+        success: true,
+        inventory: updatedInventory,
+        message: 'Inventário atualizado com sucesso no banco de dados e na planilha!',
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  app.delete('/api/inventories/:id', requireMaster, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const existing = await getInventoryByIdAsync(id);
       const success = await deleteInventoryAsync(id);
-      res.json({ success });
+
+      if (existing && existing.plate) {
+        // Remove da aba INVENTÁRIO na planilha Google Sheets
+        syncDeleteRecordToGoogleSheet(
+          'inventario',
+          existing.plate,
+          existing.dateFormatted,
+          existing.timeFormatted,
+          'INVENTÁRIO'
+        ).catch(() => {});
+      }
+
+      res.json({
+        success,
+        message: 'Inventário excluído com sucesso do banco de dados e da planilha!',
+      });
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
     }
@@ -845,6 +1093,7 @@ async function startServer() {
         const users = await loadServerUsersAsync();
         if (userToDelete) {
           syncUserToGoogleSheetWebhook('delete_user', { username: userToDelete.username }).catch(() => {});
+          syncDeleteRecordToGoogleSheet('usuarios', userToDelete.username, undefined, undefined, 'USUARIOS_CMDIT').catch(() => {});
         }
         res.json({ success: true, users });
       } else {
@@ -1082,8 +1331,55 @@ async function startServer() {
         res.status(400).json({ success: false, error: 'Registro inválido.' });
         return;
       }
+      const existing = await getServerRecordByIdAsync(record.id);
       const updatedList = await appendOrUpdateServerRecordAsync(record);
+
+      // Se era atualização de registro existente, sincroniza alteração na planilha
+      if (existing && record.plate) {
+        const op = String(record.operationType || existing.operationType || 'entrada').toLowerCase();
+        let targetTab = 'ENTRADAS';
+        if (op.includes('said')) targetTab = 'SAIDA';
+        else if (op.includes('combust') || op.includes('abastec')) targetTab = 'COMBUSTIVEL';
+        else if (op.includes('qualidade') || op.includes('51')) targetTab = 'QUALIDADE 51';
+        else if (op.includes('pdc')) targetTab = 'Fila PDC';
+
+        syncUpdateRecordToGoogleSheet(op, existing.plate, record, targetTab).catch(() => {});
+      }
+
       res.json({ success: true, records: updatedList });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.put('/api/records/:id', async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const record = req.body;
+      const existing = await getServerRecordByIdAsync(id);
+      if (!existing) {
+        res.status(404).json({ success: false, error: 'Registro não encontrado.' });
+        return;
+      }
+
+      const merged = { ...existing, ...record, id };
+      const updatedList = await appendOrUpdateServerRecordAsync(merged);
+
+      const op = String(merged.operationType || existing.operationType || 'entrada').toLowerCase();
+      let targetTab = 'ENTRADAS';
+      if (op.includes('said')) targetTab = 'SAIDA';
+      else if (op.includes('combust') || op.includes('abastec')) targetTab = 'COMBUSTIVEL';
+      else if (op.includes('qualidade') || op.includes('51')) targetTab = 'QUALIDADE 51';
+      else if (op.includes('pdc')) targetTab = 'Fila PDC';
+
+      syncUpdateRecordToGoogleSheet(op, existing.plate, merged, targetTab).catch(() => {});
+
+      res.json({
+        success: true,
+        record: merged,
+        records: updatedList,
+        message: 'Registro alterado com sucesso no banco de dados e na planilha!',
+      });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }
@@ -1092,8 +1388,31 @@ async function startServer() {
   app.delete('/api/records/:id', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
+      const existing = await getServerRecordByIdAsync(id);
       const updatedList = await deleteServerRecordAsync(id);
-      res.json({ success: true, records: updatedList });
+
+      if (existing && existing.plate) {
+        const op = String(existing.operationType || '').toLowerCase();
+        let targetTab = 'ENTRADAS';
+        if (op.includes('said')) targetTab = 'SAIDA';
+        else if (op.includes('combust') || op.includes('abastec')) targetTab = 'COMBUSTIVEL';
+        else if (op.includes('qualidade') || op.includes('51')) targetTab = 'QUALIDADE 51';
+        else if (op.includes('pdc')) targetTab = 'Fila PDC';
+
+        syncDeleteRecordToGoogleSheet(
+          op || 'entrada',
+          existing.plate,
+          existing.dateFormatted || (existing.entryTime ? existing.entryTime.split(' ')[0] : undefined),
+          existing.timeFormatted || (existing.entryTime ? existing.entryTime.split(' ')[1] : undefined),
+          targetTab
+        ).catch(() => {});
+      }
+
+      res.json({
+        success: true,
+        records: updatedList,
+        message: 'Registro excluído com sucesso do banco de dados e da planilha!',
+      });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }
