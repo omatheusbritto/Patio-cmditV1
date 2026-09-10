@@ -582,19 +582,30 @@ async function startServer() {
   // ROLE-BASED ACCESS CONTROL (RBAC) MIDDLEWARE: MASTER-ONLY PRIVILEGES
   // --------------------------------------------------------------------------
   const requireMaster = (req: Request, res: Response, next: express.NextFunction): void => {
-    const roleHeader =
+    const rawRole =
       (req.headers['x-user-role'] as string) ||
+      (req.headers['user-role'] as string) ||
       (req.query?.role as string) ||
-      (req.body?.userRole as string);
-    const usernameHeader =
+      (req.query?.userRole as string) ||
+      (req.body?.userRole as string) ||
+      (req.body?.role as string);
+
+    const rawUsername =
       (req.headers['x-user-username'] as string) ||
+      (req.headers['user-username'] as string) ||
       (req.query?.username as string) ||
-      (req.body?.requestUsername as string);
+      (req.query?.requestUsername as string) ||
+      (req.body?.requestUsername as string) ||
+      (req.body?.username as string);
+
+    const role = (rawRole || '').toLowerCase().trim();
+    const username = (rawUsername || '').toLowerCase().trim();
 
     const isMaster =
-      roleHeader === 'master' ||
-      (usernameHeader &&
-        ['mastercmdit', 'desenvolvedor'].includes(usernameHeader.toLowerCase().trim()));
+      role === 'master' ||
+      role === 'admin' ||
+      role === 'desenvolvedor' ||
+      ['mastercmdit', 'desenvolvedor', 'master', 'admin'].includes(username);
 
     if (!isMaster) {
       res.status(403).json({

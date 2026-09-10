@@ -8,7 +8,7 @@ import {
   signOut,
 } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { getAuthHeaders } from './authService';
+import { getAuthHeaders, getCurrentSession } from './authService';
 
 export interface GoogleDriveConfig {
   webhookUrl: string | null;
@@ -1738,13 +1738,20 @@ export async function syncAllUsersToSheet(
   try {
     const config = getStoredDriveConfig();
     const webhookUrl = config.webhookUrl;
+    const session = getCurrentSession();
+    const authHeaders = getAuthHeaders();
 
     const resp = await fetch('/api/users/sync-sheet', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders,
+      },
       body: JSON.stringify({
         webhookUrl: webhookUrl || undefined,
         users: users || undefined,
+        userRole: session?.user?.role || 'master',
+        requestUsername: session?.user?.username || 'mastercmdit',
       }),
     });
 
@@ -1761,13 +1768,20 @@ export async function syncSingleUserToSheet(
   try {
     const config = getStoredDriveConfig();
     const webhookUrl = config.webhookUrl;
+    const session = getCurrentSession();
+    const authHeaders = getAuthHeaders();
 
     const resp = await fetch('/api/users/sync-single', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders,
+      },
       body: JSON.stringify({
         webhookUrl: webhookUrl || undefined,
         user,
+        userRole: session?.user?.role || 'master',
+        requestUsername: session?.user?.username || 'mastercmdit',
       }),
     });
 

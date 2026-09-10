@@ -1,5 +1,15 @@
 [
   {
+    "id": "dev-001",
+    "username": "desenvolvedor",
+    "name": "Desenvolvedor CMDIT",
+    "role": "master",
+    "password": "DEV@cmdit",
+    "whatsapp": "DEV@cmdit",
+    "createdAt": "2026-09-03T13:12:03.331Z",
+    "isActive": true
+  },
+  {
     "id": "master-001",
     "username": "mastercmdit",
     "name": "Administrador Master",
@@ -10,25 +20,14 @@
     "isActive": true
   },
   {
-    "id": "dev-001",
-    "username": "desenvolvedor",
-    "name": "Desenvolvedor CMDIT",
-    "role": "master",
-    "password": "DEV@cmdit",
-    "whatsapp": "DEV@cmdit",
-    "createdAt": "04/09/2026 16:46:59",
-    "isActive": true
-  },
-  {
     "id": "user-1788455596305-xqei8",
     "username": "matheusbritto",
     "name": "Matheus Britto",
     "role": "patio",
     "password": "user123",
     "whatsapp": "11963816345",
-    "createdAt": "04/09/2026 02:09:40",
-    "isActive": true,
-    "lastLogin": "30/08/2026 19:41:36"
+    "createdAt": "2026-09-03T17:13:16.674Z",
+    "isActive": true
   },
   {
     "id": "user-1788548501411-o9vyk",
@@ -37,7 +36,7 @@
     "role": "master",
     "password": "Eduardo@CMDIT",
     "whatsapp": "11930114104",
-    "createdAt": "04/09/2026 12:51:50",
+    "createdAt": "2026-09-04T19:01:41.755Z",
     "isActive": true
   },
   {
@@ -47,7 +46,7 @@
     "role": "qualidade_51",
     "password": "Cmdit",
     "whatsapp": "11984986781",
-    "createdAt": "05/09/2026 09:49:48",
+    "createdAt": "2026-09-05T12:51:16.003Z",
     "isActive": true
   },
   {
@@ -57,16 +56,36 @@
     "role": "patio",
     "password": "user@cmdit",
     "whatsapp": "11940736136",
-    "createdAt": "06/09/2026 09:36:22",
+    "createdAt": "2026-09-06T12:36:22.635Z",
+    "isActive": false
+  },
+  {
+    "id": "user-1788959361345-72drp",
+    "username": "diegoeduardo",
+    "name": "Diego Eduardo",
+    "role": "operador",
+    "password": "CMDIT",
+    "whatsapp": "11983385405",
+    "createdAt": "2026-09-09T13:09:21.387Z",
     "isActive": true
   },
   {
-    "id": "user-1788954405565-ffqw",
+    "id": "user-1788984219783-dc550",
+    "username": "alangomes",
+    "name": "Alan Gomes",
+    "role": "operador",
+    "password": "11982032726",
+    "whatsapp": "11982032726",
+    "createdAt": "2026-09-09T20:03:39.807Z",
+    "isActive": true
+  },
+  {
+    "id": "user-1789052699428-m62jq",
     "username": "michelpedrozo",
     "name": "Michel Pedrozo",
     "role": "operador",
     "password": "User1122",
-    "createdAt": "04/09/2026 16:01:41",
+    "createdAt": "2026-09-10T15:04:59.453Z",
     "isActive": true
   }
 ]
