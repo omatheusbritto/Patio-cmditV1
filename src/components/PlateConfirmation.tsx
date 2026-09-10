@@ -19,9 +19,7 @@ import {
   ZoomIn,
   ShieldCheck,
   HelpCircle,
-  Share2,
 } from 'lucide-react';
-import { SharePhotoModal } from './SharePhotoModal';
 
 interface PlateConfirmationProps {
   photoDataUrl: string;
@@ -63,7 +61,6 @@ export const PlateConfirmation: React.FC<PlateConfirmationProps> = ({
   });
 
   const [isPhotoExpanded, setIsPhotoExpanded] = useState<boolean>(false);
-  const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
   const [activeSlot, setActiveSlot] = useState<number>(0);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -521,7 +518,7 @@ export const PlateConfirmation: React.FC<PlateConfirmationProps> = ({
             </div>
           </div>
 
-          {/* Action Buttons: Confirm and Share */}
+          {/* Action Button: Confirm */}
           <div className="flex flex-col gap-2.5">
             <button
               type="submit"
@@ -535,41 +532,9 @@ export const PlateConfirmation: React.FC<PlateConfirmationProps> = ({
               <span>Confirmar Placa ({cleanPlate || '---'})</span>
               <ArrowRight className="w-5 h-5" />
             </button>
-
-            <button
-              type="button"
-              onClick={() => setIsShareModalOpen(true)}
-              className="w-full py-3.5 px-4 rounded-xl font-bold text-sm bg-sky-600 hover:bg-sky-500 text-white shadow-md active:scale-98 transition flex items-center justify-center gap-2 cursor-pointer border border-sky-500"
-            >
-              <Share2 className="w-4 h-4" />
-              <span>Compartilhar Foto e Dados da Placa</span>
-            </button>
           </div>
         </form>
       </div>
-
-      {/* Share Photo and Data Modal */}
-      <SharePhotoModal
-        isOpen={isShareModalOpen}
-        onClose={() => setIsShareModalOpen(false)}
-        photoUrl={photoDataUrl}
-        plate={cleanPlate}
-        title="Captura de Placa"
-        dataFields={[
-          { label: 'Status da Placa', value: isValid ? 'Válida' : 'Em Verificação' },
-          { label: 'Padrão', value: isMercosul ? 'Mercosul' : 'Padrão Cinza' },
-          {
-            label: 'Leitura',
-            value:
-              plateSource === 'gemini_ai'
-                ? 'IA Gemini'
-                : plateSource === 'local_ocr'
-                ? 'OCR Local'
-                : 'Manual',
-          },
-          { label: 'Diagnóstico', value: analysisNotes || 'Foto nítida capturada' },
-        ]}
-      />
 
       {/* Expanded photo modal */}
       {isPhotoExpanded && (

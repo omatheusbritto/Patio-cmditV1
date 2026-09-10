@@ -74,9 +74,9 @@ export interface DatabaseDiagnostic {
   latencyMs: number;
   tables: {
     users: boolean;
-    vehicle_records: boolean;
-    vehicle_movements: boolean;
-    vehicle_inventories: boolean;
+    vehicle_records?: boolean;
+    vehicle_movements?: boolean;
+    vehicle_inventories?: boolean;
     access_logs: boolean;
     app_settings: boolean;
   };
@@ -273,30 +273,6 @@ export async function initDatabase(): Promise<{ active: boolean; type: 'postgres
           ON CONFLICT (username) DO NOTHING;
         `);
 
-        // Create vehicle_records table
-        await client.query(`
-          CREATE TABLE IF NOT EXISTS vehicle_records (
-            id VARCHAR(100) PRIMARY KEY,
-            plate VARCHAR(20) NOT NULL,
-            plate_state VARCHAR(10) NULL,
-            model VARCHAR(100) NULL,
-            color VARCHAR(50) NULL,
-            driver_name VARCHAR(150) NULL,
-            driver_doc VARCHAR(50) NULL,
-            company VARCHAR(150) NULL,
-            entry_time VARCHAR(50) NULL,
-            exit_time VARCHAR(50) NULL,
-            status VARCHAR(50) NOT NULL DEFAULT 'inside',
-            seal_number VARCHAR(100) NULL,
-            odometer INT NULL,
-            notes TEXT NULL,
-            operator_name VARCHAR(150) NULL,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            raw_data JSONB NULL
-          );
-        `);
-
         // Create access_logs table for access tracking (Login / Logout / Expirado)
         await client.query(`
           CREATE TABLE IF NOT EXISTS access_logs (
@@ -325,46 +301,9 @@ export async function initDatabase(): Promise<{ active: boolean; type: 'postgres
           );
         `);
 
-        // Create vehicle_movements table for tracking vehicle movements (Origem -> Destino)
-        await client.query(`
-          CREATE TABLE IF NOT EXISTS vehicle_movements (
-            id VARCHAR(100) PRIMARY KEY,
-            date_formatted VARCHAR(20) NOT NULL,
-            time_formatted VARCHAR(20) NOT NULL,
-            plate VARCHAR(20) NOT NULL,
-            origin VARCHAR(100) NOT NULL,
-            destination VARCHAR(100) NOT NULL,
-            observation TEXT NOT NULL,
-            fuel_level VARCHAR(50) NULL,
-            odometer INT NULL,
-            operator_name VARCHAR(150) NOT NULL,
-            photo_url TEXT NULL,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            raw_data JSONB NULL
-          );
-        `);
-
-        // Create vehicle_inventories table for inventory checks (Placa + Local)
-        await client.query(`
-          CREATE TABLE IF NOT EXISTS vehicle_inventories (
-            id VARCHAR(100) PRIMARY KEY,
-            date_formatted VARCHAR(20) NOT NULL,
-            time_formatted VARCHAR(20) NOT NULL,
-            plate VARCHAR(20) NOT NULL,
-            location VARCHAR(100) NOT NULL,
-            observation TEXT NULL,
-            fuel_level VARCHAR(50) NULL,
-            odometer INT NULL,
-            operator_name VARCHAR(150) NOT NULL,
-            photo_url TEXT NULL,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            raw_data JSONB NULL
-          );
-        `);
-
         activeDbType = 'postgres';
         isDbAvailable = true;
-        console.log('✅ PostgreSQL Database connected & synchronized successfully (Render / Cloud)!');
+        console.log('✅ PostgreSQL Database connected & synchronized successfully (usuários, senhas e logs)!');
         startDatabaseHeartbeat();
         return { active: true, type: 'postgres' };
       } finally {
@@ -400,29 +339,6 @@ export async function initDatabase(): Promise<{ active: boolean; type: 'postgres
           INSERT INTO users (id, username, password_hash, full_name, role, is_active)
           VALUES ('master-001', 'mastercmdit', 'Master@123', 'Administrador Master', 'master', 1)
           ON DUPLICATE KEY UPDATE full_name='Administrador Master'
-        `);
-
-        await conn.query(`
-          CREATE TABLE IF NOT EXISTS vehicle_records (
-            id VARCHAR(100) PRIMARY KEY,
-            plate VARCHAR(20) NOT NULL,
-            plate_state VARCHAR(10) NULL,
-            model VARCHAR(100) NULL,
-            color VARCHAR(50) NULL,
-            driver_name VARCHAR(150) NULL,
-            driver_doc VARCHAR(50) NULL,
-            company VARCHAR(150) NULL,
-            entry_time VARCHAR(50) NULL,
-            exit_time VARCHAR(50) NULL,
-            status VARCHAR(50) NOT NULL DEFAULT 'inside',
-            seal_number VARCHAR(100) NULL,
-            odometer INT NULL,
-            notes TEXT NULL,
-            operator_name VARCHAR(150) NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            raw_data JSON NULL
-          )
         `);
 
         await conn.query(`
@@ -517,9 +433,6 @@ export async function getDatabaseDiagnosticAsync(customUrl?: string): Promise<Da
           latencyMs,
           tables: {
             users: foundTables.has('users'),
-            vehicle_records: foundTables.has('vehicle_records'),
-            vehicle_movements: foundTables.has('vehicle_movements'),
-            vehicle_inventories: foundTables.has('vehicle_inventories'),
             access_logs: foundTables.has('access_logs'),
             app_settings: foundTables.has('app_settings'),
           },
@@ -552,7 +465,7 @@ export async function getDatabaseDiagnosticAsync(customUrl?: string): Promise<Da
         provider: isRender ? 'OnRender PostgreSQL (Falha de Conexão)' : 'PostgreSQL (Falha de Conexão)',
         isRenderPostgres: isRender,
         latencyMs: Date.now() - startTime,
-        tables: { users: false, vehicle_records: false, vehicle_movements: false, vehicle_inventories: false, access_logs: false, app_settings: false },
+        tables: { users: false, access_logs: false, app_settings: false },
         userCount: 0,
         users: [],
         connectionDetails: {
@@ -574,7 +487,7 @@ export async function getDatabaseDiagnosticAsync(customUrl?: string): Promise<Da
     provider: 'Banco Local & Cache Seguro em Memória',
     isRenderPostgres: false,
     latencyMs: 1,
-    tables: { users: true, vehicle_records: true, vehicle_movements: true, vehicle_inventories: true, access_logs: true, app_settings: true },
+    tables: { users: true, access_logs: true, app_settings: true },
     userCount: 3,
     users: [
       { id: 'master-001', username: 'mastercmdit', name: 'Administrador Master', role: 'master', isActive: true, hasPassword: true },

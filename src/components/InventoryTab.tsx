@@ -67,8 +67,7 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Sharing modal states
-  const [isShareFormModalOpen, setIsShareFormModalOpen] = useState(false);
+  // Sharing modal state (triggered at the end of operation or on card)
   const [shareModalInventory, setShareModalInventory] = useState<VehicleInventory | null>(null);
 
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -190,22 +189,24 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
         return;
       }
 
-      setInventories((prev) => [res.inventory!, ...prev]);
+      const savedInventory = res.inventory;
+      setInventories((prev) => [savedInventory, ...prev]);
       if (onInventoryCreated) {
-        onInventoryCreated(res.inventory);
+        onInventoryCreated(savedInventory);
       }
 
       setSuccessMessage(`Inventário da placa ${formatPlateForDisplay(cleanPlate)} registrado com sucesso!`);
-      setTimeout(() => {
-        setIsFormOpen(false);
-        setPlate('');
-        setLocation('');
-        setObservation('');
-        setFuelLevel(undefined);
-        setOdometer('');
-        setPhotoUrl(null);
-        setSuccessMessage(null);
-      }, 1400);
+      setIsFormOpen(false);
+      setPlate('');
+      setLocation('');
+      setObservation('');
+      setFuelLevel(undefined);
+      setOdometer('');
+      setPhotoUrl(null);
+      setSuccessMessage(null);
+
+      // Dispara compartilhamento WhatsApp com foto e texto no final da operação
+      setShareModalInventory(savedInventory);
     } catch (err: any) {
       setErrorMessage(err.message || 'Erro inesperado ao salvar inventário.');
     } finally {
@@ -222,18 +223,8 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
   };
 
   const handleShareWhatsApp = (inv: VehicleInventory) => {
-    let text = `📋 *INVENTÁRIO DE VEÍCULO - CMDIT*\n`;
-    text += `🚗 *Placa:* ${formatPlateForDisplay(inv.plate)}\n`;
-    text += `📍 *Local:* ${inv.location}\n`;
-    if (inv.observation) text += `📝 *Observação:* ${inv.observation}\n`;
-    if (inv.fuelLevel) text += `⛽ *Combustível:* ${inv.fuelLevel}\n`;
-    if (inv.odometer) text += `⏱️ *KM Odômetro:* ${inv.odometer}\n`;
-    text += `👤 *Operador:* ${inv.operatorName}\n`;
-    text += `📅 *Data/Hora:* ${inv.dateFormatted} às ${inv.timeFormatted}\n`;
-    text += `📊 *Planilha Oficial:* Aba inventario (Colunas A a F)`;
-
-    const encoded = encodeURIComponent(text);
-    window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
+    // Abre modal de compartilhamento com foto anexada e texto dos campos (Placa e Local)
+    setShareModalInventory(inv);
   };
 
   const filteredList = inventories.filter((i) => {
@@ -448,16 +439,6 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
-
-                  {/* Botão de Compartilhar Foto e Dados do Inventário */}
-                  <button
-                    type="button"
-                    onClick={() => setIsShareFormModalOpen(true)}
-                    className="w-full py-2.5 px-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition active:scale-98 cursor-pointer"
-                  >
-                    <Share2 className="w-3.5 h-3.5" />
-                    <span>Compartilhar Foto e Dados do Inventário</span>
-                  </button>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-2">
@@ -786,23 +767,7 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
         title="Selecionar Local no Pátio"
       />
 
-      {/* Share Photo Modal for Inventory Form */}
-      <SharePhotoModal
-        isOpen={isShareFormModalOpen}
-        onClose={() => setIsShareFormModalOpen(false)}
-        photoUrl={photoUrl}
-        plate={plate || 'NOVO INVENTÁRIO'}
-        title="Inventário de Veículo"
-        dataFields={[
-          { label: 'Local no Pátio', value: location || 'Não informado' },
-          { label: 'Observação', value: observation || '-' },
-          { label: 'Combustível', value: fuelLevel },
-          { label: 'Odômetro', value: odometer ? `${odometer} KM` : undefined },
-          { label: 'Operador', value: operatorName },
-        ]}
-      />
-
-      {/* Share Photo Modal for existing Inventory Record */}
+      {/* Share Photo Modal for completed or selected Inventory */}
       {shareModalInventory && (
         <SharePhotoModal
           isOpen={Boolean(shareModalInventory)}
@@ -810,16 +775,10 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
           photoUrl={shareModalInventory.photoUrl}
           plate={shareModalInventory.plate}
           title="Inventário de Veículo"
+          customMessage={`*Placa:* ${formatPlateForDisplay(shareModalInventory.plate)}\n*Local:* ${shareModalInventory.location}`}
           dataFields={[
-            { label: 'Local no Pátio', value: shareModalInventory.location },
-            { label: 'Observação', value: shareModalInventory.observation },
-            { label: 'Combustível', value: shareModalInventory.fuelLevel },
-            {
-              label: 'Odômetro',
-              value: shareModalInventory.odometer ? `${shareModalInventory.odometer} KM` : undefined,
-            },
-            { label: 'Operador', value: shareModalInventory.operatorName },
-            { label: 'Data/Hora', value: `${shareModalInventory.dateFormatted} às ${shareModalInventory.timeFormatted}` },
+            { label: 'Placa', value: formatPlateForDisplay(shareModalInventory.plate) },
+            { label: 'Local', value: shareModalInventory.location },
           ]}
         />
       )}

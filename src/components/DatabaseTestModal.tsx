@@ -272,7 +272,7 @@ export const DatabaseTestModal: React.FC<DatabaseTestModalProps> = ({
             <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
               <div className="text-xs font-bold text-slate-700 flex items-center gap-1.5 mb-2.5">
                 <Layers className="w-4 h-4 text-indigo-600" />
-                <span>Integridade das Tabelas do Sistema:</span>
+                <span>Tabelas Dedicadas no Banco de Dados:</span>
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="flex items-center gap-1.5 font-medium">
@@ -284,29 +284,24 @@ export const DatabaseTestModal: React.FC<DatabaseTestModalProps> = ({
                   <span>users (Usuários & Senhas)</span>
                 </div>
                 <div className="flex items-center gap-1.5 font-medium">
-                  {diagnostic.tables.vehicle_records ? (
-                    <Check className="w-3.5 h-3.5 text-emerald-600" />
-                  ) : (
-                    <X className="w-3.5 h-3.5 text-rose-500" />
-                  )}
-                  <span>vehicle_records (Pátio)</span>
-                </div>
-                <div className="flex items-center gap-1.5 font-medium">
                   {diagnostic.tables.access_logs ? (
                     <Check className="w-3.5 h-3.5 text-emerald-600" />
                   ) : (
                     <X className="w-3.5 h-3.5 text-rose-500" />
                   )}
-                  <span>access_logs (Auditoria)</span>
+                  <span>access_logs (Logs de Acesso)</span>
                 </div>
-                <div className="flex items-center gap-1.5 font-medium">
+                <div className="flex items-center gap-1.5 font-medium col-span-2">
                   {diagnostic.tables.app_settings ? (
                     <Check className="w-3.5 h-3.5 text-emerald-600" />
                   ) : (
                     <X className="w-3.5 h-3.5 text-rose-500" />
                   )}
-                  <span>app_settings (Configurações)</span>
+                  <span>app_settings (Configurações & Planilha)</span>
                 </div>
+              </div>
+              <div className="mt-2.5 pt-2 border-t border-slate-200 text-[11px] text-slate-500">
+                ℹ️ Banco configurado para armazenar <strong>apenas dados de usuários, senhas e logs</strong>. As movimentações e inventários são registrados na Planilha Oficial Google Sheets.
               </div>
             </div>
           )}

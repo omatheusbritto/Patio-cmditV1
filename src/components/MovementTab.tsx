@@ -67,8 +67,7 @@ export const MovementTab: React.FC<MovementTabProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Sharing modal states
-  const [isShareFormModalOpen, setIsShareFormModalOpen] = useState(false);
+  // Sharing modal state (triggered at the end of operation or on card)
   const [shareModalMovement, setShareModalMovement] = useState<VehicleMovement | null>(null);
 
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -180,10 +179,11 @@ export const MovementTab: React.FC<MovementTabProps> = ({
       });
 
       if (res.success && res.movement) {
-        setSuccessMessage(`Movimentação do veículo ${res.movement.plate} registrada com sucesso!`);
-        setMovements((prev) => [res.movement!, ...prev]);
+        const savedMovement = res.movement;
+        setSuccessMessage(`Movimentação do veículo ${savedMovement.plate} registrada com sucesso!`);
+        setMovements((prev) => [savedMovement, ...prev]);
         if (onMovementCreated) {
-          onMovementCreated(res.movement);
+          onMovementCreated(savedMovement);
         }
         // Reset form
         setPlate('');
@@ -194,6 +194,9 @@ export const MovementTab: React.FC<MovementTabProps> = ({
         setOdometer('');
         setPhotoUrl(null);
         setIsFormOpen(false);
+
+        // Dispara compartilhamento WhatsApp com foto e texto no final da operação
+        setShareModalMovement(savedMovement);
       } else {
         setErrorMessage(res.message || 'Falha ao salvar movimentação.');
       }
@@ -205,17 +208,8 @@ export const MovementTab: React.FC<MovementTabProps> = ({
   };
 
   const handleShareWhatsApp = (mov: VehicleMovement) => {
-    const text = `🔄 *MOVIMENTAÇÃO DE VEÍCULO - PÁTIO CMDIT*
-🚗 *Placa:* ${formatPlateForDisplay(mov.plate)}
-📍 *Origem:* ${mov.origin}
-🎯 *Destino:* ${mov.destination}
-📝 *Observação:* ${mov.observation}
-${mov.fuelLevel ? `⛽ *Combustível:* ${mov.fuelLevel}\n` : ''}${mov.odometer ? `⚡ *Odômetro:* ${mov.odometer} km\n` : ''}👤 *Operador:* ${mov.operatorName}
-📅 *Data:* ${mov.dateFormatted} às ${mov.timeFormatted}
-_Sincronizado automaticamente no Render PostgreSQL e Google Sheets_`;
-
-    const encoded = encodeURIComponent(text);
-    window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
+    // Abre modal de compartilhamento com foto anexada e texto dos 4 campos
+    setShareModalMovement(mov);
   };
 
   const filteredMovements = movements.filter((m) => {
@@ -422,16 +416,6 @@ _Sincronizado automaticamente no Render PostgreSQL e Google Sheets_`;
                     <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
-
-                {/* Botão de Compartilhar Foto e Dados da Movimentação */}
-                <button
-                  type="button"
-                  onClick={() => setIsShareFormModalOpen(true)}
-                  className="w-full py-2.5 px-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition active:scale-98 cursor-pointer"
-                >
-                  <Share2 className="w-3.5 h-3.5" />
-                  <span>Compartilhar Foto e Dados da Movimentação</span>
-                </button>
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-2">
@@ -792,24 +776,7 @@ _Sincronizado automaticamente no Render PostgreSQL e Google Sheets_`;
         onClose={() => setPickerType(null)}
       />
 
-      {/* Share Photo Modal for Form */}
-      <SharePhotoModal
-        isOpen={isShareFormModalOpen}
-        onClose={() => setIsShareFormModalOpen(false)}
-        photoUrl={photoUrl}
-        plate={plate || 'NOVA MOVIMENTAÇÃO'}
-        title="Movimentação de Veículo"
-        dataFields={[
-          { label: 'Origem', value: origin || 'Não informada' },
-          { label: 'Destino', value: destination || 'Não informado' },
-          { label: 'Observação', value: observation || '-' },
-          { label: 'Combustível', value: fuelLevel },
-          { label: 'Odômetro', value: odometer ? `${odometer} km` : undefined },
-          { label: 'Operador', value: operatorName },
-        ]}
-      />
-
-      {/* Share Photo Modal for existing Movement */}
+      {/* Share Photo Modal for completed or selected Movement */}
       {shareModalMovement && (
         <SharePhotoModal
           isOpen={Boolean(shareModalMovement)}
@@ -817,17 +784,12 @@ _Sincronizado automaticamente no Render PostgreSQL e Google Sheets_`;
           photoUrl={shareModalMovement.photoUrl}
           plate={shareModalMovement.plate}
           title="Movimentação de Veículo"
+          customMessage={`*Placa:* ${formatPlateForDisplay(shareModalMovement.plate)}\n*Origem:* ${shareModalMovement.origin}\n*Destino:* ${shareModalMovement.destination}\n*Observação:* ${shareModalMovement.observation || '-'}`}
           dataFields={[
+            { label: 'Placa', value: formatPlateForDisplay(shareModalMovement.plate) },
             { label: 'Origem', value: shareModalMovement.origin },
             { label: 'Destino', value: shareModalMovement.destination },
-            { label: 'Observação', value: shareModalMovement.observation },
-            { label: 'Combustível', value: shareModalMovement.fuelLevel },
-            {
-              label: 'Odômetro',
-              value: shareModalMovement.odometer ? `${shareModalMovement.odometer} km` : undefined,
-            },
-            { label: 'Operador', value: shareModalMovement.operatorName },
-            { label: 'Data/Hora', value: `${shareModalMovement.dateFormatted} às ${shareModalMovement.timeFormatted}` },
+            { label: 'Observação', value: shareModalMovement.observation || '-' },
           ]}
         />
       )}

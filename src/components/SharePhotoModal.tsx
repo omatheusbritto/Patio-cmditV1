@@ -275,6 +275,17 @@ export const SharePhotoModal: React.FC<SharePhotoModalProps> = ({
             </div>
           </div>
 
+          {/* WhatsApp Text Preview */}
+          <div className="bg-neutral-900 text-neutral-100 rounded-xl p-3 border border-neutral-800 text-xs">
+            <div className="text-[10px] uppercase font-bold text-emerald-400 mb-1 flex items-center gap-1">
+              <Share2 className="w-3 h-3" />
+              <span>Mensagem do WhatsApp (enviada com a foto):</span>
+            </div>
+            <pre className="font-sans whitespace-pre-line text-neutral-200 text-xs leading-relaxed select-all">
+              {formattedText}
+            </pre>
+          </div>
+
           {/* Feedback notification if any */}
           {feedback && (
             <div

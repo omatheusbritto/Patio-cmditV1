@@ -656,7 +656,7 @@ export interface DatabaseDiagnosticResult {
   latencyMs: number;
   tables?: {
     users: boolean;
-    vehicle_records: boolean;
+    vehicle_records?: boolean;
     access_logs: boolean;
     app_settings: boolean;
   };
